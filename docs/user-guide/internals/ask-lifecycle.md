@@ -2,8 +2,9 @@
 
 An ask starts as one MCP tool call from your agent and ends as one text answer. Between the two,
 a router picks a domain, a per-domain server starts an investigator on the configured backend,
-the investigator runs cells in a REPL, and the server writes a journal entry. This page follows
-that path through the code.
+the investigator runs cells in a REPL, and the server writes a journal entry. The cells, their
+results and the files they read stay in the investigator's session; the answer is the only part
+that enters your agent's context. This page follows that path through the code.
 
 ## Files
 

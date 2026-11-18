@@ -1,7 +1,11 @@
 # How it works
 
-Your agent makes one tool call and gets back one answer. Everything in between happens in the
-investigator's own context, which your agent never sees.
+Your agent makes one tool call with a question and gets back one answer. The programs the
+investigator writes, their intermediate results and the files they read all stay in the
+investigator's own session, so none of them enter your agent's context. The investigator is a
+cheap, fast model that starts from ready-made scripts and extends them. A follow-up reuses what
+has already run, because the REPL's variables are still there
+([Saved state for follow-ups](#saved-state-for-follow-ups)).
 
 ![Your agent sends one question; the investigator writes small programs for it in its own context, reaching code, sessions and your own domains, and returns a short answer with path:line evidence](images/how-an-ask-works.svg)
 

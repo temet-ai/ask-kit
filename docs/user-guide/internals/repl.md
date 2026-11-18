@@ -2,7 +2,8 @@
 
 The REPL is a Node `vm` context that the investigator runs JavaScript cells in. It holds the
 domain's globals, the toolkit helpers and the script library, keeps its variables between cells,
-and writes every cell to the journal. It is the inner face of `src/server.mjs`.
+and writes every cell to the journal. What a cell prints goes to the investigator's model and
+stays in its session. It is the inner face of `src/server.mjs`.
 
 ## Files
 

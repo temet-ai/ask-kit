@@ -35,8 +35,10 @@ questions already have scripts, so it can start from one of those.
 
 ![Your agent sends one question; the investigator writes small programs for it in its own context, reaching code, sessions and your own domains, and returns a short answer with path:line evidence](images/how-an-ask-works.svg)
 
-Everything it reads stays in its context and is thrown away afterwards. Your agent gets only the
-answer.
+Your agent writes only the question and gets only the answer. The investigator is a cheap, fast
+model, and its programs, their intermediate results and the files they read all stay in its
+session; a follow-up with `continue: true` reuses what has already run, because the REPL's
+variables are still there.
 
 ![Median per ask: 195,733 tokens read by the investigator, about 340 returned to your agent, 186 times less; 33 seconds and $0.0093](images/context-kept-out.svg)
 
