@@ -86,7 +86,9 @@ export function registerAsk(server, ctx) {
     ...(D.childEnv?.() ?? {}),
     ...(process.env.ASK_KIT_CONFIG ? { ASK_KIT_CONFIG: process.env.ASK_KIT_CONFIG } : {}),
     ...(process.env.ASK_KIT_STATE ? { ASK_KIT_STATE: process.env.ASK_KIT_STATE } : {}),
-    ...(inherit ? { ASK_KIT_INHERIT: inherit, ASK_KIT_CALLER: SESSION } : {}),
+    ...(inherit ? { ASK_KIT_INHERIT: inherit } : {}),
+    // Acting for the caller: a kit's tools that act (send mail, answer) do it in the caller's name.
+    ...(inherit || ownId ? { ASK_KIT_CALLER: SESSION } : {}),
     ...(ownId ? { ASK_KIT_SESSION: ownId } : {}),
   });
 

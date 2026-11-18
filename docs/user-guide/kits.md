@@ -26,6 +26,7 @@ its sources, the calls that change things (`acts`) and the commands it runs at i
 | [systemd](https://github.com/temet-ai/ask-kit-systemd) | services, logs, timers, crashes, ports, disk, on this machine and over ssh; restarts | `systemctl`, `journalctl`, `ss` |
 | [dotfiles](https://github.com/temet-ai/ask-kit-dotfiles) | which file in `~/.config` sets a keybinding, rule or setting; edits it | a folder, credentials excluded |
 | [claude-code-docs](https://github.com/temet-ai/ask-kit-claude-code-docs) | how Claude Code works, from its docs and changelog | a folder, downloaded at install |
+| fleet (needs [mike](https://github.com/temet-ai/mike)) | how a fleet of sessions is doing, what needs you, why a task is stuck; answers and mails seats | mike's MCP tools and inspect API |
 
 ## Make one
 
@@ -56,10 +57,11 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `keywords`, `route_hint`, `patterns` | Routing: fallback words, a line for the router model, and regexes that claim a question outright with no model call |
 | `cite` | How answers cite evidence |
 | `acts` | What the kit can change; shown at install |
-| `[[settings]]` `key`, `default`, `detect`, | A value the kit needs: from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. |
+| `[[settings]]` `key`, `default`, `detect`, `secret` | A value the kit needs: from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
 | `state_key` | One state folder per value (the github kit keeps one per repository) |
 | `[[sources]]` `kind = "folder"` | `path`, `exclude` (globs never searched or read: what the investigator reads goes to a model) |
 | `[[sources]]` `kind = "cli"` | `command`, `refuse` (argument strings refused, with why), `env`, `timeout_seconds` |
+| `[[sources]]` `kind = "mcp"` | `command` (the MCP server), `env`, `allow` (the tools it may call), `caller_args` (per tool, the argument set to the calling session, so actions are the caller's), `caller_env`. Each tool becomes a function: `mike.get_fleet({ fleet })`. |
 | `[[sources]]` `kind = "module"` | `module` (exports `make({ settings, push, config, kitDir, cwd })`), `api` (its `api.d.ts`) |
 | `instructions`, `scripts` | Your own instructions file and scripts folder (default `scripts/`) |
 | `bench` | Real questions with the patterns each answer must hold (default `bench/questions.json`) |

@@ -16,7 +16,7 @@ import { makeRepo } from "../domains/code/repo.mjs";
 
 export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
-const SOURCE_KINDS = ["folder", "cli", "module"];
+const SOURCE_KINDS = ["folder", "cli", "module", "mcp"];
 
 export const kitDirs = () => [path.join(CONFIG_DIR, "kits"), path.join(ROOT, "kits")];
 
@@ -58,6 +58,7 @@ export function readManifest(dir) {
     if (s.kind === "folder" && !s.path) problems.push(`sources[${i}].path: the folder`);
     if (s.kind === "cli" && !(Array.isArray(s.command) ? s.command.length : s.command)) problems.push(`sources[${i}].command: the program, e.g. ["gh"]`);
     if (s.kind === "module" && !s.module) problems.push(`sources[${i}].module: a .mjs file in the kit exporting make(ctx)`);
+    if (s.kind === "mcp" && !(Array.isArray(s.command) ? s.command.length : s.command)) problems.push(`sources[${i}].command: the MCP server to start, e.g. ["mike-mcp"]`);
   }
   if (problems.length) throw new Error(`${file}:\n- ${problems.join("\n- ")}`);
   return m;
@@ -105,7 +106,7 @@ function makeCli(src, settings, push) {
       execFile(bin, a, { cwd: src.cwd ? fill(src.cwd, settings) : process.cwd(), env, timeout: timeoutMs, maxBuffer: 64 << 20, encoding: "utf8" }, (err, stdout, stderr) => {
         const r = err?.code === "ENOENT"
           ? { code: 127, out: "", err: `${bin} is not installed or not on PATH` }
-          : { code: err ? (typeof err.code === "number" ? err.code : 1) : 0, out: stdout ?? "", err: (stderr ?? "").slice(0, 4000), ...(err?.killed ? { timedOut: true } : {}) };
+          : { code: err ? (typeof err.code === "number" ? err.code : 1) : 0, out: stdout ?? "", err: stderr ?? "", ...(err?.killed ? { timedOut: true } : {}) };
         push({ kind: src.name, detail: `${bin} ${line}`.slice(0, 200), ms: Date.now() - started, code: r.code, size: r.out.length });
         resolve(r);
       });
@@ -172,7 +173,117 @@ function excluding(repo, exclude, kitName) {
   };
 }
 
-async function makeSources(m, dir, settings) {
+// ---- mcp: an MCP server's tools as functions: mike.get_fleet({ fleet }) ----
+//
+// The tool list is read once and cached (a day, or until the manifest changes), so routing and the
+// API need no server; the server starts on the first call and stays for the REPL's life. Tools the
+// manifest's `allow` leaves out are not reachable. `caller_args` names, per tool, the argument that
+// says who acts (a sender, an author): it is set to the calling session's id, so an action the
+// investigator takes is the caller's. `caller_env` passes that id to the server's environment.
+async function mcpTools(src, settings, outDir, manifestFile) {
+  const cache = path.join(outDir, `mcp-${src.name}.json`);
+  try {
+    const c = JSON.parse(fs.readFileSync(cache, "utf8"));
+    if (Date.now() - c.at < 86400_000 && c.manifest === fs.statSync(manifestFile).mtimeMs) return c.tools;
+  } catch {}
+  const client = await mcpConnect(src, settings, null);
+  try {
+    const tools = (await client.listTools()).tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema ?? {} }));
+    fs.writeFileSync(cache, JSON.stringify({ at: Date.now(), manifest: fs.statSync(manifestFile).mtimeMs, tools }));
+    return tools;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+async function mcpConnect(src, settings, caller) {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+  const [bin, ...args] = [].concat(src.command).map((x) => fill(x, settings));
+  const env = { ...process.env, ...Object.fromEntries(Object.entries(src.env ?? {}).map(([k, v]) => [k, fill(v, settings)])) };
+  if (src.caller_env) {
+    delete env[src.caller_env];
+    if (caller) env[src.caller_env] = caller;
+  }
+  const c = new Client({ name: "ask-kit", version: "0" });
+  await c.connect(new StdioClientTransport({ command: bin, args, env, stderr: "ignore" }));
+  return c;
+}
+
+const UUIDISH = /^[A-Za-z0-9._:-]{8,120}$/;
+
+function makeMcpGlobal(src, tools, settings, push) {
+  const allowed = src.allow ? tools.filter((t) => src.allow.includes(t.name)) : tools;
+  const callerArgs = src.caller_args ?? {};
+  const caller = process.env.ASK_KIT_CALLER && UUIDISH.test(process.env.ASK_KIT_CALLER) ? process.env.ASK_KIT_CALLER : null;
+  let client = null;
+  const connect = () => (client ??= mcpConnect(src, settings, caller));
+  const parse = (t) => {
+    try {
+      return JSON.parse(t);
+    } catch {
+      return t;
+    }
+  };
+  const call = async (name, args = {}) => {
+    const tool = allowed.find((t) => t.name === name);
+    if (!tool) throw new Error(`${src.name} has no tool "${name}" this kit may use; ${src.name}.tools() lists them`);
+    const field = callerArgs[name];
+    if (field) {
+      if (!caller) throw new Error(`${name} acts as the calling session, and this ask has no calling session id; nothing was done`);
+      args = { ...args, [field]: caller };
+    }
+    const started = Date.now();
+    const out = await (await connect()).callTool({ name, arguments: args });
+    const text = (out.content ?? []).map((c) => c.text ?? "").join("\n");
+    push({ kind: src.name, detail: `${name} ${JSON.stringify(args)}`.slice(0, 200), ms: Date.now() - started, code: out.isError ? 1 : 0, size: text.length });
+    if (out.isError) throw new Error(`${name}: ${text.slice(0, 600)}`);
+    return parse(text);
+  };
+  const g = { call, tools: () => allowed.map((t) => ({ name: t.name, description: t.description.split("\n")[0].slice(0, 200) })), caller };
+  for (const t of allowed) if (/^[A-Za-z_$][\w$]*$/.test(t.name)) g[t.name] = (args) => call(t.name, args);
+  return g;
+}
+
+const tsType = (s) => {
+  if (!s || typeof s !== "object") return "any";
+  if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(" | ");
+  const t = [].concat(s.type ?? []);
+  if (t.includes("array")) return `${tsType(s.items)}[]`;
+  if (t.includes("object")) return "Record<string, any>";
+  if (t.includes("integer") || t.includes("number")) return "number";
+  if (t.includes("string")) return "string";
+  if (t.includes("boolean")) return "boolean";
+  return "any";
+};
+
+function mcpApi(src, tools) {
+  const allowed = src.allow ? tools.filter((t) => src.allow.includes(t.name)) : tools;
+  const callerArgs = src.caller_args ?? {};
+  const lines = [
+    `// ${src.name}: the MCP server \`${[].concat(src.command).join(" ")}\`${src.about ? ` (${src.about})` : ""}. Each tool is a function taking one`,
+    `// object of arguments and returning its parsed result; it throws on a tool error. ${src.name}.call(name, args) does the same.`,
+    `declare const ${src.name}: {`,
+    `  caller: string | null; // the calling session's id: tools that act are done in its name`,
+    `  tools(): { name: string; description: string }[];`,
+    `  call(name: string, args?: Record<string, any>): Promise<any>;`,
+  ];
+  for (const t of allowed) {
+    const props = t.inputSchema?.properties ?? {};
+    const req = new Set(t.inputSchema?.required ?? []);
+    const params = Object.entries(props)
+      .filter(([k]) => k !== callerArgs[t.name])
+      .map(([k, s]) => `${k}${req.has(k) ? "" : "?"}: ${tsType(s)}`)
+      .join("; ");
+    lines.push(`  // ${t.description.replace(/\s+/g, " ").slice(0, 400)}${callerArgs[t.name] ? ` (${callerArgs[t.name]} is set to the caller)` : ""}`);
+    for (const [k, s] of Object.entries(props)) if (s.description && k !== callerArgs[t.name]) lines.push(`  //   ${k}: ${s.description.replace(/\s+/g, " ").slice(0, 160)}`);
+    lines.push(`  ${t.name}(args${params ? "" : "?"}: { ${params} }): Promise<any>;`);
+  }
+  lines.push("};");
+  return lines.join("\n");
+}
+
+async function makeSources(m, dir, settings, mcp = {}) {
   const modules = {};
   for (const s of m.sources) if (s.kind === "module") modules[s.name] = await import(pathToFileURL(path.join(dir, s.module)).href);
   return ({ push, config }) => {
@@ -180,6 +291,7 @@ async function makeSources(m, dir, settings) {
     for (const s of m.sources) {
       if (s.kind === "folder") g[s.name] = excluding(makeRepo({ root: expand(fill(s.path, settings)), push }), s.exclude, m.name);
       else if (s.kind === "cli") g[s.name] = makeCli(s, settings, push);
+      else if (s.kind === "mcp") g[s.name] = makeMcpGlobal(s, mcp[s.name], settings, push);
       else g[s.name] = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), options: s });
     }
     // A `secret = true` setting (a database URL, a token) reaches the sources above and the
@@ -208,7 +320,7 @@ function cliHelp(src, settings) {
   }
 }
 
-function writeApi(m, dir, settings, outDir) {
+function writeApi(m, dir, settings, outDir, mcp = {}) {
   const parts = [`// The REPL's globals for the ${m.name} kit. \`help\` returns this file.\n`];
   for (const s of m.sources) {
     if (s.kind === "folder") {
@@ -225,6 +337,8 @@ function writeApi(m, dir, settings, outDir) {
           `  text(...args: string[]): Promise<string>;\n  help(...sub: string[]): Promise<string>; // \`--help\` of a subcommand\n};\n` +
           `/* \`${cmd} --help\`:\n${cliHelp(s, settings).replace(/\*\//g, "* /")}\n*/`,
       );
+    } else if (s.kind === "mcp") {
+      parts.push(mcpApi(s, mcp[s.name]));
     } else {
       const api = s.api ? path.join(dir, s.api) : null;
       parts.push(api && fs.existsSync(api) ? fs.readFileSync(api, "utf8") : `declare const ${s.name}: any; // ${s.about ?? s.module}`);
@@ -287,11 +401,13 @@ export async function kitDomain(dir, { config } = {}) {
   const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config)).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
   const outDir = path.join(STATE_ROOT, "kits", m.name, slug(fill(m.state_key ?? "", settings) || "default"));
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
-  const make = await makeSources(m, dir, settings);
+  const mcp = {};
+  for (const s of m.sources) if (s.kind === "mcp") mcp[s.name] = await mcpTools(s, settings, outDir, path.join(dir, MANIFEST));
+  const make = await makeSources(m, dir, settings, mcp);
   const own = path.join(dir, m.scripts ?? "scripts");
   const hostScripts = m.sources.some((s) => s.kind === "folder") && m.folder_scripts !== false ? [path.join(ROOT, "kits", "_host", "folder-scripts")] : [];
   const scriptsDirs = [...hostScripts, own];
-  const apiDoc = writeApi(m, dir, settings, outDir);
+  const apiDoc = writeApi(m, dir, settings, outDir, mcp);
   const instructions = m.instructions ? path.join(dir, m.instructions) : writeInstructions(m, outDir);
   const examples = await scriptExamples(scriptsDirs);
   const cite = m.cite ?? (m.sources.some((s) => s.kind === "folder") ? "`path:line`" : "the command and its output line, or an id");

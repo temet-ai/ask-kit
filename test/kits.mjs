@@ -24,6 +24,7 @@ write("mod", {
   "ask-kit.toml": `name = "mod"\nsays = "a module"\n[[settings]]\nkey = "MOD_GREETING"\ndefault = "hello"\n[[settings]]\nkey = "MOD_SECRET"\nsecret = true\n[[sources]]\nkind = "module"\nname = "greet"\nmodule = "greet.mjs"\n`,
   "greet.mjs": "export const make = ({ settings }) => ({ say: (n) => `${settings.MOD_GREETING} ${n}` });\n",
 });
+write("fake", { "ask-kit.toml": `name = "fake"\nsays = "a fake MCP server"\n[[sources]]\nkind = "mcp"\nname = "fake"\ncommand = ["${process.execPath}", "${path.resolve("test/fixtures/kit-mcp/server.mjs")}"]\nallow = ["echo"]\ncaller_env = "FAKE_CALLER"\ncaller_args = { echo = "from" }\n` });
 fs.writeFileSync(path.join(tmp, "config", "config.json"), JSON.stringify({ version: 1, sources: [], backends: { default: "x", list: { x: { kind: "api", preset: "ollama", model: "none" } } }, domains: { notes: {}, echo: {}, mod: {} } }));
 
 const { listDomains, loadDomain } = await import("../src/domains.mjs");
@@ -55,9 +56,19 @@ m2.makeGlobals({ push: () => {}, config: {} });
 assert.equal(process.env.MOD_SECRET, undefined, "a secret setting leaves the environment");
 assert.equal(m2.childEnv().MOD_SECRET, "s3", "and still reaches the investigator's server");
 
+process.env.ASK_KIT_CALLER = "caller-session-1";
+const f = await loadDomain("fake");
+const fg = f.makeGlobals({ push: () => {}, config: {} });
+assert.deepEqual(fg.fake.tools().map((t) => t.name), ["echo"], "allow keeps only the listed tools");
+assert.deepEqual(await fg.fake.echo({ text: "hi", from: "someone-else" }), { text: "hi", from: "caller-session-1", env: "caller-session-1" }, "acting arguments are the caller's");
+await assert.rejects(fg.fake.call("hidden"), /no tool/);
+assert.match(fs.readFileSync(f.apiDoc, "utf8"), /echo\(args: \{ text: string \}\)/);
+delete process.env.ASK_KIT_CALLER;
+
 const { makeRouter } = await import("../src/router.mjs");
 const router = await makeRouter(JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")));
 assert.equal(router.byPattern("notes: billing"), "notes");
 assert.equal(router.byRules("shout it"), "echo");
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("ok");
+process.exit(0);
