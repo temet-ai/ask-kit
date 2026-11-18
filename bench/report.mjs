@@ -58,9 +58,25 @@ const score = (rs) => {
 };
 // What the calling agent's context takes with ask: the question plus the answer text, about 4
 // characters a token (the tool's schema is paid once per session and shown separately).
-const callerTokens = (r) => (r.backend.startsWith("baseline") ? (r.contextPeak ?? 0) - (r.contextFirst ?? 0) + (r.usage?.output ?? 0) : (r.callerChars ?? 0) / 4);
+// With a subagent: what the caller's own requests grew by (the Agent call and the subagent's
+// report), plus its final answer; usage.output there would include the subagent's output too.
+const isSub = (r) => r.backend.startsWith("subagent-");
+const callerTokens = (r) =>
+  r.backend.startsWith("baseline")
+    ? (r.contextPeak ?? 0) - (r.contextFirst ?? 0) + (r.usage?.output ?? 0)
+    : isSub(r)
+      ? (r.contextPeak ?? 0) - (r.contextFirst ?? 0) + (r.answer?.length ?? 0) / 4
+      : (r.callerChars ?? 0) / 4;
+// The subagent's own cost: its model's line in modelUsage (the caller runs on a different model).
+// A follow-up resumes the same session, whose modelUsage is cumulative: subtract the question it follows.
+const subCostRaw = (r) => r.modelUsage?.[Object.keys(r.modelUsage ?? {}).find((k) => k.includes(r.backend.slice("subagent-".length)))]?.costUSD ?? null;
+const subCost = (r) => {
+  const q = loadQuestions().questions.find((x) => x.id === r.id);
+  const prev = q?.followupOf && rows.find((x) => x.id === q.followupOf && x.backend === r.backend && x.run === r.run);
+  return subCostRaw(r) == null ? null : subCostRaw(r) - (prev ? (subCostRaw(prev) ?? 0) : 0);
+};
 const by = (xs, f) => xs.reduce((m, x) => (m.set(f(x), [...(m.get(f(x)) ?? []), x]), m), new Map());
-const order = ["glm-5.3-flash", "deepseek-v4.1-flash-1017", "claude-haiku", "codex", "copilot", "qwen3.5-9b", "baseline-sonnet"];
+const order = ["glm-5.3-flash", "deepseek-v4.1-flash-1017", "claude-haiku", "codex", "copilot", "qwen3.5-9b", "subagent-haiku", "subagent-sonnet", "baseline-sonnet"];
 const sortB = (a, b) => order.indexOf(a) - order.indexOf(b);
 
 const out = [];
@@ -74,7 +90,7 @@ for (const domain of ["sessions", "sessions-undated", "code"]) {
     for (const [run, rr] of [...by(rs, (r) => r.run)].sort((x, y) => x[0] - y[0])) {
       const sc = score(rr);
       const costs = rr.map((r) => r.costUsd).filter((x) => x != null);
-      const cells = rr.map((r) => r.cells ?? (b.startsWith("baseline") ? r.toolCalls : null)).filter((x) => x != null);
+      const cells = rr.map((r) => r.cells ?? (b.startsWith("baseline") ? r.toolCalls : isSub(r) ? r.subTurns : null)).filter((x) => x != null);
       const priced = costs.length && sum(costs) > 0;
       out.push(
         `| ${b} | ${run} | ${sc.c} | ${sc.p} | ${sc.w} | ${sc.pts}/${sc.n} | ${s(med(rr.map((r) => r.ms ?? r.wallMs)))} | ${s(sum(rr.map((r) => r.wallMs)))} | ${priced ? usd(sum(costs) / rr.length) : b === "copilot" ? "premium req." : b === "codex" ? "plan" : b.startsWith("qwen") ? "local" : "-"} | ${priced ? usd(sum(costs), 3) : "-"} | ${cells.length ? mean(cells).toFixed(1) : "-"} | ${rr.filter((r) => r.partial).length} | ${rr.filter((r) => !r.ok).length} |`,
@@ -97,6 +113,29 @@ for (const domain of ["sessions", "sessions-undated", "code"]) {
     );
   }
 }
+// ask against a Claude Code subagent doing the digging for the same caller.
+if (rows.some(isSub)) {
+  out.push("\n### In the calling session: ask vs a subagent\n");
+  out.push("| Questions | Way | Score | Median time | Digger's cost / question | Caller context added / question (median) | Caller context added (total) | Digger's steps (median) |");
+  out.push("|---|---|---|---|---|---|---|---|");
+  for (const domain of ["sessions", "sessions-undated", "code"]) {
+    for (const b of ["glm-5.3-flash", "subagent-haiku", "subagent-sonnet"]) {
+      const rr = rows.filter((r) => r.domain === domain && r.backend === b && r.run === 1);
+      if (!rr.length) continue;
+      const sc = score(rr);
+      const cost = isSub(rr[0]) ? rr.map(subCost) : rr.map((r) => r.costUsd ?? 0);
+      const steps = rr.map((r) => (isSub(r) ? r.subTurns : r.cells));
+      out.push(
+        `| ${domain} | ${b === "glm-5.3-flash" ? "ask → glm-5.3-flash" : `${b.slice(9)} subagent (caller ${rr[0].caller})`} | ${sc.pts}/${sc.n} | ${s(med(rr.map((r) => r.ms ?? r.wallMs)))} | ${usd(mean(cost.filter((x) => x != null)), 4)} | ${tok(med(rr.map(callerTokens)))} | ${tok(sum(rr.map(callerTokens)))} | ${med(steps) ?? "-"} |`,
+      );
+    }
+  }
+  const subs = rows.filter(isSub);
+  out.push(
+    `\nSubagent detail: ${subs.filter((r) => Object.keys(r.tools ?? {}).some((t) => t !== "Agent")).length} of ${subs.length} answers had the caller use a tool other than Agent; ${subs.filter((r) => !r.tools?.Agent).length} answered with no subagent (follow-ups the caller answered from what it already had count here).`,
+  );
+}
+
 const base = rows.filter((r) => r.backend === "baseline-sonnet");
 if (base.length) {
   out.push(
