@@ -21,7 +21,7 @@ const write = (name, files) => {
 write("notes", { "ask-kit.toml": `name = "notes"\nsays = "my notes"\npatterns = ['^notes:']\n[[sources]]\nkind = "folder"\nname = "notes"\npath = "${notes}"\nexclude = ["*token*"]\n` });
 write("echo", { "ask-kit.toml": `name = "echo"\nsays = "echo"\nkeywords = ["shout"]\n[[sources]]\nkind = "cli"\nname = "echo"\ncommand = ["${process.execPath}", "-e", "console.log(JSON.stringify(process.argv.slice(1)))"]\nrefuse = [{ args = "secret", why = "it would print one" }]\n` });
 write("mod", {
-  "ask-kit.toml": `name = "mod"\nsays = "a module"\n[[settings]]\nkey = "MOD_GREETING"\ndefault = "hello"\n[[sources]]\nkind = "module"\nname = "greet"\nmodule = "greet.mjs"\n`,
+  "ask-kit.toml": `name = "mod"\nsays = "a module"\n[[settings]]\nkey = "MOD_GREETING"\ndefault = "hello"\n[[settings]]\nkey = "MOD_SECRET"\nsecret = true\n[[sources]]\nkind = "module"\nname = "greet"\nmodule = "greet.mjs"\n`,
   "greet.mjs": "export const make = ({ settings }) => ({ say: (n) => `${settings.MOD_GREETING} ${n}` });\n",
 });
 fs.writeFileSync(path.join(tmp, "config", "config.json"), JSON.stringify({ version: 1, sources: [], backends: { default: "x", list: { x: { kind: "api", preset: "ollama", model: "none" } } }, domains: { notes: {}, echo: {}, mod: {} } }));
@@ -49,6 +49,11 @@ await assert.rejects(eg.echo("secret"), /not allowed/);
 const m = await loadDomain("mod");
 assert.equal(m.makeGlobals({ push: () => {}, config: {} }).greet.say("you"), "hello you");
 assert.equal(m.childEnv().MOD_GREETING, "hello");
+process.env.MOD_SECRET = "s3";
+const m2 = await (await import("../src/kits.mjs")).kitDomain(path.join(kits, "mod"), { config: {} });
+m2.makeGlobals({ push: () => {}, config: {} });
+assert.equal(process.env.MOD_SECRET, undefined, "a secret setting leaves the environment");
+assert.equal(m2.childEnv().MOD_SECRET, "s3", "and still reaches the investigator's server");
 
 const { makeRouter } = await import("../src/router.mjs");
 const router = await makeRouter(JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")));

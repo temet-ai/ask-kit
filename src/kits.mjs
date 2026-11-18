@@ -182,6 +182,10 @@ async function makeSources(m, dir, settings) {
       else if (s.kind === "cli") g[s.name] = makeCli(s, settings, push);
       else g[s.name] = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), options: s });
     }
+    // A `secret = true` setting (a database URL, a token) reaches the sources above and the
+    // investigator's server through its environment; once the sources hold it, it leaves this
+    // process's environment, so code the model writes cannot read it there.
+    for (const s of m.settings ?? []) if (s.secret) delete process.env[s.key];
     // Built-in folder scripts reach the first folder source as `folder`.
     const firstFolder = m.sources.find((s) => s.kind === "folder");
     if (firstFolder && !("folder" in g)) g.folder = g[firstFolder.name];
@@ -244,6 +248,7 @@ function writeInstructions(m, outDir) {
     "",
     "- Start from a ready-made script (`scripts.run`) when one fits.",
     kinds.has("folder") && "- In a folder, search for two or three distinctive words, not a sentence, then read the lines that decide the answer before you state it: a hit is a lead, not proof.",
+    kinds.has("folder") && "- When the question names a file, folder or program, look in the one with exactly that name first; similar names (`app` and `app-cli`) are different things. When two fit, say which you read.",
     kinds.has("cli") && "- Ask a command for JSON where it offers it (`--json`, `--format json`, `-o json`) and keep only the fields you need. When unsure of a subcommand, `.help(sub)` shows it.",
     "- Keep results in variables and return only what answers the question from each cell, a few hundred characters.",
     "- When a cell fails, read the error and change the cell. Never send the same cell twice.",
