@@ -16,7 +16,7 @@
   <!-- your agent -->
   <rect x="32" y="72" width="270" height="300" rx="12" fill="#202027" stroke="#3a3a42"/>
   <text x="52" y="104" class="sans cream" font-size="16" font-weight="700">Your agent</text>
-  <text x="52" y="124" class="sans muted" font-size="13">main context, does the real work</text>
+  <text x="52" y="124" class="sans muted" font-size="13">main context, writes the code</text>
   <text x="52" y="166" class="mono muted" font-size="13">you: add a CSV exporter</text>
   <text x="52" y="200" class="mono red" font-size="13">ask("how are exporters</text>
   <text x="52" y="218" class="mono red" font-size="13">  built and registered?")</text>
