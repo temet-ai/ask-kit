@@ -158,7 +158,7 @@ two agents do not continue each other's investigations.
 
 With nothing saved for that backend and session, a continue throws
 `nothing to continue: no earlier <backend> question in this session`. The REPL variables come back
-through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-follow-ups).
+through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-follow-ups).
 
 ### The API loop
 
@@ -252,25 +252,17 @@ The investigator's own cells are journaled by the inner server into a different 
 folder, named after its session (`ask-<askId>.jsonl` for the API loop). `ask-kit report` reads
 both. [Journal](../reference/journal.md) lists every field.
 
-```mermaid
-sequenceDiagram
-  participant A as Your agent
-  participant R as Router (serveRouter)
-  participant D as Domain server (ask)
-  participant I as Investigator
-  participant P as Inner REPL (server.mjs, INNER)
-  A->>R: ask(question, about?, continue?)
-  R->>R: about / follow-up / model / rules
-  R->>D: ask(question, backend?, continue?)
-  D->>I: askClaude / askCodex / askCopilot / askApi
-  loop up to MAX_STEPS cells
-    I->>P: repl(code)
-    P-->>I: result text
-  end
-  I-->>D: answer
-  D->>D: journal entry (type: ask)
-  D-->>R: answer + footer
-  R-->>A: answer (+ routed note)
+```
+your agent      ── ask(question, about?, continue?) ──────────────▶ router (serveRouter)
+router          picks the domain: about, follow-up, only one, model, rules
+router          ── ask(question, backend?, continue?) ────────────▶ domain server (registerAsk)
+domain server   ── askClaude / askCodex / askCopilot / askApi ────▶ investigator
+investigator    ── repl(code) ───▶ inner REPL (server.mjs, ASK_KIT_INNER=1)
+                ◀── result text ─┘   repeated, one cell per step (up to MAX_STEPS for an API)
+investigator    ── answer ────────────────────────────────────────▶ domain server
+domain server   writes the journal entry (type: ask)
+domain server   ── answer + footer ───────────────────────────────▶ router
+router          ── answer (+ [routed to ...]) ────────────────────▶ your agent
 ```
 
 ## What to look at when changing it
