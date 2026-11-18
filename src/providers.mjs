@@ -19,7 +19,8 @@ export const API_PRESETS = {
       // The best of the cheap models on the benchmark (bench/RESULTS.md) at well under a cent a question. The provider pin
       // keeps every question on one provider, so the prefix cache hits.
       { id: "z-ai/glm-5.3-flash", note: "cheapest that answers well (~$0.003/question)", providerOrder: ["DeepInfra"] },
-      { id: "deepseek/deepseek-v4.1-flash-1017", note: "best on code questions, about the same price" },
+      // Unpinned it lands on dearer providers and can switch mid-question, losing the prefix cache.
+      { id: "deepseek/deepseek-v4.1-flash-1017", note: "best on code questions, about the same price", providerOrder: ["DeepInfra"] },
       { id: "anthropic/claude-haiku-5.5", note: "Anthropic's small model through OpenRouter" },
     ],
   },
