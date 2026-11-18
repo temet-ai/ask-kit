@@ -142,7 +142,10 @@ export async function serveRouter() {
       remember(name);
       try {
         const c = await child(name);
-        const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal });
+        // Pass the investigator's progress (one note per cell) on to the caller, if it asked for it.
+        const token = extra?._meta?.progressToken;
+        const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
+        const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
         return { ...out, content: [{ type: "text", text: `${text}${how === "caller" || how === "only" ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {

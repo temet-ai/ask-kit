@@ -167,6 +167,14 @@ the domain's server, and the agent gets the client library's validation message.
 
 Every ask, failed or not, is written to the [journal](journal.md).
 
+## Progress
+
+A caller that sends a `progressToken` (the MCP client's `onprogress`) gets one
+`notifications/progress` per cell while an API backend works: `progress` is the cell's number and
+`message` is `cell <n>: <first line>`, the cell's leading comment if it has one, cut at 100
+characters. The router passes them on from the domain's server. CLI backends (Claude Code, Codex,
+Copilot) send none.
+
 ## From the shell
 
 ```sh
@@ -174,7 +182,11 @@ ask-kit ask "<question>" [--domain <name>] [--backend <name>] [--continue]
 ```
 
 Starts `ask-kit serve` (with `--domain` when given) as a child, calls `ask` with a 900 second
-client timeout, prints the text and exits with code 1 on `isError`. The shell is its own caller:
+client timeout, prints the text and exits with code 1 on `isError`. It asks for progress: on a
+terminal, stderr shows a spinner with the seconds so far and one line per progress note; piped,
+the notes are plain lines. On a terminal (and without `NO_COLOR`) the answer's Markdown is
+rendered: headings and bold in bold, code in colour, bullets as `•`, the footer dimmed. Piped
+output is the answer text unchanged. The shell is its own caller:
 its session is `ASK_KIT_SESSION` or `shell-<pid of the shell>`, so `--continue` works between
 shell commands in the same shell. With no `--domain` it goes through the router.
 

@@ -326,7 +326,7 @@ export function registerAsk(server, ctx) {
     },
   };
 
-  async function askApi(b, question, timeoutMs, cont, signal) {
+  async function askApi(b, question, timeoutMs, cont, signal, onStep) {
     const be = BACKENDS[b];
     const native = be.nativeTools !== false;
     const ep = endpoint(be);
@@ -423,6 +423,7 @@ export function registerAsk(server, ctx) {
         const nudge = left <= 2 ? `\n\n${left} call(s) left. Answer now with what you have, saying what you could not confirm.` : `\n\n${left} calls left.`;
         const runCode = async (code) => {
           cells++;
+          onStep?.(cells, code);
           const timeoutSeconds = Math.max(1, Math.min(CELL_MAX_S, Math.floor((leftMs() - 2000) / 1000)));
           try {
             const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
@@ -523,6 +524,13 @@ export function registerAsk(server, ctx) {
 
   const KINDS = { "claude-cli": askClaude, "codex-cli": askCodex, "copilot-cli": askCopilot, api: askApi };
 
+  // A cell in one line for progress: its leading comment if it has one, else its first line.
+  const cellLine = (code) => {
+    const first = String(code).split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+    const t = first.replace(/^\/\/\s*/, "");
+    return t.length > 100 ? `${t.slice(0, 99)}…` : t;
+  };
+
   // ---- the tool ----
 
   server.registerTool(
@@ -546,10 +554,19 @@ export function registerAsk(server, ctx) {
       const timeoutMs = Math.max(20_000, Math.min(timeoutSeconds * 1000, clientMs ? clientMs - RESERVE_MS : Infinity));
       const kind = BACKENDS[backend].kind;
       const started = Date.now();
+      // A caller that asked for progress gets one note per cell, so a person watching sees the digging.
+      const token = extra?._meta?.progressToken;
+      const onStep =
+        token === undefined
+          ? null
+          : (n, code) =>
+              extra
+                .sendNotification({ method: "notifications/progress", params: { progressToken: token, progress: n, message: `cell ${n}: ${cellLine(code)}` } })
+                .catch(() => {});
       let r;
       try {
         if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
-        r = await KINDS[kind](backend, question, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, extra?.signal);
+        r = await KINDS[kind](backend, question, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, extra?.signal, onStep);
       } catch (e) {
         const cancelled = !!extra?.signal?.aborted;
         const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");

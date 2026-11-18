@@ -223,7 +223,13 @@ investigator from using anything but the REPL.
 
 ## 4. What the caller gets back
 
-The handler returns the answer text plus a footer, and `isError: !r.ok`:
+While it runs: if the call carried `_meta.progressToken`, the handler passes `onStep` to the
+backend, and `askApi` calls it as each cell starts (`runCode`). `onStep` sends
+`notifications/progress` with the cell's number and `cell <n>: <cellLine(code)>`. The router's
+`callTool` has an `onprogress` that sends each note on to its own caller under the caller's token.
+The CLI backends ignore `onStep`.
+
+When it ends, the handler returns the answer text plus a footer, and `isError: !r.ok`:
 
 ```js
 const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s${r.costUsd ? ` · $${r.costUsd.toFixed(4)}` : ""}]`;

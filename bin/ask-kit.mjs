@@ -292,14 +292,50 @@ async function askFromShell() {
   const client = new Client({ name: "ask-kit-shell", version: "0" });
   await client.connect(new StdioClientTransport({ command: process.execPath, args, env, stderr: "inherit" }));
   const backend = flag("backend");
-  const out = await client.callTool(
-    { name: "ask", arguments: { question, ...(typeof backend === "string" ? { backend } : {}), ...(flag("continue") ? { continue: true } : {}) } },
-    undefined,
-    { timeout: 900_000 },
-  );
-  console.log(out.content.map((c) => c.text).join("\n"));
+  // On a terminal: a spinner with the time so far, and one line per cell the investigator runs.
+  const tty = process.stderr.isTTY;
+  const t0 = Date.now();
+  const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  let tick = 0;
+  const spin = () => process.stderr.write(`\r\x1b[2K\x1b[2m${frames[tick++ % frames.length]} investigating · ${Math.round((Date.now() - t0) / 1000)}s\x1b[0m`);
+  const timer = tty ? setInterval(spin, 100) : null;
+  const onprogress = (p) => {
+    if (!p.message) return;
+    if (tty) process.stderr.write(`\r\x1b[2K\x1b[2m  ${p.message}\x1b[0m\n`), spin();
+    else process.stderr.write(`  ${p.message}\n`);
+  };
+  let out;
+  try {
+    out = await client.callTool(
+      { name: "ask", arguments: { question, ...(typeof backend === "string" ? { backend } : {}), ...(flag("continue") ? { continue: true } : {}) } },
+      undefined,
+      { timeout: 900_000, onprogress },
+    );
+  } finally {
+    if (timer) clearInterval(timer), process.stderr.write("\r\x1b[2K");
+  }
+  if (tty) process.stderr.write("\n");
+  const text = out.content.map((c) => c.text).join("\n");
+  console.log(process.stdout.isTTY && !process.env.NO_COLOR ? terminalMarkdown(text) : text);
   await client.close();
   if (out.isError) process.exitCode = 1;
+}
+
+// An answer's Markdown, for a terminal: headings and **bold** in bold, `code` in colour, bullets
+// as •, and the [domain · backend · time · cost] line dimmed. Piped output stays plain Markdown.
+function terminalMarkdown(text) {
+  const B = "\x1b[1m", D = "\x1b[2m", C = "\x1b[36m", R = "\x1b[0m";
+  const inline = (s) => s.replace(/`([^`]+)`/g, `${C}$1${R}`).replace(/\*\*([^*]+)\*\*/g, `${B}$1${R}`);
+  return text
+    .split("\n")
+    .map((l) => {
+      if (/^#{1,6}\s/.test(l)) return B + inline(l.replace(/^#{1,6}\s+/, "")) + R;
+      if (/^\[[^\]]+·[^\]]+\]$/.test(l.trim())) return D + l + R;
+      const m = l.match(/^(\s*)[-*]\s+(.*)$/);
+      if (m) return `${m[1]}${D}•${R} ${inline(m[2])}`;
+      return inline(l);
+    })
+    .join("\n");
 }
 
 // Output piped into `head` and closed early is not an error.
