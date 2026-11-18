@@ -20,9 +20,11 @@ bundled.
 ## 2. It installs ask-kit
 
 ```sh
-npm install -g github:temet-ai/ask-kit
+npm install -g --allow-git=root github:temet-ai/ask-kit
 ask-kit init
 ```
+
+npm 12 refuses packages from git without `--allow-git`; older npm ignores the flag.
 
 `ask-kit init` finds every coding agent on the machine and puts three things into each, in that
 agent's own format:
@@ -89,7 +91,7 @@ Read ~/.config/ask-kit/AGENTS.md, then add this domain: github.com/<owner>/<repo
 `ask-kit setup` asks the same questions in the terminal:
 
 ```sh
-npm install -g github:temet-ai/ask-kit
+npm install -g --allow-git=root github:temet-ai/ask-kit
 ask-kit init
 ask-kit setup
 ```
