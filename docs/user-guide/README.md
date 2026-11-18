@@ -89,6 +89,38 @@ More:
 - [What it stores and sends](privacy.md)
 - [Troubleshooting](troubleshooting.md)
 
+How-to guides:
+
+- [Write a domain](guides/write-a-domain.md): a working domain over a folder of notes, step by
+  step.
+- [Add a script](guides/add-a-script.md), including turning a draft into a script.
+- [Debug a bad answer](guides/debug-a-bad-answer.md): from a wrong answer to the fix, using the
+  journal.
+- [Add a model or provider](guides/add-a-backend.md)
+- [Support another coding agent](guides/add-an-agent.md): a transcript adapter and setup.
+- [Run the benchmark](guides/run-the-benchmark.md)
+- [Run the tests](guides/testing.md)
+
+Reference:
+
+- [Config file](reference/config.md): every key in `config.json`.
+- [The ask tool](reference/ask-tool.md): parameters, answers and errors.
+- [What the investigator's programs can reach](reference/domain-api.md): globals, helpers and
+  every script.
+- [Files and environment variables](reference/files-and-env.md)
+- [Journal format](reference/journal.md)
+
+Internals, for changing ask-kit itself:
+
+- [Map of the code](internals/README.md): the processes, every source file and a reading order.
+- [Life of one ask](internals/ask-lifecycle.md): router, backend, cells, answer and journal.
+- [The REPL](internals/repl.md): how cells run, saved state, scripts.
+- [Backends](internals/backends.md): APIs, agent CLIs and local models.
+- [Domains](internals/domains.md): the domain contract, the two built-in domains, the gallery.
+- [Transcript adapters](internals/transcripts.md): how each agent's sessions are read.
+- [Setup](internals/setup.md): `init`, `setup`, `apply`, `doctor`, `uninstall` and the files they
+  write.
+
 ## Status
 
 Early. It has been used on one Linux machine. CI runs on Linux, macOS and Windows. There are no

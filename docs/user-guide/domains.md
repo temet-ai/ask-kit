@@ -51,3 +51,13 @@ Put the domain folder and a `RECIPE.md` in a public GitHub repository and give i
 `ask-kit-domain`. The recipe says what the domain answers, what it needs (programs, keys,
 access), what it reads and runs, and a brief another agent could rebuild it from in an empty
 folder. It then shows in `ask-kit gallery`, and others add it with one line.
+
+## More on domains
+
+- [Write a domain](guides/write-a-domain.md): a working domain over a folder of notes, every
+  file in full.
+- [Add a script](guides/add-a-script.md)
+- [What the investigator's programs can reach](reference/domain-api.md): the built-in domains'
+  globals, helpers and scripts.
+- [Domains in the code](internals/domains.md): the contract in `src/domains.mjs`, how domains are
+  found and which one wins.

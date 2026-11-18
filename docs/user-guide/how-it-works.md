@@ -81,3 +81,9 @@ scripts it used. `ask-kit report` reads it, and it's how you [make it better](tu
 
 It reads transcripts and files, and runs ripgrep and git commands that only read. When an agent
 CLI is the investigator, that CLI's own tools are turned off or limited to reading.
+
+## In the code
+
+[Map of the code](internals/README.md) lists every source file and a reading order.
+[Life of one ask](internals/ask-lifecycle.md) follows one question through the router, the
+backend and the REPL, with the functions and limits involved.

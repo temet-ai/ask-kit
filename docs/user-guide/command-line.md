@@ -44,3 +44,8 @@ and `ask-kit uninstall` removes only what ask-kit wrote.
 
 `XDG_CONFIG_HOME` and `XDG_STATE_HOME` are honoured. `ASK_KIT_CONFIG` and `ASK_KIT_STATE` move
 the two folders anywhere.
+
+Every file, folder and environment variable is listed in
+[Files and environment variables](reference/files-and-env.md), and every config key in
+[Config file](reference/config.md). [Setup](internals/setup.md) explains what each command does
+inside.
