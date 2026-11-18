@@ -13,11 +13,12 @@ const kits = path.join(tmp, "config", "kits");
 const notes = path.join(tmp, "notes");
 fs.mkdirSync(notes, { recursive: true });
 fs.writeFileSync(path.join(notes, "billing.md"), "# Billing retro\n\nAction items: move the invoice worker to the queue.\n");
+fs.writeFileSync(path.join(notes, "api-token.txt"), "invoice worker token abc\n");
 const write = (name, files) => {
   fs.mkdirSync(path.join(kits, name), { recursive: true });
   for (const [f, t] of Object.entries(files)) fs.writeFileSync(path.join(kits, name, f), t);
 };
-write("notes", { "ask-kit.toml": `name = "notes"\nsays = "my notes"\npatterns = ['^notes:']\n[[sources]]\nkind = "folder"\nname = "notes"\npath = "${notes}"\n` });
+write("notes", { "ask-kit.toml": `name = "notes"\nsays = "my notes"\npatterns = ['^notes:']\n[[sources]]\nkind = "folder"\nname = "notes"\npath = "${notes}"\nexclude = ["*token*"]\n` });
 write("echo", { "ask-kit.toml": `name = "echo"\nsays = "echo"\nkeywords = ["shout"]\n[[sources]]\nkind = "cli"\nname = "echo"\ncommand = ["${process.execPath}", "-e", "console.log(JSON.stringify(process.argv.slice(1)))"]\nrefuse = [{ args = "secret", why = "it would print one" }]\n` });
 write("mod", {
   "ask-kit.toml": `name = "mod"\nsays = "a module"\n[[settings]]\nkey = "MOD_GREETING"\ndefault = "hello"\n[[sources]]\nkind = "module"\nname = "greet"\nmodule = "greet.mjs"\n`,
@@ -34,6 +35,9 @@ assert.equal(g.folder, g.notes, "the first folder source is also `folder`");
 const find = await import(path.join(n.scriptsDirs[0], "find.mjs"));
 const r = await find.default({ ...g }, { topic: "invoice worker" });
 assert.equal(r.files[0].file, "billing.md");
+assert.equal(r.files.length, 1, "an excluded file is never searched");
+assert.throws(() => g.notes.read("api-token.txt"), /excluded/);
+await assert.rejects(g.notes.run("cat", "api-token.txt"), /excluded/);
 assert.match(fs.readFileSync(n.apiDoc, "utf8"), /declare const notes:/);
 assert.match(fs.readFileSync(n.instructions, "utf8"), /path:line/);
 
@@ -44,7 +48,7 @@ await assert.rejects(eg.echo("secret"), /not allowed/);
 
 const m = await loadDomain("mod");
 assert.equal(m.makeGlobals({ push: () => {}, config: {} }).greet.say("you"), "hello you");
-assert.deepEqual(m.childEnv(), { MOD_GREETING: "hello" });
+assert.equal(m.childEnv().MOD_GREETING, "hello");
 
 const { makeRouter } = await import("../src/router.mjs");
 const router = await makeRouter(JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")));

@@ -1,45 +1,80 @@
 ---
 name: ask-kit-domain
-description: Add something new for ask-kit's `ask` to answer about - install a domain someone shared (a GitHub repo with the topic ask-kit-domain), write a new domain (a REPL API, scripts and instructions for a service, a database, a docs folder, logs), or share one of yours with a RECIPE.md. Use when the user pastes "add this domain", asks for ask to answer about a new thing, or wants to publish a domain.
+description: Add something new for ask-kit's `ask` to answer about - install a kit someone shared (a GitHub repo with the topic ask-kit or ask-kit-domain), make a new kit (a folder, a CLI such as gh, docker or psql, a service, a database, docs, logs), prove it on real questions, or share one with a RECIPE.md. Use when the user pastes "add this kit" or "add this domain", asks for ask to answer about a new thing, or wants to publish a kit.
 ---
 
-# Domains: add, write, share
+# Kits: add, make, prove, share
 
 The command is `{{ASK_KIT}}` (below: `ask-kit`). ask-kit's guide, with every path on this machine,
 is {{AGENTS_MD}}: read it first.
 
-A domain is a folder: `domain.mjs` (its globals and words), `api.d.ts` (the typed API the
-investigator reads), `instructions.md` (how to investigate and cite), and `scripts/`. Your own go
-in the `domains/` folder next to the config; one there wins over a built-in of the same name.
+A kit is a folder with an `ask-kit.toml` manifest. It says what the kit answers and points at its
+sources; ask-kit turns each source into a global in the investigator's REPL and writes the API
+and default instructions from them. Kits go in the `kits/` folder next to the config.
+
+```toml
+name = "notes"                 # the value of `about`; the folder name
+version = "0.1.0"
+says = "my markdown notes: what I wrote about a topic, a project or a decision, and when"
+keywords = ["notes?"]          # fallback routing when no router model answers
+route_hint = "what I wrote down is notes; what a session did is sessions"   # read by the router model
+cite = "`path:line`"           # how answers cite evidence
+acts = ["notes.edit"]          # what it can change: shown at install
+
+[[settings]]                   # values it needs: env, then config domains.<kit>.settings, then detect, then default
+key = "NOTES_DIR"
+default = "~/notes"
+
+[[sources]]
+kind = "folder"                # folder | cli | module
+name = "notes"                 # the global the investigator calls
+path = "${NOTES_DIR}"
+exclude = ["*.env", "private/**"]   # never searched or read: what it reads goes to a model
+```
+
+- `folder`: ripgrep, ast-grep, reads, edits, writes, git and programs in the folder, plus the
+  host's `find`, `outline` and `tree` scripts. One manifest is a whole kit.
+- `cli`: `gh("pr", "list")` → `{code, out, err}`, `.json(...)`, `.text(...)`, `.help(sub)`;
+  `refuse = [{ args = "auth token", why = "prints the token" }]` for output that would leak a secret.
+- `module`: `module = "x.mjs"` exporting `make({ settings, push, config, kitDir, cwd })`; `api =
+  "api.d.ts"` describes what it returns. Use it when the client needs logic (parsing, checks).
+- Optional: `instructions = "instructions.md"`, `scripts/` (each with `meta` and a default
+  function taking the globals), `bench/questions.json`, `[[build]] command = [...]` run at install,
+  `state_key = "${SETTING}"` for one state folder per repository or database.
 
 ## Add one someone shared
 
-`ask-kit add <github url or owner/repo>` fetches it and shows its files without enabling it.
-A domain is code that runs in the investigator's REPL with your user's rights, so read
-`domain.mjs` and the scripts and tell the user plainly what they read and run (files, commands,
-network). Only when the user agrees: `ask-kit add <repo> --yes`. Then
-`ask-kit ask --domain <name> "<a question it should answer>"`.
+`ask-kit kit install <owner/repo>` fetches it and shows its sources, `acts`, settings, build
+commands and module code without installing. A kit runs with the user's rights and no sandbox:
+tell the user plainly what it reaches, what it can change and what it runs at install. Only on
+their yes: `ask-kit kit install <owner/repo> --yes`. `ask-kit gallery` lists shared kits.
+(`ask-kit add` does the same and also takes the older domain repositories.)
 
-`ask-kit gallery` lists the shared domains (GitHub repos with the topic `ask-kit-domain`).
+## Make one
 
-## Write one
-
-1. Copy the shape of `domains/code` (a client for one repository: search, read, edit, run, git)
-   from the ask-kit install named in the guide. Globals are a client for the thing, with methods
-   that read it and methods that act on it, returning plain data, and every call reported through
-   `push()` so the journal shows it.
-2. `api.d.ts`: every global and method with its parameters and what it returns. The investigator
-   writes code from this file alone, so make it exact.
-3. `instructions.md`: what the data holds, how to search it narrowly, what counts as evidence and
-   how to cite it, what never to do.
-4. Two or three scripts for the questions people will ask most; each with `meta`.
-5. Enable it under `domains` in the config, then ask it three real questions and fix what it
-   got wrong (the ask-kit-improve skill).
+1. Find the real questions first: ask `ask` (sessions) what agents dug for by hand about the
+   source, with the questions in their words. Those are the bench; never invent questions.
+2. `ask-kit kit new <name> --from folder:<path>` or `--from cli:<command>` writes the manifest.
+   Write `says` in the words people use. Add a module when the CLI needs checks or parsing.
+3. Give the kit the actions its source needs (restart, comment, edit): investigators act, not only
+   read. Refuse only output that prints secrets and commands that never end.
+4. Two to five scripts for the questions in the bench, each with `meta` (purpose, params, returns,
+   example). The host lists their examples to the investigator.
+5. `bench/questions.json`: `{"questions": [{"id", "q", "expect": [regex], "any"?: [regex]}]}`, each
+   expectation checked against the live source now.
+6. `ask-kit kit link <dir>`, then `ask-kit kit test <name> --backends <a>,<b>`. Read each failing
+   answer, fix the layer that caused it (a `says` word, an instruction line, a script), test again.
 
 ## Share one
 
-Write a RECIPE.md next to the domain: what it answers, what it needs (programs, keys, access),
-what it reads and runs, and a brief another agent could rebuild it from with an empty folder.
-Put the domain folder and the recipe in one repository, push it public, and add the topic
-`ask-kit-domain`. It then shows in `ask-kit gallery`, and others add it with one line:
-`Read <their ask-kit guide>, then add this domain: github.com/<you>/<repo>`.
+Write a README (what it answers, what it can change, the install line, what it needs) and a
+RECIPE.md: what it answers, what it needs (programs, keys, access), what it reads and runs, and a
+brief another agent could rebuild it from with an empty folder. Push the kit folder as a public
+GitHub repository named `ask-kit-<name>` with the topic `ask-kit`. Others add it with one line:
+`Read <their ask-kit guide>, then add this kit: github.com/<you>/<repo>`.
+
+## The older form: domains
+
+A domain is a folder with `domain.mjs` (its globals and words), `api.d.ts`, `instructions.md` and
+`scripts/`, in the `domains/` folder next to the config. They still load; a kit of the same name
+wins. Write a kit for anything new.

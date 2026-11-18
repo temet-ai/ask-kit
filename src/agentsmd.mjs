@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CONFIG_DIR, CONFIG_FILE, KEYS_FILE, ROOT, STATE_ROOT, loadConfig } from "./config.mjs";
 import { domainDirs, listDomains } from "./domains.mjs";
+import { kitDirs } from "./kits.mjs";
 
 export const AGENTS_MD = path.join(CONFIG_DIR, "AGENTS.md");
 
@@ -47,6 +48,7 @@ ${now}
 | Config: sources, backends, domains, router | \`${CONFIG_FILE}\` |
 | Pasted API keys (mode 0600; the config only names where a key is) | \`${KEYS_FILE}\` |
 | What ask-kit installed into each agent, with hashes | \`${path.join(CONFIG_DIR, "installed.json")}\` |
+| Your kits (an \`ask-kit.toml\` folder each, installed or linked) | \`${kitDirs()[0]}\` |
 | Your own domains (win over built-ins of the same name) | \`${domainDirs()[0]}\` |
 | Built-in domains | \`${domainDirs()[1]}\` |
 
@@ -54,9 +56,12 @@ Domains available now (yours and built-in): ${listDomains().join(", ")}.
 | Journals (one JSON line per ask and per cell), REPL snapshots, warm sessions | \`${STATE_ROOT}\` |
 | ask-kit itself | \`${ROOT}\` |
 
-A domain is a folder: \`domain.mjs\` (globals and words), \`api.d.ts\` (the typed API the
-investigator reads), \`instructions.md\`, \`scripts/*.mjs\`. Editing any of them re-warms the
-investigator on its next question; nothing needs restarting.
+A kit is a folder with an \`ask-kit.toml\` manifest: what it answers (\`says\`), its sources (a
+\`folder\`, a \`cli\` program, or a JS \`module\`), and optionally \`instructions.md\`, \`scripts/\` and
+\`bench/questions.json\`. ask-kit generates the API and default instructions from the sources. The
+older form, a domain, is a folder with \`domain.mjs\`, \`api.d.ts\`, \`instructions.md\` and
+\`scripts/*.mjs\`. Editing any of these re-warms the investigator on its next question; nothing
+needs restarting.
 
 ## Doing things
 
@@ -71,11 +76,13 @@ Match the request to one of these. Show the user what will change before changin
 - **Check it**: \`ask-kit doctor\`.
 - **It answered badly, or is slow**: \`ask-kit report --since 7d\`, then the ask-kit-improve skill
   (or the ask-kit-tuner agent).
-- **Add a domain someone shared** (a GitHub repo with the topic \`ask-kit-domain\`):
-  \`ask-kit add <repo>\` shows its files; it is code that runs with the user's rights, so tell the
-  user what it reads and runs, and only on their yes run \`ask-kit add <repo> --yes\`.
-  \`ask-kit gallery\` lists shared domains.
-- **Write or share a domain**: the ask-kit-domain skill.
+- **Add a kit someone shared** (a GitHub repo with the topic \`ask-kit\`, or \`ask-kit-domain\`):
+  \`ask-kit kit install <repo>\` shows its sources, what it can change (\`acts\`) and what it runs
+  at install; it is code that runs with the user's rights, so tell the user, and only on their
+  yes run it again with \`--yes\`. \`ask-kit gallery\` lists shared kits.
+- **Make a kit**: \`ask-kit kit new <name> --from folder:<path>|cli:<command>\` writes the manifest;
+  \`ask-kit kit link <dir>\` uses a working folder in place; \`ask-kit kit test <name>\` runs its
+  bench. \`ask-kit kit list\` shows them. The ask-kit-domain skill has the details.
 - **Put the skills, agents and rule into an agent installed later**: \`ask-kit init\`.
 - **Remove it**: \`ask-kit uninstall\` (registrations, and the skills, agents and rule it wrote,
   except files the user has edited).
@@ -84,8 +91,9 @@ Match the request to one of these. Show the user what will change before changin
 
 - \`Read ${AGENTS_MD}, then set up ask-kit for me.\`
 - \`Read ${AGENTS_MD}, then switch ask's default model to <name>.\`
-- \`Read ${AGENTS_MD}, then add this domain: github.com/<owner>/<repo>\`
-- \`Read ${AGENTS_MD}, then write a RECIPE.md for my <name> domain the way the ask-kit-domain skill describes, push it to a public GitHub repo and add the topic ask-kit-domain.\`
+- \`Read ${AGENTS_MD}, then add this kit: github.com/<owner>/<repo>\`
+- \`Read ${AGENTS_MD}, then make a kit for <a tool, folder or service> and prove it on real questions from my sessions.\`
+- \`Read ${AGENTS_MD}, then write a RECIPE.md for my <name> kit the way the ask-kit-domain skill describes, push it to a public GitHub repo and add the topic ask-kit.\`
 
 ## Rules
 

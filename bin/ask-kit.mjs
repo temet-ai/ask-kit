@@ -9,7 +9,8 @@
 //   ask-kit doctor               check the config: sources, backends, tools
 //   ask-kit ask "<question>" [--domain d] [--backend b] [--continue]   ask from the shell
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
-//   ask-kit gallery              shared domains (GitHub topic ask-kit-domain)
+//   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
+//   ask-kit kit new|link|list|test|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -86,9 +87,9 @@ async function main() {
       const { listGallery } = await import("../src/gallery.mjs");
       const list = await listGallery();
       if (flag("json")) return print(list);
-      if (!list.length) return console.log("No shared domains yet (GitHub topic ask-kit-domain). Share one: the ask-kit-domain skill.");
+      if (!list.length) return console.log("No shared kits yet (GitHub topic ask-kit). Share one: the ask-kit-domain skill.");
       for (const g of list) console.log(`${g.repo.padEnd(40)} ★${g.stars}  ${g.updated}  ${g.description}`);
-      console.log('\nAdd one: ask your agent "Read ~/.config/ask-kit/AGENTS.md, then add this domain: github.com/<owner>/<repo>"');
+      console.log('\nAdd one: ask your agent "Read ~/.config/ask-kit/AGENTS.md, then add this kit: github.com/<owner>/<repo>"');
       return;
     }
     case "kit":
@@ -103,8 +104,9 @@ async function main() {
       console.log(`Paste one into any coding agent:\n
   Read ${AGENTS_MD}, then set up ask-kit for me.
   Read ${AGENTS_MD}, then switch ask's default model to <name>.
-  Read ${AGENTS_MD}, then add this domain: github.com/<owner>/<repo>
-  Read ${AGENTS_MD}, then write a RECIPE.md for my <name> domain the way the ask-kit-domain skill describes, push it to a public GitHub repo and add the topic ask-kit-domain.
+  Read ${AGENTS_MD}, then add this kit: github.com/<owner>/<repo>
+  Read ${AGENTS_MD}, then make a kit for <a tool, folder or service> and prove it on real questions from my sessions.
+  Read ${AGENTS_MD}, then write a RECIPE.md for my <name> kit the way the ask-kit-domain skill describes, push it to a public GitHub repo and add the topic ask-kit.
 
 On a machine without ask-kit yet:
   Read https://github.com/temet-ai/ask-kit/blob/main/AGENTS.md, then set up ask-kit for me.`);

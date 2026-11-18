@@ -134,13 +134,51 @@ function makeCli(src, settings, push) {
   return fn;
 }
 
+// A folder source's `exclude` globs (rg style: "*token*", "gcloud/**") are left out of every
+// search and listing, and reading or writing a file they match is refused: a folder such as
+// ~/.config holds credentials, and what the investigator reads goes to a model.
+function excluding(repo, exclude, kitName) {
+  const globs = [].concat(exclude ?? []);
+  if (!globs.length) return repo;
+  const neg = globs.map((g) => `!${g}`);
+  const hidden = (file) => {
+    const rel = path.relative(repo.root, path.resolve(repo.root, file)).split(path.sep).join("/");
+    const parts = rel.split("/");
+    return globs.some((g) => {
+      const bare = g.replace(/\/\*\*$/, "");
+      return path.matchesGlob(rel, g) || (!bare.includes("/") && parts.some((p) => path.matchesGlob(p, bare))) || (bare.includes("/") && (rel === bare || rel.startsWith(`${bare}/`)));
+    });
+  };
+  const guard = (file) => {
+    if (hidden(file)) throw new Error(`not allowed: ${file} is excluded by the ${kitName} kit (it may hold credentials)`);
+  };
+  return {
+    ...repo,
+    rg: (p, o = {}) => repo.rg(p, { ...o, glob: [...[].concat(o.glob ?? []), ...neg] }),
+    sg: (p, o = {}) => repo.sg(p, { ...o, glob: [...[].concat(o.glob ?? []), ...neg] }),
+    files: async (glob, o = {}) => {
+      const list = await repo.files(glob, o);
+      const kept = list.filter((f) => !hidden(f));
+      return Object.assign(kept, { total: kept.length + (list.total - list.length), complete: list.complete });
+    },
+    read: (file, o) => (guard(file), repo.read(file, o)),
+    write: (file, text) => (guard(file), repo.write(file, text)),
+    edit: (file, from, to, o) => (guard(file), repo.edit(file, from, to, o)),
+    run: async (cmd, ...args) => {
+      for (const a of args) if (!String(a).startsWith("-")) guard(String(a));
+      return repo.run(cmd, ...args);
+    },
+    excluded: globs,
+  };
+}
+
 async function makeSources(m, dir, settings) {
   const modules = {};
   for (const s of m.sources) if (s.kind === "module") modules[s.name] = await import(pathToFileURL(path.join(dir, s.module)).href);
   return ({ push, config }) => {
     const g = {};
     for (const s of m.sources) {
-      if (s.kind === "folder") g[s.name] = makeRepo({ root: expand(fill(s.path, settings)), push });
+      if (s.kind === "folder") g[s.name] = excluding(makeRepo({ root: expand(fill(s.path, settings)), push }), s.exclude, m.name);
       else if (s.kind === "cli") g[s.name] = makeCli(s, settings, push);
       else g[s.name] = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), options: s });
     }
@@ -240,7 +278,8 @@ async function scriptExamples(dirs) {
 /** The kit at `dir` as a domain object (the contract in src/domains.mjs). */
 export async function kitDomain(dir, { config } = {}) {
   const m = readManifest(dir);
-  const settings = resolveSettings(m, config);
+  // ${KIT_DIR} in a manifest is the kit's own folder (data a [[build]] step downloaded, say).
+  const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config)).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
   const outDir = path.join(STATE_ROOT, "kits", m.name, slug(fill(m.state_key ?? "", settings) || "default"));
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
   const make = await makeSources(m, dir, settings);
