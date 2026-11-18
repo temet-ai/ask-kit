@@ -26,10 +26,20 @@ const RULES = [
 ];
 
 export async function makeRouter(config) {
-  const enabled = Object.entries(config.domains ?? {}).filter(([, d]) => d.enabled !== false).map(([n]) => n);
-  if (!enabled.length) throw new Error("no domains enabled in config");
   const DOMAINS = {};
-  for (const n of enabled) DOMAINS[n] = await loadDomain(n);
+  const skipped = {};
+  for (const n of Object.entries(config.domains ?? {}).filter(([, d]) => d.enabled !== false).map(([n]) => n)) {
+    try {
+      const d = await loadDomain(n);
+      // A kit that cannot run here (a missing program, setting or folder) is not offered.
+      if (d.unavailable) skipped[n] = d.unavailable;
+      else DOMAINS[n] = d;
+    } catch (e) {
+      skipped[n] = String(e.message ?? e).split("\n")[0];
+    }
+  }
+  const enabled = Object.keys(DOMAINS);
+  if (!enabled.length) throw new Error(`no domains can run: ${JSON.stringify(skipped)}`);
   // Kits bring their own routing: `patterns` claim a question outright (no model call), and
   // `keywords` join the fallback rules.
   const kitRules = enabled
@@ -62,7 +72,7 @@ export async function makeRouter(config) {
     if (!enabled.includes(word)) throw new Error(`router model said "${word}"`);
     return word;
   }
-  return { enabled, DOMAINS, byRules, byModel, byPattern };
+  return { enabled, DOMAINS, byRules, byModel, byPattern, skipped };
 }
 
 export async function serveRouter() {

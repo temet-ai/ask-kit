@@ -65,8 +65,12 @@ await assert.rejects(fg.fake.call("hidden"), /no tool/);
 assert.match(fs.readFileSync(f.apiDoc, "utf8"), /echo\(args: \{ text: string \}\)/);
 delete process.env.ASK_KIT_CALLER;
 
+write("absent", { "ask-kit.toml": `name = "absent"\nsays = "x"\nrequires = ["no-such-program-ask-kit"]\n[[sources]]\nkind = "cli"\nname = "x"\ncommand = ["no-such-program-ask-kit"]\n` });
+assert.match((await loadDomain("absent")).unavailable, /no-such-program-ask-kit/);
+
 const { makeRouter } = await import("../src/router.mjs");
-const router = await makeRouter(JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")));
+const router = await makeRouter({ ...JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")), domains: { notes: {}, echo: {}, mod: {}, absent: {} } });
+assert.ok(!router.enabled.includes("absent") && router.skipped.absent, "a kit that cannot run here is not offered");
 assert.equal(router.byPattern("notes: billing"), "notes");
 assert.equal(router.byRules("shout it"), "echo");
 fs.rmSync(tmp, { recursive: true, force: true });

@@ -20,6 +20,7 @@ keywords = ["notes?"]          # fallback routing when no router model answers
 route_hint = "what I wrote down is notes; what a session did is sessions"   # read by the router model
 cite = "`path:line`"           # how answers cite evidence
 acts = ["notes.edit"]          # what it can change: shown at install
+requires = ["rg"]              # programs on PATH; without them (or a `required` setting, or the folder) the kit is not offered
 
 [[settings]]                   # values it needs: env, then config domains.<kit>.settings, then detect, then default
 key = "NOTES_DIR"

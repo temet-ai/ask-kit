@@ -341,7 +341,8 @@ async function kitCommand() {
         const dir = kits.findKit(name);
         try {
           const m = kits.readManifest(dir);
-          rows.push({ name, version: m.version ?? "", enabled: c.domains?.[name]?.enabled !== false && !!c.domains?.[name], sources: m.sources.map((s) => `${s.kind}:${s.name}`).join(" "), says: m.says, dir });
+          const why = (await kits.kitDomain(dir, { config: c })).unavailable;
+          rows.push({ name, version: m.version ?? "", enabled: c.domains?.[name]?.enabled !== false && !!c.domains?.[name], unavailable: why, sources: m.sources.map((s) => `${s.kind}:${s.name}`).join(" "), says: why ? `(not here: ${why})` : m.says, dir });
         } catch (e) {
           rows.push({ name, error: e.message.split("\n")[0], dir });
         }

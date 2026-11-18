@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { CONFIG_DIR, ROOT, STATE_ROOT, expand, slug } from "./config.mjs";
 import { makeRepo } from "../domains/code/repo.mjs";
+import { which } from "./platform.mjs";
 
 export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
@@ -394,6 +395,20 @@ async function scriptExamples(dirs) {
   return out;
 }
 
+/**
+ * Whether a kit can run on this machine: every program in `requires` is on PATH, every setting
+ * marked `required` has a value, and every folder source exists. Returns null when it can, else why not.
+ * The router offers only kits that can run, so a machine lists what it can answer.
+ */
+export function unavailable(m, settings) {
+  const missing = [].concat(m.requires ?? []).filter((p) => !which(p));
+  if (missing.length) return `needs ${missing.join(", ")} on PATH`;
+  const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key]).map((s) => s.key);
+  if (unset.length) return `needs ${unset.join(", ")} (environment, or domains.${m.name}.settings in ask-kit's config)`;
+  for (const s of m.sources) if (s.kind === "folder" && !fs.existsSync(expand(fill(s.path, settings)))) return `its folder ${fill(s.path, settings)} does not exist`;
+  return null;
+}
+
 /** The kit at `dir` as a domain object (the contract in src/domains.mjs). */
 export async function kitDomain(dir, { config } = {}) {
   const m = readManifest(dir);
@@ -401,6 +416,9 @@ export async function kitDomain(dir, { config } = {}) {
   const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config)).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
   const outDir = path.join(STATE_ROOT, "kits", m.name, slug(fill(m.state_key ?? "", settings) || "default"));
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
+  // A kit that cannot run here is described, not built: no MCP server is started, no folder read.
+  const why = unavailable(m, settings);
+  if (why) return { name: m.name, kit: true, manifest: m, dir, says: m.says, unavailable: why, keywords: [], patterns: [] };
   const mcp = {};
   for (const s of m.sources) if (s.kind === "mcp") mcp[s.name] = await mcpTools(s, settings, outDir, path.join(dir, MANIFEST));
   const make = await makeSources(m, dir, settings, mcp);
@@ -414,6 +432,7 @@ export async function kitDomain(dir, { config } = {}) {
   return {
     name: m.name,
     kit: true,
+    unavailable: null,
     manifest: m,
     dir,
     says: m.says,

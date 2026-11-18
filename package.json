@@ -1,6 +1,6 @@
 {
   "name": "ask-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One plain-language `ask` tool for coding agents: a cheap model with a REPL and scripts answers about your past sessions and your code, outside your agent's context.",
   "type": "module",
   "private": true,
