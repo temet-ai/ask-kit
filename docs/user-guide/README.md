@@ -85,7 +85,8 @@ Use cases:
 
 More:
 
-- [Domains](domains.md): teach `ask` about something new.
+- [Kits](kits.md): teach `ask` about something new: install a shared kit or make one from a folder or a CLI.
+- [Domains](domains.md): the older form of a kit.
 - [How it works](how-it-works.md)
 - [Command line and files](command-line.md)
 - [What it stores and sends](privacy.md)

@@ -1,5 +1,8 @@
 # Add, write and share domains
 
+> New things for `ask` to answer about are now [kits](kits.md): one `ask-kit.toml` manifest, often
+> with no code. Domains, below, still load.
+
 A domain is something `ask` can answer about. ask-kit ships two, `sessions` and `code`. You can
 add one someone shared, write your own, or share yours. The `ask-kit-domain` skill walks an agent
 through all three.

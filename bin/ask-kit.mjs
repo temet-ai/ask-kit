@@ -9,7 +9,8 @@
 //   ask-kit doctor               check the config: sources, backends, tools
 //   ask-kit ask "<question>" [--domain d] [--backend b] [--continue]   ask from the shell
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
-//   ask-kit gallery              shared domains (GitHub topic ask-kit-domain)
+//   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
+//   ask-kit kit new|link|list|test|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -86,11 +87,13 @@ async function main() {
       const { listGallery } = await import("../src/gallery.mjs");
       const list = await listGallery();
       if (flag("json")) return print(list);
-      if (!list.length) return console.log("No shared domains yet (GitHub topic ask-kit-domain). Share one: the ask-kit-domain skill.");
+      if (!list.length) return console.log("No shared kits yet (GitHub topic ask-kit). Share one: the ask-kit-domain skill.");
       for (const g of list) console.log(`${g.repo.padEnd(40)} ★${g.stars}  ${g.updated}  ${g.description}`);
-      console.log('\nAdd one: ask your agent "Read ~/.config/ask-kit/AGENTS.md, then add this domain: github.com/<owner>/<repo>"');
+      console.log('\nAdd one: ask your agent "Read ~/.config/ask-kit/AGENTS.md, then add this kit: github.com/<owner>/<repo>"');
       return;
     }
+    case "kit":
+      return kitCommand();
     case "add": {
       if (!positional[0]) throw new Error("add needs a repository (owner/repo or a GitHub URL) or a folder");
       const { addDomain } = await import("../src/gallery.mjs");
@@ -101,8 +104,9 @@ async function main() {
       console.log(`Paste one into any coding agent:\n
   Read ${AGENTS_MD}, then set up ask-kit for me.
   Read ${AGENTS_MD}, then switch ask's default model to <name>.
-  Read ${AGENTS_MD}, then add this domain: github.com/<owner>/<repo>
-  Read ${AGENTS_MD}, then write a RECIPE.md for my <name> domain the way the ask-kit-domain skill describes, push it to a public GitHub repo and add the topic ask-kit-domain.
+  Read ${AGENTS_MD}, then add this kit: github.com/<owner>/<repo>
+  Read ${AGENTS_MD}, then make a kit for <a tool, folder or service> and prove it on real questions from my sessions.
+  Read ${AGENTS_MD}, then write a RECIPE.md for my <name> kit the way the ask-kit-domain skill describes, push it to a public GitHub repo and add the topic ask-kit.
 
 On a machine without ask-kit yet:
   Read https://github.com/temet-ai/ask-kit/blob/main/AGENTS.md, then set up ask-kit for me.`);
@@ -285,6 +289,85 @@ async function doctor() {
     console.log(`  backend ${n}${n === c.backends.default ? " (default)" : ""}: ${b.kind} ${b.preset ?? ""} ${b.model ?? ""} → ${status}`);
   }
   console.log(`  domains: ${Object.keys(c.domains).join(", ")}; router: ${c.router?.backend ?? "keyword rules (no API backend)"}`);
+}
+
+// ---- kits: ask-kit.toml folders (src/kits.mjs, docs/design/kits.md) ----
+
+async function kitCommand() {
+  const sub = positional[0];
+  const kits = await import("../src/kits.mjs");
+  const { loadConfig, saveConfig, CONFIG_DIR } = await import("../src/config.mjs");
+  const enable = (name, extra = {}) => {
+    const c = loadConfig();
+    c.domains = { ...(c.domains ?? {}), [name]: { ...(c.domains?.[name] ?? {}), enabled: true, ...extra } };
+    saveConfig(c);
+    return c;
+  };
+  switch (sub) {
+    case "new": {
+      const name = positional[1];
+      const r = kits.newKit(name, flag("from"), { dir: typeof flag("dir") === "string" ? path.resolve(flag("dir")) : undefined });
+      return print(r);
+    }
+    case "link": {
+      const dir = path.resolve(positional[1] ?? ".");
+      const m = kits.readManifest(dir);
+      const dest = path.join(CONFIG_DIR, "kits", m.name);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      try {
+        const st = fs.lstatSync(dest);
+        if (!st.isSymbolicLink()) throw new Error(`${dest} exists and is not a link; remove it first`);
+        fs.unlinkSync(dest);
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+      }
+      fs.symlinkSync(dir, dest, "dir");
+      enable(m.name, { from: dir });
+      (await import("../src/agentsmd.mjs")).writeAgentsMd();
+      return print({ linked: m.name, dir, at: dest, next: `Restart the agents so \`ask\` lists it; changes in ${dir} load on the next question. Then: ask-kit kit test ${m.name}` });
+    }
+    case "enable":
+    case "disable": {
+      const c = loadConfig();
+      if (!positional[1]) throw new Error(`kit ${sub} needs a name`);
+      c.domains = { ...(c.domains ?? {}), [positional[1]]: { ...(c.domains?.[positional[1]] ?? {}), enabled: sub === "enable" } };
+      saveConfig(c);
+      return print({ [positional[1]]: sub === "enable" ? "enabled" : "disabled" });
+    }
+    case "list": {
+      const c = loadConfig({ required: false }) ?? {};
+      const rows = [];
+      for (const name of kits.listKits()) {
+        const dir = kits.findKit(name);
+        try {
+          const m = kits.readManifest(dir);
+          rows.push({ name, version: m.version ?? "", enabled: c.domains?.[name]?.enabled !== false && !!c.domains?.[name], sources: m.sources.map((s) => `${s.kind}:${s.name}`).join(" "), says: m.says, dir });
+        } catch (e) {
+          rows.push({ name, error: e.message.split("\n")[0], dir });
+        }
+      }
+      if (flag("json")) return print(rows);
+      for (const r of rows) console.log(`${r.enabled ? "●" : "○"} ${r.name.padEnd(14)} ${(r.sources ?? r.error).padEnd(34)} ${r.says ?? ""}`);
+      return;
+    }
+    case "test": {
+      const name = positional[1];
+      if (!name) throw new Error("kit test needs a kit name");
+      const { kitTest } = await import("../src/kittest.mjs");
+      const backends = typeof flag("backends") === "string" ? flag("backends").split(",") : undefined;
+      const only = typeof flag("only") === "string" ? flag("only").split(",") : undefined;
+      const r = await kitTest(name, { backends, only, log: (l) => console.error(l) });
+      if (typeof flag("out") === "string") fs.writeFileSync(flag("out"), JSON.stringify(r, null, 2));
+      for (const s of r.summary) console.log(`${r.kit} · ${s.backend}: ${s.passed}/${s.of}, median ${s.medianSeconds}s, $${s.costUsd}`);
+      if (r.summary.some((s) => s.passed < s.of)) process.exitCode = 1;
+      return;
+    }
+    case "install":
+      if (!positional[1]) throw new Error("kit install needs a repository (owner/repo) or a folder");
+      return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes") }));
+    default:
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · install <owner/repo> [--yes] · enable|disable <name>");
+  }
 }
 
 // ---- ask from the shell: the same tool, through MCP ----
