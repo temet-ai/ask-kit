@@ -67,6 +67,8 @@ delete process.env.ASK_KIT_CALLER;
 
 write("absent", { "ask-kit.toml": `name = "absent"\nsays = "x"\nrequires = ["no-such-program-ask-kit"]\n[[sources]]\nkind = "cli"\nname = "x"\ncommand = ["no-such-program-ask-kit"]\n` });
 assert.match((await loadDomain("absent")).unavailable, /no-such-program-ask-kit/);
+write("elsewhere", { "ask-kit.toml": `name = "elsewhere"\nsays = "x"\nplatforms = ["no-such-os"]\n[[sources]]\nkind = "cli"\nname = "x"\ncommand = ["node"]\n` });
+assert.match((await loadDomain("elsewhere")).unavailable, /runs on no-such-os/);
 
 const { makeRouter } = await import("../src/router.mjs");
 const router = await makeRouter({ ...JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")), domains: { notes: {}, echo: {}, mod: {}, absent: {} } });

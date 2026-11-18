@@ -401,6 +401,8 @@ async function scriptExamples(dirs) {
  * The router offers only kits that can run, so a machine lists what it can answer.
  */
 export function unavailable(m, settings) {
+  const here = { darwin: "macos", win32: "windows" }[process.platform] ?? process.platform;
+  if (m.platforms && ![].concat(m.platforms).includes(here)) return `runs on ${[].concat(m.platforms).join(", ")}, not ${here}`;
   const missing = [].concat(m.requires ?? []).filter((p) => !which(p));
   if (missing.length) return `needs ${missing.join(", ")} on PATH`;
   const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key]).map((s) => s.key);
