@@ -11,8 +11,8 @@ function exec(cmd, args, { cwd, maxBuffer = 32 << 20, timeoutMs = 60_000 } = {})
   if (!bin) return Promise.reject(new Error("ripgrep is not installed and the bundled copy is missing: reinstall ask-kit (npm install) or install rg"));
   return new Promise((resolve, reject) => {
     execFile(bin, args, { cwd, maxBuffer, timeout: timeoutMs, encoding: "utf8" }, (err, stdout, stderr) => {
-      // rg exits 1 for "no matches", which is an answer, not a failure.
-      if (err && !(cmd === "rg" && err.code === 1)) {
+      // rg and ast-grep exit 1 for "no matches", which is an answer, not a failure.
+      if (err && !((cmd === "rg" || cmd === "ast-grep") && err.code === 1)) {
         reject(new Error(`${cmd} ${args.slice(0, 6).join(" ")}: ${(stderr || err.message).slice(0, 400)}`));
         return;
       }
@@ -65,6 +65,34 @@ export function makeRepo({ root, push }) {
       }
       note("rg", pattern, started, total);
       return Object.assign(hits, { total, complete: total <= max });
+    },
+
+    /**
+     * ast-grep: structural search by code shape (`Duration::from_secs($N)`, `std::env::var($K)`,
+     * `fn $NAME($$$) -> Result<$T>`). Returns {file, line, text, vars}; `max` caps them (default 200).
+     */
+    async sg(pattern, o = {}) {
+      const started = Date.now();
+      const args = ["run", "-p", pattern, "--json=compact"];
+      if (o.lang) args.push("-l", o.lang);
+      for (const g of [].concat(o.glob ?? [])) args.push("--globs", g);
+      args.push(inside(o.path).rel);
+      let out;
+      try {
+        out = await exec("ast-grep", args, { cwd: ROOT });
+      } catch (e) {
+        throw /ENOENT/.test(e.message) ? new Error("ast-grep is not installed on this machine: use repo.rg") : e;
+      }
+      const all = JSON.parse(out || "[]");
+      const max = o.max ?? 200;
+      const hits = all.slice(0, max).map((m) => ({
+        file: m.file.replace(/^\.\//, ""),
+        line: m.range.start.line + 1,
+        text: m.lines.length > 300 ? m.lines.slice(0, 300) + "…" : m.lines,
+        vars: Object.fromEntries(Object.entries(m.metaVariables?.single ?? {}).map(([k, v]) => [k, v.text])),
+      }));
+      note("sg", pattern, started, all.length);
+      return Object.assign(hits, { total: all.length, complete: all.length <= max });
     },
 
     /** Files tracked or not ignored, optionally matching a glob (rg --files). */

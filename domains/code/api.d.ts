@@ -8,6 +8,10 @@ declare const repo: {
   rg(pattern: string, o?: { fixed?: boolean; ignoreCase?: boolean; word?: boolean; context?: number;
     glob?: string | string[]; type?: string | string[]; path?: string; hidden?: boolean; max?: number }):
     Promise<Hit[] & { total: number; complete: boolean }>;
+  // ast-grep: search by code shape, not text. `$X` matches one node, `$$$` any number. lang: rust,
+  // ts, tsx, js, python, go... (inferred from the file when omitted). vars holds what each $X matched.
+  sg(pattern: string, o?: { lang?: string; glob?: string | string[]; path?: string; max?: number }):
+    Promise<{ file: string; line: number; text: string; vars: Record<string, string> }[] & { total: number; complete: boolean }>;
   files(glob?: string, o?: { path?: string; hidden?: boolean; max?: number }): Promise<string[] & { total: number; complete: boolean }>;
   // Lines from..to (1-based, inclusive, at most 400), numbered "N\tline". `lines` is the file's length.
   read(file: string, o?: { from?: number; to?: number }): { file: string; from: number; to: number; lines: number; text: string };

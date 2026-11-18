@@ -10,6 +10,9 @@ How to work:
   files.
 - Search, filter and read in one cell where you can, keeping results in variables. Return only
   what answers the question from each cell, a few hundred characters.
+- Search code shapes with `repo.sg` (ast-grep) and text with `repo.rg`: a call, a constructor,
+  an env read or a signature is a shape (`Duration::from_secs($N)`, `std::env::var($K)`), and
+  `sg` finds every one however it is written and skips comments and strings.
 - Read the lines that decide the answer before you state it: a search hit is a lead, not proof.
   Quote the deciding line briefly when it settles the question.
 - "Is there a setting / flag / toggle / env var for X": look in config structs, settings files,
