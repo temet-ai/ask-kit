@@ -1,6 +1,6 @@
 # What it stores and sends
 
-## Sends
+## What it sends
 
 - Your question, and the transcript and code excerpts the investigator reads, to the model you
   chose: an API provider, an agent CLI's own service, or a local model server.
@@ -13,7 +13,7 @@ Nothing else. There is no telemetry.
 With an agent CLI as the investigator, its questions are sessions of that CLI: the excerpts go to
 that CLI's service under its own terms, and the sessions appear in its history.
 
-## Stores
+## What it stores
 
 - Under `~/.config/ask-kit/`: the config, the guide for agents and `keys.env`.
 - Under `~/.local/state/ask-kit/`: the journals of every ask and cell, REPL snapshots, warm

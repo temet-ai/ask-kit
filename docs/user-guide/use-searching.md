@@ -3,7 +3,7 @@
 Use `ask` wherever you would otherwise grep, scroll through old sessions, or open file after
 file to find one thing.
 
-## Past sessions
+## Search past sessions
 
 Your agents already save every session to disk. `ask` searches all of them at once, across Claude
 Code, Codex, Copilot CLI, Gemini CLI and opencode.
@@ -20,7 +20,7 @@ Code, Codex, Copilot CLI, Gemini CLI and opencode.
 The more you pin down (dates, branch, project, agent), the faster and cheaper the search. "Last
 week, in the api repo" is enough.
 
-## Code
+## Search the code
 
 | Looking for | Type |
 |---|---|
@@ -32,7 +32,7 @@ week, in the api repo" is enough.
 
 Answers cite `path:line`, so the agent can open the exact place.
 
-## Combine the two
+## Search past work and code together
 
 Past work and code go to different investigators. Ask them one after another:
 

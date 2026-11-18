@@ -1,10 +1,10 @@
-# Domains: add, write, share
+# Add, write and share domains
 
 A domain is something `ask` can answer about. ask-kit ships two, `sessions` and `code`. You can
 add one someone shared, write your own, or share yours. The `ask-kit-domain` skill walks an agent
 through all three.
 
-## What a domain is
+## The files in a domain
 
 A folder with:
 
@@ -39,11 +39,11 @@ for your yes.
 1. Copy the shape of `domains/code`. Keep the globals read-only and narrow: a client for the
    thing, with methods that return plain data.
 2. Write `api.d.ts` with every global and method, its parameters and what it returns. The
-   investigator writes code from this file alone.
+   investigator learns what its programs can reach from this file alone.
 3. Write `instructions.md`: what the data holds, how to search it narrowly, how to cite.
 4. Add two or three scripts for the questions people will ask most.
 5. Enable it under `domains` in the config, ask it three real questions, and fix what it got
-   wrong ([Tune it from the journal](tuning.md)).
+   wrong ([Make it better](tuning.md)).
 
 ## Share one
 

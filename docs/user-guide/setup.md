@@ -47,7 +47,7 @@ ask-kit init
 ask-kit setup     # the same questions, in the terminal
 ```
 
-If npm can't install packages globally, clone the repository, run `npm install` in it, and use
-`node <folder>/bin/ask-kit.mjs` instead of `ask-kit`.
+If npm can't install packages globally, clone the repository, run `npm install` in it, and run
+`node <folder>/bin/ask-kit.mjs` wherever this guide says `ask-kit`.
 
 [Command line and files](command-line.md) lists where each agent's files go.

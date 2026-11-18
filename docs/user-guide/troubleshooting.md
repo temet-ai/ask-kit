@@ -10,7 +10,8 @@ ask-kit doctor   # whether the config works: sources, backends, tools
 ## The agent does not have `ask`
 
 Restart the agent after setup; agents load MCP servers when they start. Then check the table in
-[Set it up](setup.md) for where the tool should be registered for that agent.
+[What init puts in each agent](command-line.md#what-init-puts-in-each-agent) for where the tool
+should be registered for that agent.
 
 ## Codex drops the call after a minute
 
@@ -28,13 +29,14 @@ somewhere else, tell the setup agent where.
 
 ## An answer is wrong or slow
 
-That is what the journal is for: see [Tune it from the journal](tuning.md).
+The journal records every step of it: see [Make it better](tuning.md).
 
 ## Known gaps
 
-- The Gemini CLI reader follows Gemini's documented session format but has not read a real store.
-- The opencode and Gemini skill and agent formats follow their docs but have not been checked on
-  a real install.
+- The Gemini CLI reader follows Gemini's documented session format and has not yet read a real
+  store.
+- The opencode and Gemini skill and agent formats follow their docs and have not yet been checked
+  on a real install.
 - ask-kit has been used on one Linux machine. CI runs on Linux, macOS and Windows, on Node 22
   and 24, against fixtures.
 

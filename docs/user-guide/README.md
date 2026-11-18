@@ -3,13 +3,13 @@
 ![ask-kit — a red scanner line in a retro badge](images/ask-kit-logo.png)
 
 Most of a coding agent's context goes on finding things out: searching, opening files, following
-calls, checking what was tried before. All of it stays in the context, and it crowds out the
-real work.
+calls, checking what was tried before. All of it stays in the context and crowds out the work
+the agent was asked to do.
 
 ask-kit moves that work out of the agent's context. It gives the agent one tool, `ask`. The agent
 asks a question in plain words, and a cheap investigator works it out in its own context. The
-agent gets back a short answer, with the evidence it's based on. Your main agent keeps its
-context for the heavy lifting: designing, writing and fixing code.
+agent gets back a short answer with the evidence it's based on, and its own context stays free
+for designing, writing and fixing code.
 
 ```
 you:  add a CSV exporter like the other ones
@@ -22,29 +22,29 @@ ask   → Exporters implement Exporter in src/export/base.ts:12 and are register
         [code · glm-5.3-flash · 21s · $0.0031]
 ```
 
-The agent read three lines instead of a dozen files, and starts the change from there.
-(The exchange above is an example of what an answer looks like.)
+The agent reads that three-line answer and starts the change from there. (The exchange above is
+an example of what an answer looks like.)
 
-## The work happens in code
+## How the investigator answers
 
-The investigator doesn't work by calling tools one at a time, MCP or otherwise. It writes a small
-JavaScript program for each step of the question, and runs it in a REPL. The program has
-whatever the step needs: loops, filters, joins, counts, comparisons, parsing. A domain only gives
-it a way in to the data. The logic is written fresh for the task. One program does what would
-otherwise take a dozen tool calls, and only what it prints comes back. Common questions already
-have scripts, so it can start from one of those.
+For each step of a question, the investigator writes a small JavaScript program and runs it in a
+REPL. The program does whatever the step needs: loops, filters, joins, counts, comparisons,
+parsing. It is written fresh for that question. A domain gives the programs access to the data.
+One program can do the work of a dozen tool calls, and only what it prints comes back. Common
+questions already have scripts, so it can start from one of those.
 
 ![Your agent sends one question; the investigator writes small programs for it in its own context, reaching code, sessions and your own domains, and returns a short answer with path:line evidence](images/how-an-ask-works.svg)
 
-Everything it reads stays in its context and is thrown away afterwards. Your agent only gets
-the answer.
+Everything it reads stays in its context and is thrown away afterwards. Your agent gets only the
+answer.
 
 ![Median per ask: 195,733 tokens read by the investigator, about 340 returned to your agent, 186 times less; 33 seconds and $0.0093](images/context-kept-out.svg)
 
 [How it works](how-it-works.md) goes into more detail.
 
-Each kind of thing `ask` can answer about is a **domain**: an investigator with an API and
-instructions for that thing. ask-kit comes with two, and they are meant as a starting point:
+Each kind of thing `ask` can answer about is a **domain**. A domain gives the investigator's
+programs access to its data, and instructions for searching it. ask-kit comes with two, as a
+starting point:
 
 - **code**: the repository the agent is working in, cited as `path:line`.
 - **sessions**: your past agent sessions, from the transcripts Claude Code, Codex, Copilot CLI,
@@ -53,7 +53,7 @@ instructions for that thing. ask-kit comes with two, and they are meant as a sta
 [Add your own](domains.md) for anything else your agent keeps digging through: a database, logs,
 a service, a docs folder.
 
-## Start
+## Get started
 
 1. Paste this into the agent you already use (Claude Code, Codex, Copilot CLI, Gemini CLI or
    opencode):
@@ -68,7 +68,7 @@ a service, a docs folder.
 3. Give your agent a task. It calls `ask` by itself when it needs to find something out. You
    can also ask directly: `ask where the config file is read`.
 
-## Pages
+## Guide pages
 
 - [Use it](asking.md): what to ask, reading answers, follow-ups. **Start here.**
 - [Set it up](setup.md): what setup does, and how to change it later.

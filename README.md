@@ -1,13 +1,13 @@
 <h1 align="center"><img src="docs/assets/ask-kit-logo.png" alt="ask-kit — a red scanner line in a retro badge" width="280"></h1>
 
 Most of a coding agent's context goes on finding things out: searching, opening files, following
-calls, checking what was tried before. All of it stays in the context, and it crowds out the
-real work.
+calls, checking what was tried before. All of it stays in the context and crowds out the work
+the agent was asked to do.
 
 ask-kit moves that work out of the agent's context. It gives the agent one tool, `ask`. The
 agent asks a question in plain words, and a cheap investigator works it out in its own context.
-The agent gets back a short answer, with the evidence it's based on. Your main agent keeps its
-context for the heavy lifting.
+The agent gets back a short answer with the evidence it's based on, and its own context stays
+free for the change it is making.
 
 ```
 you:   add a CSV exporter like the other ones
@@ -20,20 +20,20 @@ ask   → Exporters implement Exporter in src/export/base.ts:12 and are register
         [code · glm-5.3-flash · 21s · $0.0031]
 ```
 
-(This is an example of what an answer looks like. [Measured](#measured) has real numbers.)
+(This is an example of what an answer looks like.
+[Context, time and cost per ask](#context-time-and-cost-per-ask) has real numbers.)
 
 `ask` is an [MCP](https://modelcontextprotocol.io) server, so any agent that takes MCP servers
 can use it: Claude Code, Codex, GitHub Copilot CLI, Gemini CLI, opencode.
 
 **[Read the guide](docs/user-guide/README.md)**: how to use it, use cases, models, tuning.
 
-## The work happens in code
+## How the investigator answers
 
-The investigator doesn't work by calling tools one at a time. It writes a small JavaScript
-program for each step of the question, and runs it in a REPL. The program has whatever the step
-needs: loops, filters, joins, counts, comparisons, parsing. The logic is written fresh for that
-question. A domain only gives the programs a way in to the data. One program does what would
-otherwise take a dozen tool calls, and only what it prints comes back.
+For each step of a question, the investigator writes a small JavaScript program and runs it in a
+REPL. The program does whatever the step needs: loops, filters, joins, counts, comparisons,
+parsing. It is written fresh for that question. A domain gives the programs access to the data.
+One program can do the work of a dozen tool calls, and only what it prints comes back.
 
 ![Your agent sends one question; the investigator writes small programs for it in its own context, reaching code, sessions and your own domains, and returns a short answer with path:line evidence](docs/user-guide/images/how-an-ask-works.svg)
 
@@ -41,7 +41,7 @@ Each thing `ask` can answer about is a **domain**. ask-kit comes with two, as a 
 
 - **code**: the repository the agent is working in, cited as `path:line`.
 - **sessions**: your past agent sessions, from the transcripts Claude Code, Codex, Copilot CLI,
-  Gemini CLI and opencode already save. No proxy, no database.
+  Gemini CLI and opencode already save. It reads them where they are, with no proxy or database.
 
 [Add your own](docs/user-guide/domains.md) for anything else your agent keeps digging through.
 
@@ -66,7 +66,7 @@ Without an agent: `npm install -g --allow-git=root github:temet-ai/ask-kit`, the
 and `ask-kit setup`. It needs Node.js 22.13 or newer and git.
 [Set it up](docs/user-guide/setup.md) has the details.
 
-## Measured
+## Context, time and cost per ask
 
 How much context one ask keeps out of the calling agent. These are medians from mike-ask, the
 proof of concept ask-kit grew from:
@@ -98,7 +98,7 @@ ask-kit itself, on 18 Nov 2026, on one machine with about 1,500 sessions on disk
 
 Early. Tested on Linux with real transcripts. Fixtures for all five transcript formats run in CI
 on Linux, macOS and Windows. The Gemini CLI reader and the opencode and Gemini install formats
-follow their docs, but haven't yet been tried on a real install. There are no releases yet, so
+follow their docs and haven't yet been tried on a real install. There are no releases yet, so
 you install from `main`.
 
 ask-kit started as mike-ask, a proof of concept that answers from what

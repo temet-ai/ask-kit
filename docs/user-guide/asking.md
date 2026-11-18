@@ -1,9 +1,8 @@
 # Use it
 
 Mostly you don't call `ask` at all. You give your agent its task as usual. Setup installed a
-rule that makes the agent call `ask` whenever it needs to find something out, instead of
-searching and reading files in its own context. It reads the files itself once it's about to
-edit them.
+rule that makes the agent call `ask` whenever it needs to find something out. The agent reads a
+file itself once it's about to edit it.
 
 You can also ask directly. Starting your message with "ask" makes sure the agent uses the tool.
 
@@ -73,8 +72,8 @@ For an unrelated question, start a new ask.
 
 ## Get better answers
 
-- **Say what you already know**: a date, a branch, a file, a session id. The search starts there
-  instead of reading everything.
+- **Say what you already know**: a date, a branch, a file, a session id. The search starts
+  there.
 - **One question per ask.** Two questions get two asks.
 - **Say what you want back**: "which session, and what did it change" gets ids and files; "is
   it done?" gets yes or no and the turn that shows it.
@@ -91,7 +90,7 @@ ask with codex as the backend: which session changed the cache key?
 
 The agent passes `about` (the investigator) or `backend` (the model).
 
-## From the shell
+## Ask from the shell
 
 ```sh
 ask-kit ask "which sessions touched the deploy script this week?"
