@@ -40,7 +40,7 @@ model, and its programs, their intermediate results and the files they read all 
 session; a follow-up with `continue: true` reuses what has already run, because the REPL's
 variables are still there.
 
-![Median per ask: 195,733 tokens read by the investigator, about 340 returned to your agent, 186 times less; 33 seconds and $0.0093](images/context-kept-out.svg)
+![Median per ask over 335 asks to mike-ask: the investigator worked through 103,994 tokens, and about 189 went back to your agent; 17 seconds and $0.0037](images/context-kept-out.svg)
 
 [How it works](how-it-works.md) goes into more detail.
 

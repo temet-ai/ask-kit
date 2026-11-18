@@ -76,7 +76,7 @@ and `ask-kit setup`. It needs Node.js 22.13 or newer and git.
 How much context one ask keeps out of the calling agent. These are medians from mike-ask, the
 proof of concept ask-kit grew from:
 
-![Median per ask: 195,733 tokens read by the investigator, about 340 returned to your agent, 186 times less; 33 seconds and $0.0093](docs/user-guide/images/context-kept-out.svg)
+![Median per ask over 335 asks to mike-ask: the investigator worked through 103,994 tokens, and about 189 went back to your agent; 17 seconds and $0.0037](docs/user-guide/images/context-kept-out.svg)
 
 ask-kit itself, on 18 Nov 2026, on one machine with about 1,500 sessions on disk:
 
