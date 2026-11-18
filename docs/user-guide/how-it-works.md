@@ -31,6 +31,8 @@ That is one step. Done with separate tool calls, it would be a file listing, a s
 file read and a comparison done in the model's head, each in its own round trip, with each
 result added to the context.
 
+![Four tool calls, one after another, each adding to the context, next to the program above run as one cell that returns a table of exporters, tested and registered](images/four-calls-one-program.gif)
+
 What the programs can reach comes from the domains:
 
 - `repo` for code: `rg` (ripgrep), `files`, `read`, and some git commands that only read,

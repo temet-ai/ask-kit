@@ -23,6 +23,11 @@ ask   → Exporters implement Exporter in src/export/base.ts:12 and are register
 (This is an example of what an answer looks like.
 [Context, time and cost per ask](#context-time-and-cost-per-ask) has real numbers.)
 
+A real ask from the shell, about this repository's code, with a line per program the investigator
+runs and then a follow-up:
+
+![ask-kit ask on this repository: a line per cell while the investigator works, the answer with path:line citations, then a --continue follow-up answered in 8 seconds](docs/user-guide/images/ask-from-shell.gif)
+
 `ask` is an [MCP](https://modelcontextprotocol.io) server, so any agent that takes MCP servers
 can use it: Claude Code, Codex, GitHub Copilot CLI, Gemini CLI, opencode.
 

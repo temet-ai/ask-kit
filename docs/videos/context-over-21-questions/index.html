@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Context over 21 questions</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* the render browser has no monospace font of its own, so the clip ships one */
+      @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.ttf") format("truetype"); font-weight: 100 800; }
+      /* Numbers: bench/RESULTS.md and bench/results/*.jsonl, run 1. Per question, the tokens added
+         to the calling agent's context: with ask, the question and answer (callerChars / 4); for
+         Sonnet, contextPeak - contextFirst + output (bench/report.mjs, callerTokens). */
+      :root {
+        --ground: #16161a; --panel: #202027; --well: #0e0e11; --line: #3a3a42;
+        --ink: #f2ead8; --muted: #9a968c; --dim: #6f6b63; --red: #e5352b;
+        --sans: system-ui, sans-serif; --mono: "JetBrains Mono", monospace;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 100%; height: 100%; color: var(--ink); font-family: var(--sans); }
+      #stage { position: absolute; inset: 0; }
+
+      #heading { position: absolute; left: 100px; top: 70px; font-size: 52px; font-weight: 700; letter-spacing: -0.02em; }
+      #sub { position: absolute; left: 100px; top: 142px; font-size: 30px; color: var(--muted); }
+      #qn { position: absolute; right: 100px; top: 84px; font-size: 32px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      #qn b { color: var(--ink); }
+
+      .row { position: absolute; left: 100px; width: 1720px; }
+      #r-son { top: 270px; }
+      #r-ask { top: 470px; }
+      .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 32px; margin-bottom: 18px; }
+      .lab span { color: var(--ink); }
+      .lab span i { font-style: normal; color: var(--muted); }
+      .lab b { font-size: 56px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+      #r-ask .lab b { color: var(--red); }
+      .track { position: relative; height: 64px; border-radius: 10px; background: var(--well); overflow: hidden; display: flex; }
+      .seg { height: 100%; width: 0; flex: none; border-right: 2px solid var(--well); }
+      #r-son .seg { background: #8a867d; }
+      #r-son .seg:nth-child(even) { background: #a7a296; }
+      #r-ask .seg { background: var(--red); }
+      #r-ask .seg:nth-child(even) { background: #ff6a5f; }
+
+      #table { position: absolute; left: 100px; top: 680px; width: 1720px; border-top: 2px solid var(--line); }
+      .tr { display: grid; grid-template-columns: 640px 540px 540px; align-items: baseline; padding: 20px 0; border-bottom: 2px solid var(--line); font-size: 32px; }
+      .tr.h { font-size: 28px; color: var(--muted); padding: 16px 0; }
+      .tr .n { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .tr .n.a { color: var(--red); }
+      #score { position: absolute; left: 100px; top: 990px; font-size: 30px; color: var(--muted); }
+      #score b { color: var(--ink); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="19" data-width="1920" data-height="1080">
+      <div id="stage" class="clip" data-start="0" data-duration="19" data-track-index="0">
+        <h1 id="heading">Context added to the calling agent, 21 questions</h1>
+        <div id="sub">ask-kit benchmark, 18 November 2026 · tokens, added up question by question</div>
+        <div id="qn">question <b id="qi">0</b> of 21</div>
+
+        <div class="row" id="r-son">
+          <div class="lab"><span>Sonnet 5.5 <i>with Read, Grep and Bash</i></span><b id="n-son">0</b></div>
+          <div class="track" id="t-son"></div>
+        </div>
+        <div class="row" id="r-ask">
+          <div class="lab"><span>ask <i>on glm-5.3-flash</i></span><b id="n-ask">0</b></div>
+          <div class="track" id="t-ask"></div>
+        </div>
+
+        <div id="table" data-hold>
+          <div class="tr h"><span>Median per question</span><span>ask on glm-5.3-flash</span><span>Sonnet 5.5 with Read, Grep and Bash</span></div>
+          <div class="tr" id="tr1"><span>Session question</span><span class="n a">391</span><span class="n">10,000</span></div>
+          <div class="tr" id="tr2"><span>Code question</span><span class="n a">333</span><span class="n">4,800</span></div>
+        </div>
+        <div id="score" data-hold>Correct answers: <b>20/21</b> with ask (21/21 on a second run), <b>21/21</b> for Sonnet 5.5.</div>
+      </div>
+    </div>
+    <script>
+      const ASK = [468, 122, 485, 423, 383, 589, 398, 280, 267, 381, 275, 702, 667, 399, 432, 268, 346, 256, 307, 320, 595];
+      const SON = [11636, 39, 3888, 15880, 17442, 7488, 19203, 1130, 33154, 9203, 6974, 11175, 47202, 4268, 9565, 5331, 2929, 6061, 1858, 3577, 7659];
+      const TOTAL = SON.reduce((a, b) => a + b, 0); // 225,662: the full track
+      const PX = 1720 / TOTAL;
+      const fmt = (v) => Math.round(v).toLocaleString("en-US");
+      const segs = (id, arr) => arr.map(() => { const d = document.createElement("div"); d.className = "seg"; document.getElementById(id).appendChild(d); return d; });
+      const sSon = segs("t-son", SON);
+      const sAsk = segs("t-ask", ASK);
+
+      const tl = gsap.timeline({ paused: true });
+      const E = "power3.out";
+      tl.fromTo("#r-son", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: E }, 0.3);
+      tl.fromTo("#r-ask", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: E }, 0.5);
+
+      // one question every 0.42 s; both bars and both totals grow together
+      const T0 = 1.2, DT = 0.42;
+      const st = { i: 0, son: 0, ask: 0 };
+      const draw = () => {
+        document.getElementById("qi").textContent = Math.min(21, Math.ceil(st.i));
+        document.getElementById("n-son").textContent = fmt(st.son);
+        document.getElementById("n-ask").textContent = fmt(st.ask);
+      };
+      draw();
+      let cs = 0, ca = 0;
+      SON.forEach((v, i) => {
+        const at = T0 + i * DT;
+        cs += v; ca += ASK[i];
+        tl.fromTo(sSon[i], { width: 0 }, { width: Math.max(1, v * PX), duration: DT * 0.9, ease: "power2.out" }, at);
+        tl.fromTo(sAsk[i], { width: 0 }, { width: Math.max(1, ASK[i] * PX), duration: DT * 0.9, ease: "power2.out" }, at);
+        tl.to(st, { i: i + 1, son: cs, ask: ca, duration: DT * 0.9, ease: "power2.out", onUpdate: draw }, at);
+      });
+      const END = T0 + 21 * DT; // ~10 s
+
+      tl.fromTo("#table .tr", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, stagger: 0.35, ease: E }, END + 0.4);
+      tl.fromTo("#score", { opacity: 0 }, { opacity: 1, duration: 0.5 }, END + 1.6);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

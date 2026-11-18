@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=800" />
+    <title>ask-kit hero</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* The screen at the top of temet.ai/projects/ask-kit: the benchmark's Karabiner ask
+         (bench/results/glm-5.3-flash.jsonl, h05-karabiner, run 1: 2 cells, 34.8 s, $0.00077) played
+         as the shell shows it. The answer is the post's screenText, word for word. Only cell 1's
+         search is shown: the answer names it; the run did not record the cells' code.
+         Colours and font are the site's screen: #05060d, #d7ead6, teal #3ad8c4, Share Tech Mono. */
+      @font-face { font-family: "Share Tech Mono"; src: url("fonts/ShareTechMono-Regular.ttf") format("truetype"); }
+      :root { --bg: #05060d; --ink: #d7ead6; --dim: #6d7f79; --teal: #3ad8c4; --red: #e3262b; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1280px; height: 800px; overflow: hidden; background: var(--bg); }
+      #root { position: relative; width: 100%; height: 100%; background: var(--bg); }
+      #screen { position: absolute; left: 52px; top: 44px; right: 40px; color: var(--ink); font: 24px/36px "Share Tech Mono", monospace; }
+      .ln { min-height: 36px; white-space: pre; }
+      .p { color: var(--teal); }
+      .d { color: var(--dim); }
+      .t { color: var(--teal); }
+      .b { color: #ffffff; }
+      #spin { color: var(--dim); }
+      #caret { display: inline-block; width: 13px; height: 26px; background: var(--teal); vertical-align: -4px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="22" data-width="1280" data-height="800">
+      <div id="screen" class="clip" data-start="0" data-duration="22" data-track-index="0">
+        <div class="ln" id="cmd1"><span class="p">$ </span><span id="ty1"></span><span id="caret"></span></div>
+        <div class="ln" id="cmd2"><span id="ty2"></span></div>
+        <div class="ln d" id="cell1">  cell 1: find-sessions "Karabiner Keychron", over 90 days</div>
+        <div class="ln" id="spin">⠋ investigating · 0s</div>
+        <div id="answer" data-hold></div>
+      </div>
+    </div>
+    <script>
+      const CMD1 = `ask-kit ask "Which agent and session fixed the Mac's Karabiner setup, and which mode`;
+      const CMD2 = `  did it say to keep the Keychron keyboard in?"`;
+      // The answer, as the post shows it; spans mark the cited sessions and turns.
+      const S = (s) => `<span class="t">${s}</span>`;
+      const ANSWER = [
+        `<span class="b">Codex, session ${S("01a1e59b")} — keep the Keychron in Windows mode.</span>`,
+        ``,
+        `- The fix was done by Codex in session ${S("01a1e59b")} (project "omarchy", started`,
+        `  2026-11-16): it restored Karabiner on the Mac, added Keychron-specific Control`,
+        `  shortcuts and text navigation, and removed the Mac's Ctrl+Space input-source`,
+        `  shortcut — ${S("codex 01a1e59b #59")}.`,
+        `- The mode to keep: "Keep the Keychron in Windows mode through the KVM"`,
+        `  — ${S("codex 01a1e59b #96")}.`,
+        ``,
+        `Searched: find-sessions for "Karabiner Keychron" over 90 days; only this session`,
+        `matched.`,
+        ``,
+        `<span class="d">[sessions · glm-5.3-flash · 35s · $0.00077]</span>`,
+      ];
+      const ans = document.getElementById("answer");
+      const lines = ANSWER.map((h) => { const d = document.createElement("div"); d.className = "ln"; d.innerHTML = h; ans.appendChild(d); return d; });
+
+      const tl = gsap.timeline({ paused: true });
+      // typing: reveal the command a character at a time, driven by the timeline
+      const typed = { n: 0 };
+      const TOTAL = CMD1.length + CMD2.length;
+      const caret = document.getElementById("caret");
+      const typeDraw = () => {
+        const n = Math.round(typed.n);
+        document.getElementById("ty1").textContent = CMD1.slice(0, n);
+        document.getElementById("ty2").textContent = n > CMD1.length ? CMD2.slice(0, n - CMD1.length) : "";
+        // the caret follows the last typed character
+        (n > CMD1.length ? document.getElementById("cmd2") : document.getElementById("cmd1")).appendChild(caret);
+      };
+      typeDraw();
+      tl.fromTo(typed, { n: 0 }, { n: TOTAL, duration: 3.6, ease: "none", onUpdate: typeDraw }, 0.6);
+      tl.fromTo(caret, { opacity: 1 }, { opacity: 0, duration: 0.05 }, 4.4);
+
+      // the investigator works: spinner and clock (35 s of real time in 4.2 s), cell 1's line
+      const clock = { s: 0 };
+      const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+      const spin = document.getElementById("spin");
+      tl.fromTo("#spin", { opacity: 0 }, { opacity: 1, duration: 0.01 }, 4.5);
+      tl.fromTo(clock, { s: 0 }, { s: 35, duration: 4.2, ease: "none", onUpdate: () => {
+        spin.textContent = `${frames[Math.floor(clock.s * 4) % frames.length]} investigating · ${Math.floor(clock.s)}s`;
+      } }, 4.5);
+      tl.fromTo("#cell1", { opacity: 0 }, { opacity: 1, duration: 0.01 }, 5.2);
+      tl.to("#spin", { opacity: 0, duration: 0.01 }, 8.7);
+
+      // the answer arrives, line by line, and stays; then everything fades for the loop
+      tl.fromTo(lines, { opacity: 0 }, { opacity: 1, duration: 0.01, stagger: 0.09 }, 8.8);
+      tl.to("#screen", { opacity: 0, duration: 0.6, ease: "power1.in" }, 21.3);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

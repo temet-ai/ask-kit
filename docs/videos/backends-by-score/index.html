@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Backends by score</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* the render browser has no monospace font of its own, so the clip ships one */
+      @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.ttf") format("truetype"); font-weight: 100 800; }
+      /* Numbers: bench/RESULTS.md, the 13 session questions (10 that name a date and an agent, 3
+         that name none). A partial answer counts as half. Times and costs as RESULTS.md states them. */
+      :root {
+        --ground: #16161a; --panel: #202027; --well: #0e0e11; --line: #3a3a42;
+        --ink: #f2ead8; --muted: #9a968c; --dim: #6f6b63; --red: #e5352b;
+        --sans: system-ui, sans-serif; --mono: "JetBrains Mono", monospace;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 100%; height: 100%; color: var(--ink); font-family: var(--sans); }
+      #stage { position: absolute; inset: 0; }
+      #heading { position: absolute; left: 100px; top: 70px; font-size: 52px; font-weight: 700; letter-spacing: -0.02em; }
+      #sub { position: absolute; left: 100px; top: 142px; font-size: 30px; color: var(--muted); }
+
+      .row { position: absolute; left: 100px; width: 1720px; height: 150px; }
+      .name { font-size: 34px; font-weight: 600; }
+      .name i { font-style: normal; font-weight: 400; color: var(--muted); font-size: 30px; }
+      .line { display: flex; align-items: center; gap: 28px; margin-top: 14px; }
+      .track { position: relative; width: 1060px; height: 52px; border-radius: 10px; background: var(--well); flex: none; }
+      .fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 10px; background: #a7a296; }
+      .fill.ask { background: var(--red); }
+      .fill.ghost { background: rgba(229, 53, 43, 0.35); }
+      .score { width: 300px; flex: none; font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .score small { font-size: 28px; font-weight: 400; color: var(--muted); }
+      .meta { font-size: 28px; color: var(--muted); }
+      #r1 { top: 250px; } #r2 { top: 430px; } #r3 { top: 610px; } #r4 { top: 790px; }
+      #note { position: absolute; left: 100px; top: 980px; font-size: 28px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="14" data-width="1920" data-height="1080">
+      <div id="stage" class="clip" data-start="0" data-duration="14" data-track-index="0">
+        <h1 id="heading">Session questions answered correctly, by backend</h1>
+        <div id="sub">ask-kit benchmark, 18 November 2026 · 13 questions · a partial answer counts as half</div>
+
+        <div class="row" id="r1" data-hold>
+          <div class="name">glm-5.3-flash <i>through OpenRouter, the default</i></div>
+          <div class="line"><div class="track"><div class="fill ghost" id="f1b"></div><div class="fill ask" id="f1"></div></div>
+            <div class="score">12/13 <small>then 13/13</small></div><div class="meta">$0.002–0.008 each</div></div>
+        </div>
+        <div class="row" id="r2" data-hold>
+          <div class="name">Codex <i>on a ChatGPT plan</i></div>
+          <div class="line"><div class="track"><div class="fill" id="f2"></div></div>
+            <div class="score">12.5/13</div><div class="meta">34 s median</div></div>
+        </div>
+        <div class="row" id="r3" data-hold>
+          <div class="name">Copilot CLI <i>on premium requests</i></div>
+          <div class="line"><div class="track"><div class="fill" id="f3"></div></div>
+            <div class="score">12/13</div><div class="meta">87 s median</div></div>
+        </div>
+        <div class="row" id="r4" data-hold>
+          <div class="name">qwen3.5 9B <i>on Ollama, local</i></div>
+          <div class="line"><div class="track"><div class="fill" id="f4"></div></div>
+            <div class="score">7.5/13</div><div class="meta">over 2 min median</div></div>
+        </div>
+        <div id="note" data-hold>glm-5.3-flash took 35 s on questions that name a date, 111 s on those that don't.</div>
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      const E = "power3.out";
+      const W = 1060 / 13;
+      const bar = (id, score, at) => tl.fromTo(id, { width: 0 }, { width: score * W, duration: 0.9, ease: "power2.out" }, at);
+      ["#r1", "#r2", "#r3", "#r4"].forEach((r, i) => tl.fromTo(r, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: E }, 0.5 + i * 0.7));
+      bar("#f1", 12, 0.9);
+      bar("#f1b", 13, 1.5);
+      bar("#f2", 12.5, 1.6);
+      bar("#f3", 12, 2.3);
+      bar("#f4", 7.5, 3.0);
+      tl.fromTo("#note", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 4.6);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

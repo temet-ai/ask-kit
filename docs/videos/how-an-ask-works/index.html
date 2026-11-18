@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>How an ask works</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* the render browser has no monospace font of its own, so the clip ships one */
+      @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.ttf") format("truetype"); font-weight: 100 800; }
+      /* ask-kit's palette, the same as docs/user-guide/images/how-an-ask-works.svg */
+      :root {
+        --ground: #16161a;
+        --panel: #202027;
+        --well: #0e0e11;
+        --line: #3a3a42;
+        --ink: #f2ead8;
+        --muted: #9a968c;
+        --dim: #6f6b63;
+        --red: #e5352b;
+        --sans: system-ui, sans-serif;
+        --mono: "JetBrains Mono", monospace;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 100%; height: 100%; color: var(--ink); font-family: var(--sans); }
+      #stage { position: absolute; inset: 0; }
+
+      #heading { position: absolute; left: 96px; top: 70px; font-size: 52px; font-weight: 700; letter-spacing: -0.02em; }
+      #heading span { color: var(--red); }
+
+      .panel { position: absolute; top: 180px; height: 690px; border-radius: 24px; background: var(--panel); border: 2px solid var(--line); }
+      .panel h2 { position: absolute; left: 40px; top: 36px; font-size: 34px; font-weight: 700; }
+      .panel .sub { position: absolute; left: 40px; top: 84px; font-size: 28px; color: var(--muted); }
+      #agent { left: 96px; width: 560px; }
+      #inv { left: 820px; width: 1004px; }
+      #inv-glow { position: absolute; inset: -2px; border-radius: 24px; border: 2px solid var(--red); opacity: 0; }
+
+      .mono { font-variant-ligatures: none; font-family: var(--mono); font-size: 28px; line-height: 40px; white-space: pre; }
+      #you { position: absolute; left: 40px; top: 170px; color: var(--muted); }
+      #q { position: absolute; left: 40px; top: 250px; color: var(--red); }
+      #ans { position: absolute; left: 40px; top: 430px; color: var(--ink); }
+      #keep { position: absolute; left: 40px; bottom: 40px; font-size: 28px; color: var(--muted); }
+      #keep b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+      #well { position: absolute; left: 40px; top: 140px; width: 924px; height: 340px; border-radius: 16px; background: var(--well); padding: 26px 32px; }
+      .cell { height: 96px; }
+      .cell .c { color: var(--dim); }
+      .pills { position: absolute; left: 40px; top: 510px; display: flex; gap: 20px; }
+      .pill { height: 60px; padding: 0 30px; border-radius: 30px; border: 2px solid var(--line); font-size: 28px; display: flex; align-items: center; }
+      .pill.dash { border-style: dashed; color: var(--muted); }
+      #read { position: absolute; left: 40px; bottom: 40px; font-size: 28px; color: var(--muted); }
+      #read b { color: var(--ink); font-variant-numeric: tabular-nums; }
+      #gone { position: absolute; left: 40px; top: 140px; width: 924px; height: 340px; display: flex; align-items: center; justify-content: center; font-size: 30px; color: var(--muted); }
+
+      svg#arrows { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
+      .lbl { position: absolute; font-size: 28px; color: var(--muted); }
+      #lbl-q { left: 672px; top: 420px; }
+      #lbl-a { left: 684px; top: 652px; }
+
+      #foot { position: absolute; left: 96px; top: 888px; width: 1560px; font-size: 30px; line-height: 42px; }
+      #foot span { color: var(--red); }
+      #brand { position: absolute; right: 96px; top: 1000px; font-family: var(--mono); font-size: 30px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="22" data-width="1920" data-height="1080">
+      <div id="stage" class="clip" data-start="0" data-duration="22" data-track-index="0">
+        <h1 id="heading">What happens inside one <span>ask</span></h1>
+
+        <div id="agent" class="panel">
+          <h2>Your agent</h2>
+          <div class="sub">main context, does the real work</div>
+          <div id="you" class="mono">you: add a CSV exporter</div>
+          <div id="q" class="mono">ask("how are exporters
+  built and registered?")</div>
+          <div id="ans" class="mono">a short answer, with
+path:line evidence</div>
+          <div id="keep">takes in <b id="keep-n">0</b> tokens</div>
+        </div>
+
+        <div id="inv" class="panel">
+          <div id="inv-glow"></div>
+          <h2>Investigator</h2>
+          <div class="sub">its own context, a cheap model, writes a program for each step</div>
+          <div id="well">
+            <div class="cell mono" id="c1"><span class="c">// cell 1: find it, every spelling</span>
+await scripts.run("where", { name: "exporter" })</div>
+            <div class="cell mono" id="c2"><span class="c">// cell 2: written for this question</span>
+exporters.filter((n) => !tested.has(n))</div>
+            <div class="cell mono" id="c3"><span class="c">// cell 3: what changed lately</span>
+await repo.git("log", "-5", "--", "src/export")</div>
+          </div>
+          <div id="gone" data-layout-allow-overlap>context thrown away</div>
+          <div class="pills">
+            <div class="pill" id="p-code">your code</div>
+            <div class="pill" id="p-sess">past sessions</div>
+            <div class="pill dash" id="p-dom">+ your domains</div>
+          </div>
+        </div>
+
+        <svg id="arrows" viewBox="0 0 1920 1080">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#e5352b" /></marker>
+            <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f2ead8" /></marker>
+          </defs>
+          <line id="arr-q" x1="664" y1="470" x2="808" y2="470" stroke="#e5352b" stroke-width="5" marker-end="url(#ar)" />
+          <line id="arr-a" x1="812" y1="640" x2="668" y2="640" stroke="#f2ead8" stroke-width="5" marker-end="url(#ac)" />
+        </svg>
+        <div class="lbl" id="lbl-q">question</div>
+        <div class="lbl" id="lbl-a">answer</div>
+
+        <div id="foot" data-hold>In the benchmark, a session question added a median 391 tokens to the calling agent with ask, and 10,000 when Sonnet 5.5 searched the transcripts itself.</div>
+        <div id="brand">ask-kit</div>
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      const E = "power3.out";
+      const counter = (id, to, at, dur) => {
+        const o = { v: 0 };
+        tl.fromTo(o, { v: 0 }, { v: to, duration: dur, ease: "power1.inOut", onUpdate: () => { document.getElementById(id).textContent = Math.round(o.v).toLocaleString("en-US"); } }, at);
+      };
+      const draw = (id, at) => {
+        const el = document.getElementById(id);
+        const len = Math.abs(el.x2.baseVal.value - el.x1.baseVal.value);
+        // the arrowhead marker ignores the dash, so the line stays invisible until it starts drawing
+        tl.fromTo(el, { opacity: 0, attr: { "stroke-dasharray": len, "stroke-dashoffset": len } }, { opacity: 1, attr: { "stroke-dashoffset": 0 }, duration: 0.5, ease: "power2.inOut" }, at);
+      };
+
+      // 0–1.6 s: heading and the two panels
+      tl.fromTo("#heading", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: E }, 0.2);
+      tl.fromTo("#agent", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: E }, 0.6);
+      tl.fromTo("#inv", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: E }, 0.9);
+      tl.fromTo("#you", { opacity: 0 }, { opacity: 1, duration: 0.4 }, 1.6);
+
+      // 2.2–3.6 s: the agent asks
+      tl.fromTo("#q", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.5, ease: E }, 2.3);
+      draw("arr-q", 3.0);
+      tl.fromTo("#lbl-q", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 3.2);
+      tl.fromTo("#inv-glow", { opacity: 0 }, { opacity: 0.8, duration: 0.4 }, 3.4);
+
+      // 3.8–9 s: the investigator digs, cell by cell, reading a lot
+      tl.fromTo("#c1", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: E }, 3.9);
+      tl.fromTo("#p-code", { borderColor: "#3a3a42" }, { borderColor: "#e5352b", duration: 0.3 }, 4.2);
+      tl.fromTo("#c2", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: E }, 5.4);
+      tl.fromTo("#c3", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.45, ease: E }, 6.9);
+      tl.fromTo("#p-sess", { borderColor: "#3a3a42" }, { borderColor: "#e5352b", duration: 0.3 }, 7.2);
+
+      // 9.2–11 s: a short answer goes back
+      draw("arr-a", 9.2);
+      tl.fromTo("#lbl-a", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 9.4);
+      tl.fromTo("#ans", { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.5, ease: E }, 9.7);
+      tl.fromTo("#keep", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 9.9);
+      counter("keep-n", 391, 9.9, 0.8);
+
+      // 11–12.5 s: the investigator's context is dropped
+      tl.fromTo("#well", { opacity: 1 }, { opacity: 0.04, duration: 0.7, ease: "power2.in" }, 11.2);
+      tl.fromTo("#gone", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 11.7);
+      tl.fromTo("#inv-glow", { opacity: 0.8 }, { opacity: 0, duration: 0.6, immediateRender: false }, 11.4);
+
+      // 12.8–17 s: the point, then hold
+      tl.fromTo("#foot", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: E }, 12.8);
+      tl.fromTo("#brand", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 13.6);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

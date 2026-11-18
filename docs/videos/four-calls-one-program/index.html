@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Four calls, one program</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* the render browser has no monospace font of its own, so the clip ships one */
+      @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.ttf") format("truetype"); font-weight: 100 800; }
+      /* The example from docs/user-guide/how-it-works.md: "which exporters have no test, and are
+         they all registered?" done as four tool calls, and as the one program the investigator
+         writes for it. The repository and its table are that page's illustration. */
+      :root {
+        --ground: #16161a; --panel: #202027; --well: #0e0e11; --line: #3a3a42;
+        --ink: #f2ead8; --muted: #9a968c; --dim: #6f6b63; --red: #e5352b; --green: #8fbf7f;
+        --sans: system-ui, sans-serif; --mono: "JetBrains Mono", monospace;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 100%; height: 100%; color: var(--ink); font-family: var(--sans); }
+      #stage { position: absolute; inset: 0; }
+      .mono, code, pre { font-family: var(--mono); font-variant-ligatures: none; }
+
+      #heading { position: absolute; left: 80px; top: 52px; font-size: 46px; font-weight: 700; letter-spacing: -0.02em; }
+      #heading code { font-weight: 400; color: var(--red); font-size: 40px; }
+
+      .pane { position: absolute; top: 140px; width: 620px; height: 900px; border-radius: 22px; background: var(--panel); border: 2px solid var(--line); }
+      #left { left: 80px; }
+      #right { left: 740px; width: 1100px; border-color: rgba(229, 53, 43, 0.6); }
+      .pane h2 { position: absolute; left: 36px; top: 26px; font-size: 32px; font-weight: 700; }
+      .pane h2 i { font-style: normal; font-weight: 400; color: var(--muted); }
+      .body { position: absolute; left: 36px; top: 96px; right: 36px; }
+
+      .call { font-family: var(--mono); font-size: 28px; line-height: 38px; white-space: pre; font-variant-ligatures: none; }
+      .res { font-family: var(--mono); font-size: 28px; line-height: 36px; color: var(--muted); white-space: pre; }
+      .step { height: 112px; }
+      .think { font-size: 28px; line-height: 38px; color: var(--muted); font-style: italic; }
+
+      pre { background: var(--well); border-radius: 14px; padding: 20px 24px; font-size: 28px; line-height: 36px; color: var(--ink); white-space: pre; }
+      pre .k { color: var(--red); }
+      pre .s { color: #e0b45c; }
+      #run { margin-top: 12px; font-size: 28px; color: var(--muted); }
+      #run b { color: var(--ink); font-weight: 600; }
+
+      table { margin-top: 6px; width: 100%; border-collapse: collapse; font-size: 28px; }
+      th { text-align: left; font-weight: 400; color: var(--muted); padding: 3px 12px; border-bottom: 2px solid var(--line); }
+      td { padding: 3px 12px; border-bottom: 1px solid var(--line); font-family: var(--mono); }
+      td.y { color: var(--green); }
+      td.n { color: var(--red); }
+
+      /* what each side leaves in the calling agent's context */
+      .meter { position: absolute; left: 36px; right: 36px; bottom: 30px; }
+      .meter .lab { font-size: 28px; color: var(--muted); display: flex; justify-content: space-between; }
+      .meter .lab b { color: var(--ink); font-weight: 600; }
+      .bar { margin-top: 12px; height: 26px; border-radius: 8px; background: var(--well); display: flex; gap: 4px; overflow: hidden; }
+      .blk { height: 100%; flex: none; border-radius: 6px; }
+      #left .blk { background: #8a867d; }
+      #left .blk:nth-child(even) { background: #a7a296; }
+      #right .blk { background: var(--red); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="15" data-width="1920" data-height="1080">
+      <div id="stage" class="clip" data-start="0" data-duration="15" data-track-index="0">
+        <h1 id="heading">Which exporters have no test, and are they all registered?</h1>
+
+        <div id="left" class="pane">
+          <h2>Tool calls <i>one per round trip</i></h2>
+          <div class="body">
+            <div class="step" id="l1"><div class="call">● Glob("src/export/*.ts")</div><div class="res">  ⎿ 7 files</div></div>
+            <div class="step" id="l2"><div class="call">● Glob("test/export/*.test.ts")</div><div class="res">  ⎿ 5 files</div></div>
+            <div class="step" id="l3"><div class="call">● Read(src/export/index.ts)</div><div class="res">  ⎿ 64 lines</div></div>
+            <div class="step" id="l4"><div class="call">● compare the three lists</div><div class="think">  in the model's own context</div></div>
+          </div>
+          <div class="meter">
+            <div class="lab"><span>context used</span><span><b id="lc">0</b> round trips</span></div>
+            <div class="bar" id="lbar">
+              <div class="blk" id="lb1" style="width: 110px"></div>
+              <div class="blk" id="lb2" style="width: 90px"></div>
+              <div class="blk" id="lb3" style="width: 190px"></div>
+              <div class="blk" id="lb4" style="width: 110px"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="right" class="pane">
+          <h2>One program <i>one step, written for the question</i></h2>
+          <div class="body">
+<pre id="code" data-hold><span class="k">const</span> name = (f) =&gt;
+  f.split(<span class="s">"/"</span>).pop().replace(<span class="s">/(\.test)?\.ts$/</span>, <span class="s">""</span>);
+<span class="k">const</span> exporters = (<span class="k">await</span> repo.files(<span class="s">"src/export/*.ts"</span>))
+  .map(name).filter((n) =&gt; n !== <span class="s">"index"</span> &amp;&amp; n !== <span class="s">"base"</span>);
+<span class="k">const</span> tested = <span class="k">new</span> Set(
+  (<span class="k">await</span> repo.files(<span class="s">"test/export/*.test.ts"</span>)).map(name));
+<span class="k">const</span> registry = repo.read(<span class="s">"src/export/index.ts"</span>).text;
+exporters.map((n) =&gt; ({ exporter: n, tested: tested.has(n),
+  registered: registry.includes(n) }));</pre>
+            <div id="run"><b>▶ runs as one cell</b> and returns</div>
+            <table id="out" data-hold>
+              <tr><th>exporter</th><th>tested</th><th>registered</th></tr>
+              <tr><td>csv</td><td class="y">true</td><td class="y">true</td></tr>
+              <tr><td>json</td><td class="y">true</td><td class="y">true</td></tr>
+              <tr><td>xml</td><td class="n">false</td><td class="y">true</td></tr>
+              <tr><td>parquet</td><td class="n">false</td><td class="n">false</td></tr>
+            </table>
+          </div>
+          <div class="meter">
+            <div class="lab"><span>context used</span><span><b id="rc">0</b> round trip</span></div>
+            <div class="bar"><div class="blk" id="rb1" style="width: 40px"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      const E = "power3.out";
+      const show = (sel, at) => tl.fromTo(sel, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: E }, at);
+      const grow = (sel, at) => tl.fromTo(sel, { scaleX: 0, transformOrigin: "left center" }, { scaleX: 1, duration: 0.45, ease: "power2.out" }, at);
+      const count = (id, n, at) => tl.call(() => { document.getElementById(id).textContent = n; }, null, at);
+
+      tl.fromTo("#left", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: E }, 0.4);
+      tl.fromTo("#right", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: E }, 0.6);
+
+      // left: four calls, one after another, each landing in the agent's context
+      [1.6, 3.2, 4.8, 6.4].forEach((at, i) => {
+        show(`#l${i + 1}`, at);
+        grow(`#lb${i + 1}`, at + 0.5);
+        count("lc", i + 1, at + 0.5);
+      });
+      // keep the counters right when seeking backwards past their first change
+      count("lc", 0, 0);
+      count("rc", 0, 0);
+
+      // right: the program appears, runs once, prints its table
+      show("#code", 1.6);
+      show("#run", 4.6);
+      tl.fromTo("#out tr", { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.3, stagger: 0.18, ease: E }, 5.1);
+      grow("#rb1", 5.3);
+      count("rc", 1, 5.3);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -99,6 +99,12 @@ ask-kit ask --continue "and who changed it last?"
 ask-kit ask --backend codex "which session changed the cache key?"
 ```
 
+In a terminal, a spinner shows how long the ask has run, with a line for each program the
+investigator runs, and the answer is formatted: bold, code in colour, bullets. Piped to a file or
+another command, the answer is plain Markdown. `NO_COLOR` turns the formatting off.
+
+![ask-kit ask on this repository: a line per cell while the investigator works, the answer with path:line citations, then a --continue follow-up](images/ask-from-shell.gif)
+
 ## More examples
 
 - [Write code with it](use-coding.md)
