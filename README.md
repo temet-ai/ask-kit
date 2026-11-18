@@ -1,4 +1,4 @@
-<h1 align="center"><img src="docs/assets/ask-kit-logo.png" alt="ask-kit — a red scanner line in a retro badge" width="280"></h1>
+<h1 align="left"><a href="https://github.com/temet-ai/ask-kit"><img src="docs/assets/ask-kit-logo.png" alt="ask-kit — playful brown stacked lettering on warm ivory" width="240"></a></h1>
 
 Most of a coding agent's context goes on finding things out: searching, opening files, following
 calls, checking what was tried before. All of it stays in the context and crowds out the work
@@ -31,7 +31,7 @@ runs and then a follow-up:
 `ask` is an [MCP](https://modelcontextprotocol.io) server, so any agent that takes MCP servers
 can use it: Claude Code, Codex, GitHub Copilot CLI, Gemini CLI, opencode.
 
-**[Read the guide](docs/user-guide/README.md)**: how to use it, use cases, models, tuning.
+**[Read the guide](docs/user-guide/README.md)**: how to use it, use cases, models, tuning. Also [read it on temet.ai](https://temet.ai/docs/ask-kit/).
 
 ## How the investigator answers
 

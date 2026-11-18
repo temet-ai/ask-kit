@@ -1,0 +1,12 @@
+ask-kit stacked wordmark
+Generated with the built-in image_gen tool.
+Selected direction: concept 02, with the scanner removed and spacing tightened.
+Asset: 04-stacked-wordmark.png (ivory-background concept preview).
+
+Use case: precise-object-edit
+Input image: EDIT TARGET, the selected stacked ask-kit logo concept.
+Make one precise revision: remove the entire five-color scanner strip between the words. Leave no line, divider, hyphen, dots or decorative substitute in that space.
+Preserve the exact playful, chunky soft-serif lettering: lowercase "ask" on the first line, lowercase "kit" on the second. Keep the warm deep cocoa-plum ink, the existing friendly letter shapes and rounded flared terminals, and the same warm ivory background.
+Move the lower word upward enough to close the space vacated by the scanner, leaving a small clear, balanced gap between the two rows. Keep both words the same optical width, with aligned left edges and well-balanced kerning. The lettering should form a compact, cohesive two-line wordmark. Do not make the letters touch or overlap.
+Keep everything else unchanged. One clean finished logo, flat vector-like rendering. No bubble, icon, badge, ring, frame, chevrons, stripes, diamonds, stars, sparkles, teal, mint or extra colors. No caption, mockup, texture or watermark.
+

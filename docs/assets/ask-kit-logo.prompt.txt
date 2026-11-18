@@ -1,16 +1,19 @@
-ask-kit scanner logo
+ask-kit approved stacked wordmark
 Generated with the built-in image_gen tool.
-Final asset: ask-kit-logo.png (transparent PNG).
-Style reference: the previous ask-kit badge, based on mike's retro badge.
+Final asset: ask-kit-logo.png. This is the exact approved brown lettering on warm ivory; keep its background and colors.
+Canonical source: docs/assets/logo-concepts/04-stacked-wordmark.png.
+The user chose the playful stacked lettering with no scanner, then explicitly reaffirmed the brown version. The later transparent and ivory exports are NOT approved and must not replace this artwork.
+No scanner, car, speech bubble, chevrons, diamonds, teal, or recoloring.
 
-FINAL REVISION PROMPT
+ask-kit stacked wordmark
+Generated with the built-in image_gen tool.
+Selected direction: concept 02, with the scanner removed and spacing tightened.
+Asset: 04-stacked-wordmark.png (ivory-background concept preview).
 
 Use case: precise-object-edit
-Asset type: transparent ask-kit logo for GitHub README, Pages and documentation.
-Input image: EDIT TARGET. Revise this existing badge to simplify the symbol, following the user's correction: "The image doesn't need to be a car. just have the scan line for it".
-Primary change: completely remove the illustrated car, including every wheel, window, hood, headlight, grille, body panel and vehicle contour. Replace the car with ONLY a single horizontal red scanner light inspired by KITT. The scanner is an abstract line of about eleven rectangular red light segments, vivid bright red near the middle, darker at both ends, with a restrained red glow. It is perfectly horizontal, centered in the upper portion of the badge and visually substantial, about two thirds of the circular badge width. There must be no car or vehicle silhouette anywhere.
-Keep: the warm cream lowercase bold italic "ask-kit" wordmark, its actual visible hyphen, rounded dark wordmark band, side red stripes, cream and red outer ring, dark petrol-black badge interior, and subtle retro screenprint texture. Keep the limited warm cream, near-black and vermilion palette; the scanner itself is bright scarlet.
-Composition: make a strong balanced minimal emblem with the scanner above the wordmark. You may tighten the badge's vertical proportions to avoid a large empty upper area. A generous dark field around the scanner gives the red line impact. One clean cohesive logo, recognizable at 240px width.
-Text (verbatim): "ask-kit"; no other text.
-Finish: clean cream outer silhouette with no stray pixels or specks, complete badge comfortably within the frame with transparent margin. Actual transparent alpha outside the silhouette, solid opaque artwork inside, no fake checkerboard background. No vehicle, no robot face, no eyes, no landscape, no stars, no extra symbols, no watermark, no mockup.
+Input image: EDIT TARGET, the selected stacked ask-kit logo concept.
+Make one precise revision: remove the entire five-color scanner strip between the words. Leave no line, divider, hyphen, dots or decorative substitute in that space.
+Preserve the exact playful, chunky soft-serif lettering: lowercase "ask" on the first line, lowercase "kit" on the second. Keep the warm deep cocoa-plum ink, the existing friendly letter shapes and rounded flared terminals, and the same warm ivory background.
+Move the lower word upward enough to close the space vacated by the scanner, leaving a small clear, balanced gap between the two rows. Keep both words the same optical width, with aligned left edges and well-balanced kerning. The lettering should form a compact, cohesive two-line wordmark. Do not make the letters touch or overlap.
+Keep everything else unchanged. One clean finished logo, flat vector-like rendering. No bubble, icon, badge, ring, frame, chevrons, stripes, diamonds, stars, sparkles, teal, mint or extra colors. No caption, mockup, texture or watermark.
 
