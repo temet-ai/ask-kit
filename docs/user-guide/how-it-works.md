@@ -27,7 +27,7 @@ const registry = repo.read("src/export/index.ts").text;
 exporters.map((n) => ({ exporter: n, tested: tested.has(n), registered: registry.includes(n) }));
 ```
 
-That is one step. Done with separate tool calls, it would be a file listing, a second listing, a
+Done with separate tool calls, the same step would be a file listing, a second listing, a
 file read and a comparison done in the model's head, each in its own round trip, with each
 result added to the context.
 

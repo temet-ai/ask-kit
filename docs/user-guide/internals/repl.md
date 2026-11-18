@@ -225,8 +225,8 @@ of those globals:
   drafts folder, and the REPL's own snapshot and journal are written by the server, not the cell.
 
 The `vm` module is not a security boundary. The context has no Node globals, but code that
-reaches the host through an object passed in could escape it. Treat the limits as guard rails for a
-model that is trying to answer a question, not as a sandbox for untrusted code. The CLI
+reaches the host through an object passed in could escape it. The limits are guard rails for a
+model that is trying to answer a question; don't run untrusted code in it. The CLI
 investigators have a second layer of limits (see [Backends](backends.md#how-the-cli-investigators-are-limited)).
 
 ## What to look at when changing it

@@ -20,7 +20,7 @@ ask-kit report --since 24h
 
 Each flagged ask shows the time, domain, backend, duration, its signals and the journal file. If
 your ask is listed, note its signals and the journal path. If it is not listed, the ask ran
-without a problem the report can see: the answer was wrong but ordinary. Find it by its text:
+without a problem the report can see, and only its answer was wrong. Find it by its text:
 
 ```sh
 grep -rl "part of your question" ~/.local/state/ask-kit --include='*.jsonl'

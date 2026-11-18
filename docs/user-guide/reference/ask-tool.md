@@ -8,7 +8,7 @@ Source: [`src/router.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/rou
 (`serveRouter`), [`src/ask.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/ask.mjs)
 (`registerAsk`) and [`src/server.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/server.mjs).
 
-## Two servers, one tool
+## The router and the domain servers
 
 `ask-kit serve` starts the MCP server an agent registers. It has two forms:
 
@@ -131,7 +131,7 @@ or when one domain is enabled.
 ### Notes the answer can carry
 
 When an `api` investigation did not finish, the answer says so in its text. These notes are part
-of the answer, not errors, and `isError` stays `false`.
+of the answer, and `isError` stays `false`.
 
 | Text | Meaning |
 |---|---|

@@ -1,8 +1,7 @@
 # Write code with it
 
 `ask` only reads. Use it to get your agent the context for a change before it writes code. The
-agent's context gets the answers and none of what was read to find them. An agent that starts a
-change with three asks usually needs fewer tries to get it right.
+agent's context gets the answers and none of what was read to find them.
 
 ## Ask three questions before a change
 

@@ -30,7 +30,7 @@ an example of what an answer looks like.)
 For each step of a question, the investigator writes a small JavaScript program and runs it in a
 REPL. The program does whatever the step needs: loops, filters, joins, counts, comparisons,
 parsing. It is written fresh for that question. A domain gives the programs access to the data.
-One program can do the work of a dozen tool calls, and only what it prints comes back. Common
+What a program prints is all that returns to the investigator's model. Common
 questions already have scripts, so it can start from one of those.
 
 ![Your agent sends one question; the investigator writes small programs for it in its own context, reaching code, sessions and your own domains, and returns a short answer with path:line evidence](images/how-an-ask-works.svg)
