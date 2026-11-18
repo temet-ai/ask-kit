@@ -18,7 +18,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CONFIG_DIR, ROOT } from "./config.mjs";
+import { CONFIG_DIR, ROOT, loadConfig } from "./config.mjs";
+import { findKit, kitDomain, listKits } from "./kits.mjs";
 
 const NAME = /^[a-z][a-z0-9-]*$/;
 
@@ -26,8 +27,9 @@ export function domainDirs() {
   return [path.join(CONFIG_DIR, "domains"), path.join(ROOT, "domains")];
 }
 
+// Kits (an ask-kit.toml folder, src/kits.mjs) and domains share one namespace; a kit wins.
 export function listDomains() {
-  const seen = new Set();
+  const seen = new Set(listKits());
   for (const dir of domainDirs()) {
     try {
       for (const d of fs.readdirSync(dir)) if (NAME.test(d) && fs.existsSync(path.join(dir, d, "domain.mjs"))) seen.add(d);
@@ -38,6 +40,8 @@ export function listDomains() {
 
 export async function loadDomain(name) {
   if (!NAME.test(name ?? "")) throw new Error(`"${name}" is not a domain name`);
+  const kit = findKit(name);
+  if (kit) return kitDomain(kit, { config: loadConfig({ required: false }) });
   for (const dir of domainDirs()) {
     const file = path.join(dir, name, "domain.mjs");
     if (fs.existsSync(file)) return (await import(pathToFileURL(file).href)).domain;

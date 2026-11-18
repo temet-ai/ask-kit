@@ -8,16 +8,23 @@ import path from "node:path";
 import { CONFIG_DIR, STATE_ROOT, loadConfig, saveConfig } from "./config.mjs";
 import { which } from "./platform.mjs";
 import { writeAgentsMd } from "./agentsmd.mjs";
+import { MANIFEST, readManifest } from "./kits.mjs";
 
-export const TOPIC = "ask-kit-domain";
+// Kits carry the topic `ask-kit`; `ask-kit-domain` (the older domain.mjs form) is still listed.
+export const TOPIC = "ask-kit";
+export const TOPICS = ["ask-kit", "ask-kit-domain"];
 
 export async function listGallery() {
   const headers = { accept: "application/vnd.github+json", "user-agent": "ask-kit" };
   if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  const res = await fetch(`https://api.github.com/search/repositories?q=topic:${TOPIC}&sort=stars&per_page=50`, { headers, signal: AbortSignal.timeout(10_000) });
-  if (!res.ok) throw new Error(`GitHub search: HTTP ${res.status}`);
-  const j = await res.json();
-  return (j.items ?? []).map((r) => ({ repo: r.full_name, description: r.description ?? "", stars: r.stargazers_count, updated: r.pushed_at?.slice(0, 10), url: r.html_url }));
+  const seen = new Map();
+  for (const t of TOPICS) {
+    const res = await fetch(`https://api.github.com/search/repositories?q=topic:${t}&sort=stars&per_page=50`, { headers, signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) throw new Error(`GitHub search: HTTP ${res.status}`);
+    const j = await res.json();
+    for (const r of j.items ?? []) if (r.full_name !== "temet-ai/ask-kit" && !seen.has(r.full_name)) seen.set(r.full_name, { repo: r.full_name, description: r.description ?? "", stars: r.stargazers_count, updated: r.pushed_at?.slice(0, 10), url: r.html_url });
+  }
+  return [...seen.values()].sort((a, b) => b.stars - a.stars);
 }
 
 /** "github.com/o/r", "https://github.com/o/r(.git)", "o/r" or a local folder. */
@@ -54,6 +61,63 @@ function findDomains(dir, fallbackName) {
   return out;
 }
 
+/** Folders holding an ask-kit.toml: the repo root, or one level down (kits/<n>/ or <n>/). A pack holds several. */
+function findKits(dir) {
+  const out = [];
+  if (fs.existsSync(path.join(dir, MANIFEST))) out.push(dir);
+  for (const base of [dir, path.join(dir, "kits")]) {
+    if (!fs.existsSync(base)) continue;
+    for (const d of fs.readdirSync(base, { withFileTypes: true })) {
+      if (d.isDirectory() && !d.name.startsWith(".") && fs.existsSync(path.join(base, d.name, MANIFEST))) out.push(path.join(base, d.name));
+    }
+  }
+  return out;
+}
+
+// The preview shows what a kit reaches, which of its calls change things, and what it runs at
+// install: it is code that runs as the user, with no sandbox.
+function addKits(r, dir, commit, kitDirsFound, { yes }) {
+  const kits = kitDirsFound.map((d) => ({ dir: d, m: readManifest(d) }));
+  const out = {
+    source: r.url ?? dir,
+    commit,
+    kits: kits.map(({ dir: d, m }) => ({
+      name: m.name,
+      version: m.version ?? null,
+      says: m.says,
+      sources: m.sources.map((s) => ({ kind: s.kind, name: s.name, ...(s.path ? { path: s.path } : {}), ...(s.command ? { command: [].concat(s.command).join(" ") } : {}), ...(s.module ? { module: s.module } : {}) })),
+      acts: m.acts ?? [],
+      settings: (m.settings ?? []).map((s) => s.key),
+      build: (m.build ?? []).map((b) => [].concat(b.command).join(" ")),
+      files: listFiles(d),
+      modules: Object.fromEntries(m.sources.filter((s) => s.kind === "module").map((s) => [s.module, fs.readFileSync(path.join(d, s.module), "utf8").slice(0, 4000)])),
+    })),
+    installed: [],
+  };
+  if (!yes) {
+    out.next = "Tell the user what each kit reaches (sources), what it can change (acts), what it runs at install (build), and read its modules and scripts. On their yes, run the same command with --yes.";
+    return out;
+  }
+  const config = loadConfig();
+  for (const { dir: d, m } of kits) {
+    const dest = path.join(CONFIG_DIR, "kits", m.name);
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.cpSync(d, dest, { recursive: true, filter: (p) => !p.includes(`${path.sep}.git`) });
+    for (const b of m.build ?? []) {
+      const [bin, ...args] = [].concat(b.command);
+      const res = spawnSync(bin, args, { cwd: dest, encoding: "utf8", timeout: 600_000 });
+      if (res.status !== 0) throw new Error(`${m.name}: build \`${[bin, ...args].join(" ")}\` failed: ${(res.stderr || res.stdout || "").trim().slice(0, 400)}`);
+    }
+    config.domains = { ...(config.domains ?? {}), [m.name]: { ...(config.domains?.[m.name] ?? {}), enabled: true, from: out.source, ...(commit ? { commit } : {}) } };
+    out.installed.push({ name: m.name, dir: dest });
+  }
+  saveConfig(config);
+  writeAgentsMd();
+  out.next = `Restart the agents so \`ask\` lists the new kit, then: ask-kit kit test ${out.installed[0].name}`;
+  return out;
+}
+
 const listFiles = (dir, rel = "") =>
   fs.readdirSync(path.join(dir, rel), { withFileTypes: true }).flatMap((e) =>
     e.name === ".git" || e.name === "node_modules" ? [] : e.isDirectory() ? listFiles(dir, path.join(rel, e.name)) : [{ file: path.join(rel, e.name), bytes: fs.statSync(path.join(dir, rel, e.name)).size }],
@@ -66,6 +130,8 @@ const listFiles = (dir, rel = "") =>
 export async function addDomain(ref, { yes = false } = {}) {
   const r = parseRef(ref);
   const { dir, commit } = fetchRepo(r);
+  const kits = findKits(dir);
+  if (kits.length) return addKits(r, dir, commit, kits, { yes });
   const found = findDomains(dir, r.name.replace(/^ask-kit-/, "").toLowerCase().replace(/[^a-z0-9-]/g, "-"));
   if (!found.length) throw new Error(`${r.url ?? dir} holds no domain.mjs (at its root, in <name>/ or in domains/<name>/)`);
   const recipeFile = ["RECIPE.md", "README.md"].map((f) => path.join(dir, f)).find((f) => fs.existsSync(f));

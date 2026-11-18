@@ -24,7 +24,8 @@ const CONFIG = loadConfig();
 const DOMAIN_NAME = process.env.ASK_KIT_DOMAIN || "sessions";
 const DOMAIN = await loadDomain(DOMAIN_NAME);
 const STATE_DIR = path.join(STATE_ROOT, DOMAIN_NAME, ...(DOMAIN.stateKey ? [slug(DOMAIN.stateKey)] : []));
-const SCRIPTS_DIR = DOMAIN.scriptsDir;
+// A kit's scripts can come from more than one folder (the host's for its source kind, then its own; later wins).
+const SCRIPTS_DIRS = DOMAIN.scriptsDirs ?? [DOMAIN.scriptsDir];
 const SESSION = callerSession();
 const DRAFTS_DIR = path.join(STATE_DIR, "drafts", slug(SESSION));
 const INNER = process.env.ASK_KIT_INNER === "1";
@@ -58,7 +59,7 @@ function dirStamp(dir) {
 }
 
 async function refreshScripts() {
-  const lib = dirStamp(SCRIPTS_DIR);
+  const lib = SCRIPTS_DIRS.flatMap(dirStamp);
   const drafts = dirStamp(DRAFTS_DIR);
   const signature = [...lib, ...drafts].map((x) => `${x.full}:${x.mtime}`).join("|");
   if (signature === librarySignature) return null;
@@ -450,7 +451,7 @@ if (!INNER) {
       DOMAIN.apiDoc,
       DOMAIN.instructions,
       ...(DOMAIN.fingerprintFiles?.() ?? []),
-      ...dirStamp(SCRIPTS_DIR).map((x) => x.full),
+      ...SCRIPTS_DIRS.flatMap(dirStamp).map((x) => x.full),
     ],
     keep: (entry) => journal({ ts: new Date().toISOString(), session: SESSION, type: "ask", ...entry, answer: undefined, answerChars: entry.answer?.length }),
   });

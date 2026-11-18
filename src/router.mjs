@@ -30,7 +30,14 @@ export async function makeRouter(config) {
   if (!enabled.length) throw new Error("no domains enabled in config");
   const DOMAINS = {};
   for (const n of enabled) DOMAINS[n] = await loadDomain(n);
-  const byRules = (q) => RULES.find(([n, re]) => DOMAINS[n] && re.test(q))?.[0] ?? enabled[0];
+  // Kits bring their own routing: `patterns` claim a question outright (no model call), and
+  // `keywords` join the fallback rules.
+  const kitRules = enabled
+    .filter((n) => DOMAINS[n].keywords?.length)
+    .map((n) => [n, new RegExp(`\\b(${DOMAINS[n].keywords.join("|")})\\b`, "i")]);
+  const byPattern = (q) => enabled.find((n) => DOMAINS[n].patterns?.some((re) => re.test(q))) ?? null;
+  const byRules = (q) => [...kitRules, ...RULES].find(([n, re]) => DOMAINS[n] && re.test(q))?.[0] ?? enabled[0];
+  const hints = enabled.map((n) => DOMAINS[n].routeHint).filter(Boolean);
 
   const routerBe = config.router?.backend ? config.backends?.list?.[config.router.backend] : null;
   async function byModel(q) {
@@ -41,7 +48,8 @@ export async function makeRouter(config) {
     const system =
       `Route a question from a coding agent (working in ${process.cwd()}) to the one investigator that can answer it. Reply with one word: ${enabled.join(", ")}.\n` +
       enabled.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
-      (DOMAINS.sessions && DOMAINS.code ? "\nPast work (what a session did or why) is sessions even when it is about code; the code as it is now is code." : "");
+      (DOMAINS.sessions && DOMAINS.code ? "\nPast work (what a session did or why) is sessions even when it is about code; the code as it is now is code." : "") +
+      (hints.length ? `\n${hints.join("\n")}` : "");
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
@@ -54,12 +62,12 @@ export async function makeRouter(config) {
     if (!enabled.includes(word)) throw new Error(`router model said "${word}"`);
     return word;
   }
-  return { enabled, DOMAINS, byRules, byModel };
+  return { enabled, DOMAINS, byRules, byModel, byPattern };
 }
 
 export async function serveRouter() {
   const config = loadConfig();
-  const { enabled, DOMAINS, byRules, byModel } = await makeRouter(config);
+  const { enabled, DOMAINS, byRules, byModel, byPattern } = await makeRouter(config);
   const SESSION = callerSession();
   const children = new Map();
   const child = (name) => {
@@ -127,6 +135,10 @@ export async function serveRouter() {
       let err;
       if (!name && cont && last) (name = last), (how = "follow-up");
       if (!name && enabled.length === 1) (name = enabled[0]), (how = "only");
+      if (!name) {
+        const claimed = byPattern(question);
+        if (claimed) (name = claimed), (how = "pattern");
+      }
       if (!name) {
         try {
           name = await byModel(question);

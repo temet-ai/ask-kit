@@ -19,14 +19,25 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "test": "node test/fixtures.mjs && node test/setup.mjs && node test/repl.mjs && node test/bundle.mjs",
+    "test": "node test/fixtures.mjs && node test/setup.mjs && node test/repl.mjs && node test/kits.mjs && node test/bundle.mjs",
     "test:machine": "node test/adapters.mjs"
   },
-  "files": ["bin", "src", "domains", "bundle", "AGENTS.md", "README.md", "LICENSE", "THIRD-PARTY-NOTICES.md"],
+  "files": [
+    "bin",
+    "src",
+    "domains",
+    "kits",
+    "bundle",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "@vscode/ripgrep": "1.18.0",
     "acorn": "8.19.0",
+    "smol-toml": "1.9.1",
     "zod": "4.6.7"
   }
 }
