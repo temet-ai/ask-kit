@@ -78,7 +78,6 @@ Habits that make a script work well:
   investigator pays for every character it reads.
 - Narrow by default: a time window, a cap on rows. The investigator can widen it with a
   parameter.
-- Keep it read-only, like the domain's globals.
 - Give the result field names a question can use as evidence: a file and a line, a session and an
   event number.
 
@@ -176,7 +175,6 @@ session, and listed as `<name> (draft)`. It is not part of the library until you
    - It imports nothing by a relative path. A draft is saved in the state folder, so `../lib.mjs`
      would not resolve once the file is in the library. Move shared code into a file outside
      `scripts/`, or inline it.
-   - It is read-only.
    - Its `purpose` and `params` say what it answers and what the defaults are.
 
 3. Copy it into the domain's `scripts/` folder under the name you want:

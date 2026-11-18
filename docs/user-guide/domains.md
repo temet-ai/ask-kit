@@ -36,8 +36,8 @@ for your yes.
 
 ## Write one
 
-1. Copy the shape of `domains/code`. Keep the globals read-only and narrow: a client for the
-   thing, with methods that return plain data.
+1. Copy the shape of `domains/code`. The globals are a client for the thing, with methods that
+   read it and act on it and return plain data.
 2. Write `api.d.ts` with every global and method, its parameters and what it returns. The
    investigator learns what its programs can reach from this file alone.
 3. Write `instructions.md`: what the data holds, how to search it narrowly, how to cite.

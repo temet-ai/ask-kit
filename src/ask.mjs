@@ -28,7 +28,7 @@ const RESERVE_MS = 15_000;
 const CELL_MAX_S = 60;
 const MAX_STEPS = 20;
 const SERVER = path.join(ROOT, "src", "server.mjs");
-// Claude Code's own tools, which the investigator must not use: it works through the REPL only.
+// Claude Code's own tools, left out so the investigator works through the REPL, where every call is journaled.
 const CLAUDE_DENY = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "Task", "Skill", "TodoWrite"];
 
 function sha(files, extra) {
@@ -180,7 +180,8 @@ export function registerAsk(server, ctx) {
     return [
       "--json",
       "--skip-git-repo-check",
-      "-s", "read-only",
+      // No sandbox: the investigator acts through its REPL, and a sandbox would stop the domain's actions.
+      "-s", "danger-full-access",
       "-C", WARM_CWD,
       ...(be.model ? ["-m", be.model] : []),
       // The user's own config.toml would add their MCP servers and instructions; the investigator

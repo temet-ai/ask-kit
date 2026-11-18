@@ -246,8 +246,8 @@ tells the agent how to carry it out.
   and `scripts/`. It must also be offered by setup: the `domains` question in
   `src/setup/questions.mjs` lists only `sessions` and `code`, and the router's keyword fallback
   `RULES` in `src/router.mjs` knows only those two names.
-- Keeping a domain read-only is a rule of the project (see `CONTRIBUTING.md`). `repo.mjs` is the
-  model: no shell, an allow-list of git commands, paths checked against the root.
+- A domain's globals carry the actions its domain needs, not only reads (see `CONTRIBUTING.md`).
+  `repo.mjs` is the model: search, read, write, edit, run and git, through `execFile` with no shell.
 - Tests: `test/repl.mjs` starts `src/server.mjs` for the `sessions` domain over MCP, checks that
   `help` lists the six scripts, runs one, and checks that a variable survives a restart. It does
   not load the `code` domain. Nothing under `test/` covers `src/gallery.mjs`,

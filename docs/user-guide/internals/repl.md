@@ -13,7 +13,7 @@ stays in its session. It is the inner face of `src/server.mjs`.
 | [src/core/rewrite.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/core/rewrite.mjs) | `rewriteCell`: turns a cell into an async script whose top-level names become globals. |
 | [src/core/toolkit.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/core/toolkit.mjs) | The `toolkit` object: `clip`, `shape`, `pick`, `omit`, `table`, `top`, `groupBy`, `countBy`, `sumBy`, `since`, `minutes`. |
 | [src/domains.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/domains.mjs) | `loadDomain`: where `makeGlobals`, `scriptsDir`, `apiDoc` and `beforeCell` come from. |
-| [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo`: the read-only `repo` global (`GIT_ALLOWED`, `GIT_DENIED`, path checks). |
+| [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo`: the `repo` global (search, read, write, edit, run, git). |
 | [src/transcripts/index.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/index.mjs) | `makeHistory`: the `history` global of the sessions domain. |
 | [test/repl.mjs](https://github.com/temet-ai/ask-kit/blob/main/test/repl.mjs) | The REPL over MCP with no model. |
 
@@ -210,17 +210,15 @@ server: `ASK_KIT_INNER`, `ASK_KIT_DOMAIN`, the domain's `childEnv()`, the `ASK_K
 `ASK_KIT_STATE` overrides, `ASK_KIT_INHERIT` and `ASK_KIT_CALLER` (the warm session's id and the
 asking session) when forking, and `ASK_KIT_SESSION` when the loop picks the id itself.
 
-## What is and is not allowed
+## What the investigator can do
 
-Everything the investigator can do goes through the domain's globals, so "read-only" is a property
-of those globals:
+Everything the investigator can do goes through the domain's globals:
 
-- `code`: `makeRepo` runs `rg` and a fixed list of git subcommands (`GIT_ALLOWED`: `log`, `show`,
-  `blame`, `diff`, `ls-files`, `grep`, `rev-parse`, `status`, `shortlog`, `branch`, `tag`) through
-  `execFile` with no shell, rejects options that write or run programs (`GIT_DENIED`), and checks
-  that every path stays inside the repository (`inside`).
+- `code`: `makeRepo` runs `rg`, any git command and any program through `execFile` with no shell,
+  in the repository, and reads, writes and edits files. Relative paths resolve against the root.
 - `sessions`: `makeHistory` reads transcript files and keeps its own index under the state folder
-  (`src/transcripts/common.mjs` writes it); it never writes to the transcripts.
+  (`src/transcripts/common.mjs` writes it); it never writes to the transcripts, which belong to
+  the agents that wrote them.
 - Scripts and drafts are the exception: `scripts.draft` writes a `.mjs` file to the session's
   drafts folder, and the REPL's own snapshot and journal are written by the server, not the cell.
 

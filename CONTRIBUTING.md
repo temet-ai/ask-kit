@@ -30,8 +30,8 @@ regenerate the notices with `node scripts/notices.mjs > THIRD-PARTY-NOTICES.md`.
   data takes its names from Terry Pratchett's Discworld (`Sam Vimes`, `ankh-morpork/watch`,
   `WATCH-12`). Hosts are `example.com` or `.invalid`.
 - Real transcripts never enter the repository; write a synthetic fixture under `test/fixtures/`.
-- The investigator only reads. A change that gives it a way to write, run a shell command or
-  reach the network other than its model provider needs an issue first.
+- The investigator acts in its domain, not only reads: a domain's globals carry the actions that
+  domain needs. It never writes to another agent's transcript files.
 - A change to what ask-kit stores or sends updates "What it stores and sends" in the README in
   the same commit.
 

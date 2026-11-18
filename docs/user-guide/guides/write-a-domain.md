@@ -2,7 +2,7 @@
 
 This guide builds a small, working domain from nothing: `notes`, which answers questions about a
 folder of markdown notes. You write five files, turn the domain on and ask it a question. The
-steps carry over to any read-only data source: a folder, a database, logs, a service.
+steps carry over to any data source or system: a folder, a database, logs, a service.
 
 [Domains](../domains.md) explains what a domain is and how to share one. This page is the
 hands-on version. The contract a domain module follows is in
@@ -32,14 +32,14 @@ replaces a built-in one of the same name, so pick a new name.
 
 ## 2. Write the client
 
-The client is what the investigator's programs call. Keep it read-only and narrow: a few methods
-that return plain data, and a check that keeps every path inside the folder. Every call reports
-itself through `push`, so the journal shows what the investigator did.
+The client is what the investigator's programs call: methods that return plain data. This one
+only reads; a domain that should act (add a note, tag one) gets methods for that too. Every call
+reports itself through `push`, so the journal shows what the investigator did.
 
 Save as `notes.mjs`:
 
 ```js
-// A read-only client for a folder of markdown notes. Paths stay inside the folder and nothing writes.
+// A client for a folder of markdown notes. Note names resolve against the folder.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -50,7 +50,6 @@ export function makeNotes({ root, push }) {
   const inside = (name) => {
     const full = path.resolve(ROOT, name);
     const rel = path.relative(ROOT, full);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`${name} is outside the notes folder (${ROOT})`);
     return { full, rel: rel.split(path.sep).join("/") };
   };
 
@@ -184,7 +183,7 @@ Save as `instructions.md`:
 ```md
 You are an investigator of a person's markdown notes. Another coding-agent session sends you one
 question about what the person wrote down. You answer it through your REPL, which can list,
-search and read the notes folder, and nothing else. You never change anything.
+search and read the notes folder.
 
 What the notes hold:
 
@@ -270,7 +269,6 @@ Save as `domain.mjs`:
 
 ```js
 // notes: questions about a folder of markdown notes, answered with note names and line numbers.
-// Read-only.
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -304,7 +302,7 @@ export const domain = {
   askDescription:
     "Ask about my markdown notes in plain words and get a short answer with note names and line numbers. " +
     "A cheap model searches and reads the notes outside your context. Good for: what did I write about X, " +
-    "which notes mention Y, what did I decide about Z. Read-only.",
+    "which notes mention Y, what did I decide about Z.",
   serverInstructions:
     "`ask` answers questions about my markdown notes. Call it before a run of searches and reads whose purpose is to answer " +
     "a question about what I wrote down.",

@@ -4,9 +4,10 @@ ask-kit runs on your machine with your rights. It reads the transcripts your cod
 write (which hold prompts, file contents and tool output) and the repository an agent works
 in, and it sends excerpts of them to the model you chose as the investigator. It reads API keys
 from where you told it they are, and runs the code in its domains, including shared domains you
-add. A problem is a security problem when it lets the investigator write files or run commands
-outside its read-only REPL, sends transcripts, code or keys anywhere other than the configured
-model provider, exposes a stored key, or installs a shared domain without showing it first.
+add. The investigator acts in its domain: the code domain edits files, runs programs and uses
+git in the repository it was asked about. A problem is a security problem when it sends
+transcripts, code or keys anywhere other than the configured model provider, writes to another
+agent's transcripts, exposes a stored key, or installs a shared domain without showing it first.
 
 ## Reporting a vulnerability
 

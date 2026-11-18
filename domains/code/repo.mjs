@@ -1,13 +1,9 @@
-// A read-only client for one repository: ripgrep, file reads and a short list of git commands.
-// Commands run with execFile (no shell), paths stay inside the repository, and nothing writes.
+// A client for one repository: ripgrep, file reads and writes, edits, git and any program, run
+// with execFile (no shell) in the repository. Relative paths resolve against the repository root.
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { rgPath } from "../../src/platform.mjs";
-
-const GIT_ALLOWED = new Set(["log", "show", "blame", "diff", "ls-files", "grep", "rev-parse", "status", "shortlog", "branch", "tag"]);
-// Options that would make a read-only git command write, run a program or read outside the repo.
-const GIT_DENIED = /^(--output|--ext-diff|--textconv|-c$|--exec|--upload-pack|--git-dir|--work-tree|-C$|--config|-O|--open-files-in-pager)/;
 
 function exec(cmd, args, { cwd, maxBuffer = 32 << 20, timeoutMs = 60_000 } = {}) {
   // ripgrep: the system's, or the one bundled with ask-kit.
@@ -30,8 +26,7 @@ export function makeRepo({ root, push }) {
   const inside = (p = ".") => {
     const full = path.resolve(ROOT, p);
     const rel = path.relative(ROOT, full);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`${p} is outside the repository (${ROOT})`);
-    return { full, rel: rel || "." };
+    return { full, rel: rel.startsWith("..") || path.isAbsolute(rel) ? full : rel || "." };
   };
   const note = (kind, detail, started, size) => push({ kind, detail, ms: Date.now() - started, size });
 
@@ -100,15 +95,47 @@ export function makeRepo({ root, push }) {
       return { file: rel, from, to, lines: lines.length, text };
     },
 
-    /** A read-only git command: one of log, show, blame, diff, ls-files, grep, rev-parse, status, shortlog, branch, tag. */
+    /** Any git command, run in the repository. Returns stdout; throws on a non-zero exit. */
     async git(sub, ...args) {
       const started = Date.now();
-      if (!GIT_ALLOWED.has(sub)) throw new Error(`git ${sub} is not allowed here; allowed: ${[...GIT_ALLOWED].join(", ")}`);
-      const bad = args.find((a) => GIT_DENIED.test(String(a)));
-      if (bad) throw new Error(`git option ${bad} is not allowed here`);
       const out = await exec("git", ["--no-pager", "-c", "core.pager=cat", sub, ...args.map(String)], { cwd: ROOT });
       note("git", `${sub} ${args.join(" ")}`.slice(0, 200), started, out.length);
       return out;
+    },
+
+    /** Write a whole file, creating its folders. */
+    write(file, text) {
+      const started = Date.now();
+      const { full, rel } = inside(file);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, text);
+      note("write", rel, started, text.length);
+      return { file: rel, bytes: Buffer.byteLength(text) };
+    },
+
+    /** Replace `from` with `to` in a file: exactly one occurrence, or every one with { all: true }. */
+    edit(file, from, to, o = {}) {
+      const started = Date.now();
+      const { full, rel } = inside(file);
+      const text = fs.readFileSync(full, "utf8");
+      const count = text.split(from).length - 1;
+      if (!count) throw new Error(`${rel}: text to replace not found`);
+      if (count > 1 && !o.all) throw new Error(`${rel}: text to replace occurs ${count} times; pass { all: true } or include more context`);
+      fs.writeFileSync(full, o.all ? text.split(from).join(to) : text.replace(from, () => to));
+      note("edit", rel, started, count);
+      return { file: rel, replaced: o.all ? count : 1 };
+    },
+
+    /** Run any program in the repository (no shell). Returns {code, out, err}; never throws on a non-zero exit. */
+    run(cmd, ...args) {
+      const started = Date.now();
+      return new Promise((resolve) => {
+        execFile(cmd, args.map(String), { cwd: ROOT, maxBuffer: 32 << 20, timeout: 120_000, encoding: "utf8" }, (err, stdout, stderr) => {
+          const r = { code: err ? (typeof err.code === "number" ? err.code : 1) : 0, out: stdout ?? "", err: (stderr || (err && !stdout ? err.message : "") || "").slice(0, 4000) };
+          note("run", `${cmd} ${args.join(" ")}`.slice(0, 200), started, r.out.length);
+          resolve(r);
+        });
+      });
     },
   };
 }

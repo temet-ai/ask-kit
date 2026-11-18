@@ -1,6 +1,6 @@
 // code: questions about one repository's code, answered with path:line citations. A cheap model
-// explores (ripgrep, reads, git history, ready-made scripts) outside the calling agent's context.
-// Read-only.
+// explores (ripgrep, reads, git history, ready-made scripts) outside the calling agent's context,
+// and can edit files, run programs and use git when asked to.
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,7 +49,8 @@ export const domain = {
     "Ask a question about this repository's code in plain words and get a short answer with path:line citations. " +
     "A cheap model explores the code outside your context (ripgrep, reads, git history, ready-made scripts), so you pay for one call " +
     "and the answer, not for the searching. Good for: where is X defined or used, is there a setting/flag/env var for Y, how does Z work, " +
-    "what calls this, when and why did this change, which files would a change to W touch. Read-only: it never edits.",
+    "what calls this, when and why did this change, which files would a change to W touch. It can also make a change you ask for " +
+    "(edit files, run a program, commit).",
   serverInstructions:
     "`ask` answers questions about this repository's code. Call it before a run of grep/rg/cat/read calls whose purpose " +
     "is to answer a question (where, how, is there, what calls, why changed); read files yourself when you are about to edit them.",

@@ -90,7 +90,7 @@ Match the request to one of these. Show the user what will change before changin
 ## Rules
 
 - Never print, copy or move an API key. Config holds only references (\`{env}\` or \`{file, var}\`).
-- Investigators are read-only. A domain you write must be too unless the user asks otherwise.
+- An investigator can act in its domain (edit, run, change), not only read. Give a domain you write the actions its domain needs.
 - Prefer a script over a longer instruction: a script is tested by every question that uses it.
 `;
 }

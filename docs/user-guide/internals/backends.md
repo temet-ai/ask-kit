@@ -156,14 +156,15 @@ A CLI investigator must work through the REPL and nothing else. Each kind does t
 
 **codex-cli** (`codexArgs`):
 
-- `-s read-only` and `-C <warm cwd>`, `approval_policy="never"`.
+- `-s danger-full-access` and `-C <warm cwd>`, `approval_policy="never"`: no sandbox, so the
+  domain's actions work.
 - `--ignore-user-config --ignore-rules`, unless the backend has `isolate: false`: the user's own
   `config.toml` would otherwise add their MCP servers and instructions. Authentication is in
   `auth.json` and is kept.
 - The `repl` server is defined with `-c mcp_servers.repl.*` (command, args, environment),
   `tool_timeout_sec=180` and `default_tools_approval_mode="approve"`.
-- The prompt tells it to use only the `repl` tool. Nothing stops Codex using its shell inside the
-  read-only sandbox; the sandbox is what limits it.
+- The prompt tells it to use only the `repl` tool, so its calls are journaled; nothing else
+  stops Codex using its own shell.
 - Forks and resumes drop `-s` and `-C` from the arguments (the filter in `askCodex`). The code
   does not say why; the likely reason is that `exec fork` and `exec resume` do not accept them.
 

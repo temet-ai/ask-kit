@@ -187,9 +187,8 @@ the largest change, and it needs the CLI to support all of the following:
 
 - a non-interactive mode that prints a result,
 - an MCP server given on the command line or in a throwaway config,
-- a way to turn off its own tools, so the investigator works through the REPL only (the
-  investigator is read-only: see
-  [CONTRIBUTING](https://github.com/temet-ai/ask-kit/blob/main/CONTRIBUTING.md)),
+- a way to turn off its own tools, so the investigator works through the REPL only, where every
+  call is journaled,
 - ideally a way to fork or resume a session, so the instructions are loaded once.
 
 The three that exist are `askClaude`, `askCodex` and `askCopilot` in

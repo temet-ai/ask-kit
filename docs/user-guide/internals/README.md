@@ -78,7 +78,7 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 | File | What it holds |
 |---|---|
 | [domains/code/domain.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/domain.mjs) | The `code` domain: repository root, `repo` global, the words of its `ask` tool. |
-| [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo`: the read-only `repo` client (ripgrep, file reads, an allow-list of git commands). |
+| [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo`: the `repo` client (ripgrep, file reads, writes and edits, any program, git). |
 | [domains/code/lib.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/lib.mjs) | `NOISE`, `spellings`, `escape`, `definitionPattern`: shared by the code scripts. |
 | [domains/code/api.d.ts](https://github.com/temet-ai/ask-kit/blob/main/domains/code/api.d.ts) | The typed API the investigator reads for `code`. |
 | [domains/code/instructions.md](https://github.com/temet-ai/ask-kit/blob/main/domains/code/instructions.md) | The investigator's system prompt for `code`. |
@@ -154,7 +154,7 @@ instructions an agent reads), `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `READ
 3. [ask-lifecycle.md](ask-lifecycle.md): one question from the router to the answer, through
    `src/ask.mjs`.
 4. [repl.md](repl.md): `src/server.mjs`, `src/core/rewrite.mjs` and `src/core/toolkit.mjs`.
-5. [domains.md](domains.md): the domain contract, then `domains/code` (small and read-only) as a
+5. [domains.md](domains.md): the domain contract, then `domains/code` (small) as a
    worked example.
 6. [transcripts.md](transcripts.md): the adapters, if you work on the `sessions` domain.
 7. [backends.md](backends.md): the four backend kinds and `src/providers.mjs`.

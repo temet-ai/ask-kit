@@ -24,10 +24,10 @@ network). Only when the user agrees: `ask-kit add <repo> --yes`. Then
 
 ## Write one
 
-1. Copy the shape of `domains/code` (read-only access to one repository) from the ask-kit
-   install named in the guide. Globals should be **read-only** and narrow: a client for the
-   thing, with methods that return plain data, and every call reported through `push()` so the
-   journal shows it.
+1. Copy the shape of `domains/code` (a client for one repository: search, read, edit, run, git)
+   from the ask-kit install named in the guide. Globals are a client for the thing, with methods
+   that read it and methods that act on it, returning plain data, and every call reported through
+   `push()` so the journal shows it.
 2. `api.d.ts`: every global and method with its parameters and what it returns. The investigator
    writes code from this file alone, so make it exact.
 3. `instructions.md`: what the data holds, how to search it narrowly, what counts as evidence and

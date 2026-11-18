@@ -11,8 +11,14 @@ declare const repo: {
   files(glob?: string, o?: { path?: string; hidden?: boolean; max?: number }): Promise<string[] & { total: number; complete: boolean }>;
   // Lines from..to (1-based, inclusive, at most 400), numbered "N\tline". `lines` is the file's length.
   read(file: string, o?: { from?: number; to?: number }): { file: string; from: number; to: number; lines: number; text: string };
-  // Read-only git: log, show, blame, diff, ls-files, grep, rev-parse, status, shortlog, branch, tag. Returns stdout.
+  // Any git command, run in the repository. Returns stdout; throws on a non-zero exit.
   git(sub: string, ...args: string[]): Promise<string>;
+  // Write a whole file (folders are created).
+  write(file: string, text: string): { file: string; bytes: number };
+  // Replace `from` with `to`: exactly one occurrence, or all of them with { all: true }. Throws when not found.
+  edit(file: string, from: string, to: string, o?: { all?: boolean }): { file: string; replaced: number };
+  // Run any program in the repository (no shell: pass each argument separately). Never throws on a non-zero exit.
+  run(cmd: string, ...args: string[]): Promise<{ code: number; out: string; err: string }>;
 };
 
 declare const scripts: {

@@ -31,7 +31,7 @@ export const domain = {
   askDescription:
     "Ask about past work in your coding-agent sessions, in plain words, and get a short answer with evidence (source, session id, event number). " +
     "A cheap investigator reads the transcripts outside your context: what was discussed, decided, tried or built, why and in which session; " +
-    "what a session did, ran, changed or failed at; which sessions worked on something. Read-only.",
+    "what a session did, ran, changed or failed at; which sessions worked on something.",
   serverInstructions:
     "`ask` answers questions about past work from your coding agents' own transcripts. Call it first, before git log or memory, " +
     "when the answer lies in what an earlier session did, said or decided. It is a conversation: continue: true asks the same investigator a follow-up.",
