@@ -1,15 +1,20 @@
 # ask-kit
 
-ask-kit gives your coding agent one tool, `ask`. The agent asks a question in plain words, a
-cheap model does the digging outside the agent's context, and a short answer comes back with the
-session, turn or `path:line` it rests on.
+ask-kit puts a cheap investigator behind one tool, `ask`, in front of anything your coding agent
+would otherwise dig through itself. The agent asks a question in plain words, the investigator
+does the digging outside the agent's context, and a short answer comes back with the evidence it
+rests on.
 
-It answers about two things:
+Each thing it answers about is a **domain**: a typed API over that thing, instructions on how to
+investigate and cite, and scripts for the common questions. A router sends each question to the
+right one. ask-kit comes with two:
 
 - **sessions**: your past work, read from the transcripts your agents already write. Claude
   Code, Codex, GitHub Copilot CLI, Gemini CLI and opencode are read; nothing records anything
   new, and there is no server or database.
-- **code**: the repository the agent is working in.
+- **code**: the repository the agent is working in, with `path:line` citations.
+
+You can [add, write and share](domains.md) more: a database, a service, a docs folder, logs.
 
 An answer looks like this (an illustration of its shape):
 
@@ -39,6 +44,7 @@ everything it read on the way.
 - [Choose the model that digs](models.md): an API key, a subscription you already pay for, or a
   local model.
 - [How it works](how-it-works.md): the REPL, the scripts, warm sessions and the journal.
+- [Domains](domains.md): teach `ask` about something new, or add one someone shared.
 
 ## Status
 
