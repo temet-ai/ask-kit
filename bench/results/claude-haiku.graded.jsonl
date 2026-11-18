@@ -1,0 +1,21 @@
+{"hash":"f26d596907a5","id":"s03-quickshell-crash","backend":"claude-haiku","run":1,"verdict":"correct","reason":"ODock running-apps list culprit; running-apps section turned off, pinned kept."}
+{"hash":"54cd01c660f9","id":"s03f-pinned-items","backend":"claude-haiku","run":1,"verdict":"correct","reason":"10 pinned items."}
+{"hash":"621c3cccb13a","id":"s04-mac-keyboard","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Karabiner restored and Keychron Windows mode stated."}
+{"hash":"a13816fe13fd","id":"s09-herdr-vs-orca","backend":"claude-haiku","run":1,"verdict":"correct","reason":"No shared foundation; Herdr Rust+GPUI, Orca Electron/TypeScript."}
+{"hash":"b1dd92c4e34a","id":"s10-herdr-sounds","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Gives D4 finished, C4→E4 needs-you, and quiet-toast mod."}
+{"hash":"c426581a064b","id":"k01-loop-limits","backend":"claude-haiku","run":1,"verdict":"correct","reason":"20 steps, 60 s, 15 s reserve, closing tool-free call and partial marking all present."}
+{"hash":"28a2f7f67d24","id":"k02-claude-fork","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Warm once, resume fork-session per question, re-warm on fingerprint change."}
+{"hash":"a2a061bb860a","id":"k03-router","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Order about, follow-up, model call, keyword rules/first enabled domain all present."}
+{"hash":"8426f8677791","id":"k04-env-strip","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Lists all variables and the reason about REPL state."}
+{"hash":"a08f543eeb18","id":"h05-karabiner","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Codex, session 01a1e59b, Windows mode."}
+{"hash":"c04ebe5ee726","id":"h06-herdr-editor","backend":"claude-haiku","run":1,"verdict":"wrong","reason":"Says no session framed Herdr as a code editor, contradicting reference; cites 18496e3e but denies editor discussion and omits the Editor element/gpui-kit finding, though 18496e3e's viewer/lens does partly match."}
+{"hash":"fff8b2b53a5d","id":"n01-hypr-pairs","backend":"claude-haiku","run":1,"verdict":"correct","reason":"pairs.lua, loaded last by hyprland.lua so hyprmoncfg can't override keys."}
+{"hash":"cac8bbecccd2","id":"n02-herdr-icon","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Omarchy logo in lavender, PNG at the specified path."}
+{"hash":"44938ea70eaa","id":"n02f-herdr-mods-css","backend":"claude-haiku","run":1,"verdict":"correct","reason":"No CSS; JavaScript with GPUI."}
+{"hash":"f7438d8dc357","id":"n03-tab-label","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Label 'tab 3' with correct cause matching eb909958."}
+{"hash":"fd5efce983dc","id":"n04-dock-clocks","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Transparent bar, two clocks, solid top bar with one clock plus ODock bottom dock."}
+{"hash":"c39f60ff2202","id":"n05-agent-crashed-shell","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Names the 2 Nov ODock dock edits crash and says the agent stopped and checked crashes; also later fix."}
+{"hash":"29eeeaa5670a","id":"o01-sync-commands","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Lists all subcommands, push asks with --yes skipping, and patch is git diff of the plugin checkout path."}
+{"hash":"c805f06b67e2","id":"o02-sync-excludes","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Lists all EXCLUDES patterns, covering backup/error/reset/old/corrupt files and gpui-kit.d.ts, jsconfig.json, __pycache__, and notes they are backups and regenerated files."}
+{"hash":"02343cc39a29","id":"o03-sync-map","backend":"claude-haiku","run":1,"verdict":"correct","reason":"States map lines in manifest.txt, longest prefix wins, and trailing / means folder prefix match while others match exactly."}
+{"hash":"b40b72d72fe2","id":"o04-pairs-load-order","backend":"claude-haiku","run":1,"verdict":"correct","reason":"Identifies the actual order (generated file loaded last, after pairs, contradicting the comment), the reason (rebinding of SUPER+number/TAB/scroll to one-monitor versions), and monitor:set_workspace without touching focus."}

@@ -1,0 +1,13 @@
+{"hash":"993df2ae5b45","id":"s03-quickshell-crash","backend":"codex","run":1,"verdict":"correct","reason":"ODock running-apps list culprit; showRunning set false."}
+{"hash":"dc26e1f2824d","id":"s03f-pinned-items","backend":"codex","run":1,"verdict":"correct","reason":"10 pinned items."}
+{"hash":"64319971a4b9","id":"s04-mac-keyboard","backend":"codex","run":1,"verdict":"correct","reason":"Karabiner restored and Windows mode kept."}
+{"hash":"c5b20165c079","id":"s09-herdr-vs-orca","backend":"codex","run":1,"verdict":"correct","reason":"Different stacks; Herdr Rust/GPUI, Orca Electron/TypeScript."}
+{"hash":"e2772f478ca3","id":"s10-herdr-sounds","backend":"codex","run":1,"verdict":"partial","reason":"Sounds D4 and C4→E4 correct, but the toast is described as closing immediately rather than the quiet-toast mod (arguably similar but not named)."}
+{"hash":"8c75820496d1","id":"h05-karabiner","backend":"codex","run":1,"verdict":"correct","reason":"Codex, session 01a1e59b, Windows mode."}
+{"hash":"8b37f3fe1a3f","id":"h06-herdr-editor","backend":"codex","run":1,"verdict":"correct","reason":"Names real session 8114aa7f and correctly states what existed (Files/Changes panels, built-in code viewer with highlighting, folding, herdr-nvim)."}
+{"hash":"3b71e74bda44","id":"n01-hypr-pairs","backend":"codex","run":1,"verdict":"correct","reason":"The answer says the pair code moved to pairs.lua, which hyprland.lua loads last, so it overrides the hyprmoncfg bindings."}
+{"hash":"d1ea39dfe371","id":"n02-herdr-icon","backend":"codex","run":1,"verdict":"correct","reason":"The answer gives the lavender Omarchy logo as a 64px PNG at the expected path."}
+{"hash":"0034b690d9d4","id":"n02f-herdr-mods-css","backend":"codex","run":1,"verdict":"correct","reason":"The answer says Herdr mods are JavaScript that builds the UI with GPUI and that there is no CSS."}
+{"hash":"f0a3c7e75d79","id":"n03-tab-label","backend":"codex","run":1,"verdict":"correct","reason":"Answer gives \"Claude Code\" with the matching cause (terminal title stayed default because first prompt delivered as mail, no task title), session ce5d4814."}
+{"hash":"e04ca18ebcf7","id":"n04-dock-clocks","backend":"codex","run":1,"verdict":"correct","reason":"The answer names the transparent bar, the two clocks (Omarchy's and OmaDash's), and the solid top bar with the ODock bottom dock; its OmaClock mention is a minor wobble."}
+{"hash":"0daa5277d7b9","id":"n05-agent-crashed-shell","backend":"codex","run":1,"verdict":"correct","reason":"Names the 2 Nov Codex dock (ODock) crashes five times and says it stopped and inspected crash reports read-only, matching option (a)."}

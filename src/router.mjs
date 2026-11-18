@@ -1,0 +1,155 @@
+// One `ask` for every enabled domain. A small router picks which investigator answers and
+// forwards the call to that domain's own server (src/server.mjs with ASK_KIT_DOMAIN), started on
+// first use and kept for the session. Each domain keeps its own warm session, scripts, journal and
+// follow-ups; the router only chooses and remembers the last choice, so `continue: true` goes back
+// to the same investigator.
+//
+// Routing: the caller's `about` when given; a follow-up goes where the last question went; else one
+// call to config.router.backend (an `api` backend: a word back) when there is one; else keyword rules.
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { z } from "zod";
+import fs from "node:fs";
+import path from "node:path";
+import { ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
+import { loadDomain } from "./domains.mjs";
+import { API_PRESETS } from "./providers.mjs";
+
+const SERVER = path.join(ROOT, "src", "server.mjs");
+
+// Fallback only: the first domain whose words appear, else the first enabled domain.
+const RULES = [
+  ["sessions", /\b(sessions?|we (did|tried|built|said|decided)|discussed|decided|yesterday|last (week|night|time)|earlier|did (i|we|you)|when did|which session|transcripts?)\b/i],
+  ["code", /`[^`]+`|\b[\w-]+\/[\w./-]+\.\w+\b|\b(where is|defined|definition|function|struct|module|class|env var|flag|toggle|constant|calls?|implement\w*|in (this|the) (repo|code))\b/i],
+];
+
+export async function makeRouter(config) {
+  const enabled = Object.entries(config.domains ?? {}).filter(([, d]) => d.enabled !== false).map(([n]) => n);
+  if (!enabled.length) throw new Error("no domains enabled in config");
+  const DOMAINS = {};
+  for (const n of enabled) DOMAINS[n] = await loadDomain(n);
+  const byRules = (q) => RULES.find(([n, re]) => DOMAINS[n] && re.test(q))?.[0] ?? enabled[0];
+
+  const routerBe = config.router?.backend ? config.backends?.list?.[config.router.backend] : null;
+  async function byModel(q) {
+    if (!routerBe || routerBe.kind !== "api") throw new Error("no router model");
+    const preset = API_PRESETS[routerBe.preset] ?? {};
+    const base = (routerBe.baseUrl ?? preset.baseUrl).replace(/\/+$/, "");
+    const key = resolveKey(routerBe.key) ?? (preset.keyEnv ? process.env[preset.keyEnv] : null);
+    const system =
+      `Route a question from a coding agent (working in ${process.cwd()}) to the one investigator that can answer it. Reply with one word: ${enabled.join(", ")}.\n` +
+      enabled.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
+      (DOMAINS.sessions && DOMAINS.code ? "\nPast work (what a session did or why) is sessions even when it is about code; the code as it is now is code." : "");
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+      body: JSON.stringify({ model: config.router.model ?? routerBe.model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: system }, { role: "user", content: q.slice(0, 2000) }] }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`router model: HTTP ${res.status}`);
+    const j = await res.json();
+    const word = (j.choices?.[0]?.message?.content ?? "").toLowerCase().match(/[a-z]+/)?.[0];
+    if (!enabled.includes(word)) throw new Error(`router model said "${word}"`);
+    return word;
+  }
+  return { enabled, DOMAINS, byRules, byModel };
+}
+
+export async function serveRouter() {
+  const config = loadConfig();
+  const { enabled, DOMAINS, byRules, byModel } = await makeRouter(config);
+  const SESSION = callerSession();
+  const children = new Map();
+  const child = (name) => {
+    if (children.has(name)) return children.get(name);
+    const env = { ...process.env, ASK_KIT_DOMAIN: name };
+    const c = new Client({ name: "ask-kit-router", version: "0" });
+    const p = c.connect(new StdioClientTransport({ command: process.execPath, args: [SERVER], env, cwd: process.cwd(), stderr: "ignore" })).then(() => c);
+    children.set(name, p);
+    p.catch(() => children.delete(name));
+    return p;
+  };
+  const journal = (row) => {
+    try {
+      fs.mkdirSync(path.join(STATE_ROOT, "router"), { recursive: true, mode: 0o700 });
+      fs.appendFileSync(path.join(STATE_ROOT, "router", `${slug(SESSION)}.jsonl`), JSON.stringify({ at: new Date().toISOString(), ...row }) + "\n");
+    } catch {}
+  };
+  // The domain that answered this caller last, kept on disk: a follow-up from a new process (the
+  // shell, a restarted agent) must still reach the same investigator.
+  const lastFile = path.join(STATE_ROOT, "router", `last-${slug(SESSION)}.json`);
+  let last = (() => {
+    try {
+      return JSON.parse(fs.readFileSync(lastFile, "utf8")).domain ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const remember = (name) => {
+    last = name;
+    try {
+      fs.mkdirSync(path.dirname(lastFile), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(lastFile, JSON.stringify({ domain: name, at: new Date().toISOString() }));
+    } catch {}
+  };
+
+  const server = new McpServer(
+    { name: "ask", version: "0.1.0" },
+    {
+      instructions:
+        `One \`ask\` for questions whose answer you would otherwise dig for: ${enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ")}. ` +
+        "Call it before a run of searches, reads or lookups whose purpose is to answer a question; read files yourself when you are about to edit them. " +
+        "It is a conversation: continue: true sends a follow-up to the investigator that answered last, which keeps what it found.",
+    },
+  );
+  server.registerTool(
+    "ask",
+    {
+      description:
+        "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
+        "so you pay for one call and the answer. It goes to one of: " +
+        enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
+        ". Pass `about` to choose yourself. For a follow-up, pass continue: true.",
+      inputSchema: {
+        question: z.string().describe("The question or request, with any ids, names or dates you already know"),
+        about: z.enum(enabled).optional().describe("Which investigator; left out, the router chooses"),
+        continue: z.boolean().optional().describe("Send this to the investigator that answered your last question"),
+        backend: z.string().optional().describe("The investigator's model: a backend name from ask-kit's config"),
+        timeoutSeconds: z.number().int().min(30).max(900).optional(),
+      },
+    },
+    async ({ question, about, continue: cont = false, backend, timeoutSeconds }, extra) => {
+      const t0 = Date.now();
+      let name = about;
+      let how = "caller";
+      let err;
+      if (!name && cont && last) (name = last), (how = "follow-up");
+      if (!name && enabled.length === 1) (name = enabled[0]), (how = "only");
+      if (!name) {
+        try {
+          name = await byModel(question);
+          how = "model";
+        } catch (e) {
+          name = byRules(question);
+          how = "rules";
+          err = String(e.message ?? e).slice(0, 160);
+        }
+      }
+      const args = { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(cont && name === last ? { continue: true } : {}) };
+      journal({ question: question.slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(err ? { routeError: err } : {}) });
+      remember(name);
+      try {
+        const c = await child(name);
+        const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal });
+        const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
+        return { ...out, content: [{ type: "text", text: `${text}${how === "caller" || how === "only" ? "" : `\n[routed to ${name} by ${how}]`}` }] };
+      } catch (e) {
+        return { content: [{ type: "text", text: `ask failed (${name}): ${e.message ?? e}` }], isError: true };
+      }
+    },
+  );
+  for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(0));
+  await server.connect(new StdioServerTransport());
+}

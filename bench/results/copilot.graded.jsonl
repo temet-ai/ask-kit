@@ -1,0 +1,13 @@
+{"hash":"825b99b53eaf","id":"s03-quickshell-crash","backend":"copilot","run":1,"verdict":"correct","reason":"ODock running-apps list culprit; showRunning turned off."}
+{"hash":"68ec4fb17c84","id":"s03f-pinned-items","backend":"copilot","run":1,"verdict":"correct","reason":"10 pinned items."}
+{"hash":"4d8024f7c7a5","id":"s04-mac-keyboard","backend":"copilot","run":1,"verdict":"correct","reason":"Karabiner re-launched/new profile and Keychron Windows mode both stated."}
+{"hash":"96610d57e5f3","id":"s09-herdr-vs-orca","backend":"copilot","run":1,"verdict":"correct","reason":"No shared foundations; Herdr Rust/GPUI, Orca Electron/TypeScript."}
+{"hash":"c364651a1ecc","id":"s10-herdr-sounds","backend":"copilot","run":1,"verdict":"correct","reason":"Gives D4 finished, C4→E4 needs-you, and quiet-toast mod."}
+{"hash":"e5320f07dc9f","id":"h05-karabiner","backend":"copilot","run":1,"verdict":"correct","reason":"Codex session 01a1e59b, Windows mode."}
+{"hash":"31d4ab251533","id":"h06-herdr-editor","backend":"copilot","run":1,"verdict":"correct","reason":"Names sessions 8114aa7f and da3cef56 with correct existing features (Editor/EditorState, file saving, Files/Changes panels, mods)."}
+{"hash":"de406829bd58","id":"n01-hypr-pairs","backend":"copilot","run":1,"verdict":"correct","reason":"States move to pairs.lua loaded last so hyprmoncfg can't override the keys."}
+{"hash":"8eaf2f760e0d","id":"n02-herdr-icon","backend":"copilot","run":1,"verdict":"correct","reason":"Omarchy logo in lavender, 64px PNG at the required path."}
+{"hash":"bd64b9409cfa","id":"n02f-herdr-mods-css","backend":"copilot","run":1,"verdict":"correct","reason":"No CSS; JavaScript building UI with GPUI."}
+{"hash":"763e230278c7","id":"n03-tab-label","backend":"copilot","run":1,"verdict":"correct","reason":"Gives 'tab 3' with the named-tab cause, matching fix (a)."}
+{"hash":"b59b3b477695","id":"n04-dock-clocks","backend":"copilot","run":1,"verdict":"correct","reason":"Covers transparent bar, two clocks (omarchy clock and OmaDash), and ODock bottom dock with a solid bar; later consolidation is extra detail."}
+{"hash":"8c21cc099293","id":"n05-agent-crashed-shell","backend":"copilot","run":1,"verdict":"wrong","reason":"The answer only says it is searching and gives no occasion or resolution."}

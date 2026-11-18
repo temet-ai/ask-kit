@@ -1,0 +1,564 @@
+// `ask`: hand a question to an investigator that runs inside this tool and get back the answer.
+//
+// The calling agent pays for one tool call and the answer's text. The investigator works from a
+// fixed prefix (instructions, scripts, typed API) built once and reused, so each question pays
+// only for its own work. Which model does it is config (`ask-kit setup`); four kinds:
+//
+//   claude-cli   `claude -p` warmed once, then `--resume <warm> --fork-session` per question
+//   codex-cli    `codex exec` warmed once, then `codex exec fork <warm>` per question
+//   copilot-cli  `copilot -p` per question, instructions in the prompt (Copilot cannot fork)
+//   api          any OpenAI-compatible chat API: ask-kit runs the loop, the model calls a `repl`
+//                tool (or writes ```js cells), and the provider's prompt cache serves the prefix
+//
+// The prefix is fingerprinted (instructions, scripts, API, server code, backend); a change re-warms
+// on the next question, so tuning is a file edit. A follow-up (continue: true) goes back to the
+// same investigator, whose REPL variables are restored.
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { ROOT, resolveKey } from "./config.mjs";
+import { API_PRESETS } from "./providers.mjs";
+import { runCli } from "./platform.mjs";
+import { ollamaChat, OLLAMA_DEFAULT_CTX } from "./ollama.mjs";
+
+// Held back from the client's tool timeout for the closing "what I found" call.
+const RESERVE_MS = 15_000;
+const CELL_MAX_S = 60;
+const MAX_STEPS = 20;
+const SERVER = path.join(ROOT, "src", "server.mjs");
+// Claude Code's own tools, which the investigator must not use: it works through the REPL only.
+const CLAUDE_DENY = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "Task", "Skill", "TodoWrite"];
+
+function sha(files, extra) {
+  const h = crypto.createHash("sha256");
+  for (const f of files) {
+    h.update(f);
+    try {
+      h.update(fs.readFileSync(f));
+    } catch {}
+  }
+  h.update(extra);
+  return h.digest("hex").slice(0, 16);
+}
+
+// Agent CLIs run through platform.mjs, which also starts Windows .cmd shims.
+const run = runCli;
+
+const jsonLines = (text) =>
+  text
+    .split("\n")
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+export function registerAsk(server, ctx) {
+  const { z, config, domain: D, domainName, STATE_DIR, SESSION } = ctx;
+  const BACKENDS = config.backends?.list ?? {};
+  const NAMES = Object.keys(BACKENDS);
+  if (!NAMES.length) throw new Error("no backends in config: run `ask-kit setup`");
+  const domainCfg = config.domains?.[domainName] ?? {};
+  const DEFAULT = [domainCfg.backend, D.defaultBackend, config.backends.default, NAMES[0]].find((b) => b && BACKENDS[b]);
+  const rulesFor = () => D.answerRules;
+  const WARM_DIR = path.join(STATE_DIR, "warm");
+  const WARM_CWD = path.join(WARM_DIR, "cwd");
+  fs.mkdirSync(WARM_CWD, { recursive: true, mode: 0o700 });
+  const INSTRUCTIONS = D.instructions;
+  const fingerprint = (b) => sha([INSTRUCTIONS, ...ctx.fingerprintFiles()], JSON.stringify(BACKENDS[b]));
+
+  // Child processes never get this session's id, which would make them write into its REPL state.
+  const childEnv = (extra = {}) => {
+    const env = { ...process.env, ASK_KIT_DOMAIN: domainName, ...(D.childEnv?.() ?? {}) };
+    for (const k of ["ASK_KIT_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "COPILOT_SESSION_ID", "ASK_KIT_INNER", "ASK_KIT_CALLER", "ASK_KIT_INHERIT"]) delete env[k];
+    return { ...env, ...extra };
+  };
+  // The REPL server's environment for an investigator: inner mode, acting for `caller`, starting
+  // from `inherit`'s variables. The warm session belongs to no caller, so it holds nothing of one.
+  const replEnv = (inherit, ownId) => ({
+    ASK_KIT_INNER: "1",
+    ASK_KIT_DOMAIN: domainName,
+    ...(D.childEnv?.() ?? {}),
+    ...(process.env.ASK_KIT_CONFIG ? { ASK_KIT_CONFIG: process.env.ASK_KIT_CONFIG } : {}),
+    ...(process.env.ASK_KIT_STATE ? { ASK_KIT_STATE: process.env.ASK_KIT_STATE } : {}),
+    ...(inherit ? { ASK_KIT_INHERIT: inherit, ASK_KIT_CALLER: SESSION } : {}),
+    ...(ownId ? { ASK_KIT_SESSION: ownId } : {}),
+  });
+
+  // The last investigator each backend ran for this calling session, so a follow-up can continue it.
+  const lastFile = path.join(WARM_DIR, `last-${SESSION.replace(/[^A-Za-z0-9._-]/g, "-")}.json`);
+  const readLast = () => {
+    try {
+      return JSON.parse(fs.readFileSync(lastFile, "utf8"));
+    } catch {
+      return {};
+    }
+  };
+  const writeLast = (b, value) => fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
+
+  const warmFile = (b) => path.join(WARM_DIR, `${b}.json`);
+  const readWarm = (b, fp) => {
+    try {
+      const s = JSON.parse(fs.readFileSync(warmFile(b), "utf8"));
+      if (s.fingerprint === fp && s.sessionId) return { ...s, reused: true };
+    } catch {}
+    return null;
+  };
+  const saveWarm = (b, s) => fs.writeFileSync(warmFile(b), JSON.stringify(s), { mode: 0o600 });
+
+  // ---- claude-cli ----
+
+  function claudeMcpFile(inherit) {
+    // One file per call: a shared one could be rewritten by another session's ask in between.
+    const file = path.join(WARM_DIR, `mcp-${process.pid}-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { repl: { type: "stdio", command: process.execPath, args: [SERVER], env: replEnv(inherit) } } }), { mode: 0o600 });
+    return file;
+  }
+  const claudeArgs = (be, mcpFile) => [
+    "--output-format", "json",
+    ...(be.model ? ["--model", be.model] : []),
+    "--strict-mcp-config", "--mcp-config", mcpFile,
+    "--append-system-prompt-file", INSTRUCTIONS,
+    "--permission-mode", "bypassPermissions",
+    "--disallowedTools", ...CLAUDE_DENY,
+  ];
+  async function claudeCall(be, args, timeoutMs, signal) {
+    const r = await run(be.bin ?? "claude", args, { cwd: WARM_CWD, env: childEnv(), timeoutMs, signal });
+    try {
+      return JSON.parse(r.out);
+    } catch {
+      throw new Error(`claude exited ${r.code}: ${(r.err || r.out).slice(0, 500)}`);
+    }
+  }
+
+  async function askClaude(b, question, timeoutMs, cont, signal) {
+    const be = BACKENDS[b];
+    const fp = fingerprint(b);
+    let warm = readWarm(b, fp);
+    if (!warm) {
+      const started = Date.now();
+      const cfg = claudeMcpFile(null);
+      const j = await claudeCall(be, ["-p", D.prime, ...claudeArgs(be, cfg)], 300_000, signal).finally(() => fs.rmSync(cfg, { force: true }));
+      if (j.is_error) throw new Error(`warming failed: ${String(j.result).slice(0, 300)}`);
+      // A fork's total_cost_usd includes the warm session's, so it is kept to subtract.
+      warm = { fingerprint: fp, sessionId: j.session_id, warmCostUsd: j.total_cost_usd ?? 0, warmMs: Date.now() - started, reused: false };
+      saveWarm(b, warm);
+    }
+    const prev = cont ? readLast()[b] : null;
+    if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const started = Date.now();
+    const target = prev ? ["--resume", prev.innerSession] : ["--resume", warm.sessionId, "--fork-session"];
+    const cfg = claudeMcpFile(warm.sessionId);
+    const j = await claudeCall(be, ["-p", question + rulesFor(), ...target, ...claudeArgs(be, cfg)], timeoutMs, signal).finally(() => fs.rmSync(cfg, { force: true }));
+    const u = j.usage ?? {};
+    const before = prev ? prev.reportedTotalUsd ?? 0 : warm.warmCostUsd ?? 0;
+    if (!j.is_error) writeLast(b, { innerSession: j.session_id, reportedTotalUsd: j.total_cost_usd ?? 0 });
+    return {
+      answer: String(j.result ?? ""),
+      ok: !j.is_error,
+      model: be.model,
+      continued: !!prev,
+      warm: { reused: warm.reused, warmCostUsd: warm.reused ? 0 : warm.warmCostUsd },
+      turns: j.num_turns,
+      ms: Date.now() - started,
+      costUsd: j.total_cost_usd != null ? Math.max(0, Math.round((j.total_cost_usd - before) * 1e6) / 1e6) : null,
+      usage: { input: u.input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, output: u.output_tokens ?? 0 },
+    };
+  }
+
+  // ---- codex-cli ----
+
+  const tomlString = (s) => JSON.stringify(String(s));
+  function codexArgs(be, inherit) {
+    const env = replEnv(inherit);
+    const envToml = `{${Object.entries(env).map(([k, v]) => `${k}=${tomlString(v)}`).join(",")}}`;
+    return [
+      "--json",
+      "--skip-git-repo-check",
+      "-s", "read-only",
+      "-C", WARM_CWD,
+      ...(be.model ? ["-m", be.model] : []),
+      // The user's own config.toml would add their MCP servers and instructions; the investigator
+      // gets only its REPL. Auth lives in auth.json, which this keeps.
+      ...(be.isolate === false ? [] : ["--ignore-user-config", "--ignore-rules"]),
+      "-c", 'approval_policy="never"',
+      "-c", `mcp_servers.repl.command=${tomlString(process.execPath)}`,
+      "-c", `mcp_servers.repl.args=[${tomlString(SERVER)}]`,
+      "-c", `mcp_servers.repl.env=${envToml}`,
+      "-c", "mcp_servers.repl.tool_timeout_sec=180",
+      "-c", "mcp_servers.repl.default_tools_approval_mode=\"approve\"",
+    ];
+  }
+  function codexResult(r) {
+    const ev = jsonLines(r.out);
+    const thread = ev.find((e) => e.type === "thread.started")?.thread_id;
+    const msgs = ev.filter((e) => e.type === "item.completed" && e.item?.type === "agent_message").map((e) => e.item.text);
+    const failed = ev.find((e) => e.type === "turn.failed" || e.type === "error");
+    const usage = ev.filter((e) => e.type === "turn.completed").map((e) => e.usage ?? {}).pop() ?? {};
+    const cells = ev.filter((e) => e.type === "item.completed" && e.item?.type === "mcp_tool_call").length;
+    if (!thread && !msgs.length) throw new Error(`codex exited ${r.code}: ${(r.err || r.out).slice(-600)}`);
+    return { thread, answer: msgs.pop() ?? "", error: failed ? JSON.stringify(failed).slice(0, 300) : null, usage, cells };
+  }
+
+  async function askCodex(b, question, timeoutMs, cont, signal) {
+    const be = BACKENDS[b];
+    const bin = be.bin ?? "codex";
+    const fp = fingerprint(b);
+    let warm = readWarm(b, fp);
+    if (!warm) {
+      const started = Date.now();
+      const prompt = `${fs.readFileSync(INSTRUCTIONS, "utf8")}\n\n${D.codexNote ?? ""}Work only through the \`repl\` MCP tool (and its \`help\`); do not run shell commands or read files yourself.\n\n${D.prime}`;
+      const r = codexResult(await run(bin, ["exec", ...codexArgs(be, null), prompt], { cwd: WARM_CWD, env: childEnv(), timeoutMs: 300_000, signal }));
+      if (!r.thread) throw new Error(`warming failed: ${r.error ?? r.answer}`);
+      warm = { fingerprint: fp, sessionId: r.thread, warmMs: Date.now() - started, reused: false };
+      saveWarm(b, warm);
+    }
+    const prev = cont ? readLast()[b] : null;
+    if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const started = Date.now();
+    const args = prev
+      ? ["exec", "resume", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), prev.innerSession, question + rulesFor()]
+      : ["exec", "fork", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), warm.sessionId, question + rulesFor()];
+    const r = codexResult(await run(bin, args, { cwd: WARM_CWD, env: childEnv(), timeoutMs, signal }));
+    if (r.thread) writeLast(b, { innerSession: r.thread });
+    else if (prev) writeLast(b, prev);
+    return {
+      answer: r.answer || (r.error ? `codex failed: ${r.error}` : ""),
+      ok: !!r.answer,
+      model: be.model || "codex default",
+      continued: !!prev,
+      warm: { reused: warm.reused },
+      cells: r.cells,
+      ms: Date.now() - started,
+      costUsd: null,
+      usage: { input: r.usage.input_tokens ?? 0, cacheRead: r.usage.cached_input_tokens ?? 0, output: r.usage.output_tokens ?? 0 },
+    };
+  }
+
+  // ---- copilot-cli ----
+
+  async function askCopilot(b, question, timeoutMs, cont, signal) {
+    const be = BACKENDS[b];
+    const prev = cont ? readLast()[b] : null;
+    if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const askId = prev?.askId ?? crypto.randomUUID();
+    const cfg = path.join(WARM_DIR, `copilot-mcp-${process.pid}-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { repl: { type: "local", command: process.execPath, args: [SERVER], env: replEnv(null, `ask-${askId}`), tools: ["*"] } } }), { mode: 0o600 });
+    const prompt = prev
+      ? question + rulesFor()
+      : `${fs.readFileSync(INSTRUCTIONS, "utf8")}\n\nWork only through the \`repl\` MCP server's tools (call its \`help\` first); do not run shell commands or read files yourself.\n\nThe question:\n${question}${rulesFor()}`;
+    const started = Date.now();
+    const r = await run(
+      be.bin ?? "copilot",
+      [
+        "-p", prompt,
+        ...(prev?.innerSession ? ["--resume", prev.innerSession] : []),
+        ...(be.model ? ["--model", be.model] : []),
+        "--additional-mcp-config", `@${cfg}`,
+        "--disable-builtin-mcps",
+        "--no-custom-instructions",
+        "--no-ask-user",
+        "--allow-all-tools",
+        "--deny-tool", "shell", "--deny-tool", "write",
+        "--output-format", "json",
+        "-s",
+      ],
+      { cwd: WARM_CWD, env: childEnv(), timeoutMs, signal },
+    ).finally(() => fs.rmSync(cfg, { force: true }));
+    const ev = jsonLines(r.out);
+    const msgs = ev.filter((e) => e.type === "assistant.message" && e.data?.content).map((e) => e.data.content);
+    const sid = ev.find((e) => e.data?.sessionId)?.data.sessionId ?? null;
+    const answer = msgs.pop() ?? (ev.length ? "" : r.out.trim());
+    if (!answer) throw new Error(`copilot exited ${r.code}: ${(r.err || r.out).slice(-600)}`);
+    writeLast(b, { askId, innerSession: sid ?? prev?.innerSession });
+    const usage = ev.filter((e) => e.type === "session.usage_record").map((e) => e.data?.usage ?? {});
+    return {
+      answer,
+      ok: true,
+      model: be.model || "copilot default",
+      continued: !!prev,
+      cells: ev.filter((e) => e.type === "tool.execution_start").length,
+      ms: Date.now() - started,
+      costUsd: null,
+      premiumRequests: usage.reduce((s, u) => s + Number(u.cost ?? 0), 0),
+      usage: { input: usage.reduce((s, u) => s + (u.inputTokens ?? 0), 0), cacheRead: usage.reduce((s, u) => s + (u.cacheReadTokens ?? 0), 0), output: usage.reduce((s, u) => s + (u.outputTokens ?? 0), 0) },
+    };
+  }
+
+  // ---- api (OpenAI-compatible chat) ----
+
+  function endpoint(be) {
+    const preset = API_PRESETS[be.preset] ?? {};
+    const base = be.baseUrl ?? preset.baseUrl;
+    if (!base) throw new Error(`backend has no baseUrl (preset ${be.preset})`);
+    const key = resolveKey(be.key) ?? (preset.keyEnv ? process.env[preset.keyEnv] : null);
+    if (!key && !preset.local && !be.noKey) throw new Error(`no API key for ${preset.label ?? be.preset}: ${JSON.stringify(be.key ?? { env: preset.keyEnv })} is empty`);
+    return {
+      url: `${base.replace(/\/+$/, "")}/chat/completions`,
+      base,
+      key,
+      extra: be.preset === "openrouter" ? { usage: { include: true } } : {},
+      reportsCost: !!preset.reportsCost,
+      // Ollama's /v1 cannot raise its 4096-token default context; its own /api/chat can (ollama.mjs).
+      ollama: be.preset === "ollama",
+    };
+  }
+
+  async function openInnerRepl(askId) {
+    const transport = new StdioClientTransport({ command: process.execPath, args: [SERVER], env: childEnv(replEnv(null, `ask-${askId}`)), stderr: "ignore" });
+    const client = new Client({ name: "ask-kit", version: "0" });
+    await client.connect(transport);
+    return client;
+  }
+
+  const CELL = /```(?:js|javascript|ts|typescript)?\s*\n([\s\S]*?)```/g;
+  const REPL_TOOL = {
+    type: "function",
+    function: {
+      name: "repl",
+      description: "Run JavaScript in your persistent REPL (top-level await; variables persist) and get back what the last expression returned.",
+      parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript to run" } }, required: ["code"], additionalProperties: false },
+    },
+  };
+
+  async function askApi(b, question, timeoutMs, cont, signal) {
+    const be = BACKENDS[b];
+    const native = be.nativeTools !== false;
+    const ep = endpoint(be);
+    const fp = fingerprint(b);
+    const prev = cont ? readLast()[b] : null;
+    if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    let messages;
+    let askId;
+    if (prev) {
+      askId = prev.askId;
+      messages = [...prev.messages, { role: "user", content: question + rulesFor() }];
+    } else {
+      const how = native
+        ? "\n\nYou work by calling the `repl` tool with JavaScript; it runs in a persistent REPL (top-level await, " +
+          "variables persist between calls) and the tool result is what it returned. Only a tool result is real: never write " +
+          "a result yourself. You have a limited number of calls; each result says how many are left. " +
+          "When you have the answer, reply with the answer only and no tool call.\n\n"
+        : "\n\nYou work by writing JavaScript cells. Put one cell in one ```js fenced block and stop: it runs in a persistent " +
+          "REPL (top-level await, variables persist between cells) and the result comes back in the next message. Only that " +
+          "message is real: never write a result yourself. You have a limited number of steps; each result says how many are left. " +
+          "When you have the answer, reply with the answer only and no code block.\n\n";
+      const system = fs.readFileSync(INSTRUCTIONS, "utf8") + how + D.openWith + (await ctx.helpText());
+      askId = crypto.randomUUID();
+      messages = [
+        be.explicitCache ? { role: "system", content: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] } : { role: "system", content: system },
+        { role: "user", content: question + rulesFor() },
+      ];
+    }
+    const repl = await openInnerRepl(askId);
+    const totals = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costUsd: 0, calls: 0, missteps: 0, providers: new Set() };
+    const started = Date.now();
+    const leftMs = () => timeoutMs - (Date.now() - started);
+    let answer = null;
+    let cells = 0;
+    let outOfTime = false;
+    let cutAtLength = false;
+    let atLimit = false;
+    const post = (body, ms) =>
+      ep.ollama
+        ? ollamaChat(ep.base, body, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms), numCtx: be.contextTokens ?? OLLAMA_DEFAULT_CTX })
+        : fetch(ep.url, {
+        method: "POST",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms),
+        headers: { "content-type": "application/json", ...(ep.key ? { authorization: `Bearer ${ep.key}` } : {}) },
+        body: JSON.stringify(body),
+      });
+    const account = (body) => {
+      const u = body.usage ?? {};
+      totals.calls++;
+      totals.input += u.prompt_tokens ?? 0;
+      totals.cacheRead += u.prompt_tokens_details?.cached_tokens ?? 0;
+      totals.cacheWrite += u.prompt_tokens_details?.cache_write_tokens ?? 0;
+      totals.output += u.completion_tokens ?? 0;
+      totals.costUsd += Number(u.cost ?? 0);
+      if (body.provider) totals.providers.add(body.provider);
+      if (body.choices?.[0]?.finish_reason === "length") cutAtLength = true;
+    };
+    try {
+      for (let step = 0; step < MAX_STEPS; step++) {
+        if (signal?.aborted) throw new Error("the calling client cancelled the ask");
+        if (leftMs() < 3000) {
+          outOfTime = true;
+          break;
+        }
+        let res;
+        try {
+          res = await post(
+            {
+              model: be.model,
+              messages,
+              temperature: 0,
+              max_tokens: 4000,
+              ...(native ? { tools: [REPL_TOOL], tool_choice: "auto", parallel_tool_calls: false } : {}),
+              ...ep.extra,
+              // One session_id per backend and prefix: OpenRouter then keeps every question on one
+              // provider, so the shared prefix stays in its cache.
+              ...(be.preset === "openrouter" ? { session_id: `ask-kit-${domainName}-${b}-${fp}` } : {}),
+              ...(be.providerOrder ? { provider: { order: be.providerOrder, allow_fallbacks: true } } : {}),
+            },
+            leftMs(),
+          );
+        } catch (e) {
+          if (e?.name !== "TimeoutError") throw e;
+          outOfTime = true;
+          break;
+        }
+        const body = await res.json().catch(() => ({}));
+        if (signal?.aborted) throw new Error("the calling client cancelled the ask");
+        if (!res.ok || body.error) throw new Error(`${be.preset} ${res.status}: ${JSON.stringify(body.error ?? body).slice(0, 300)}`);
+        account(body);
+        const msg = body.choices?.[0]?.message ?? {};
+        const content = msg.content ?? "";
+        const left = MAX_STEPS - step - 1;
+        const nudge = left <= 2 ? `\n\n${left} call(s) left. Answer now with what you have, saying what you could not confirm.` : `\n\n${left} calls left.`;
+        const runCode = async (code) => {
+          cells++;
+          const timeoutSeconds = Math.max(1, Math.min(CELL_MAX_S, Math.floor((leftMs() - 2000) / 1000)));
+          try {
+            const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
+            return out.content.map((c) => c.text).join("\n");
+          } catch (e) {
+            if (signal?.aborted) throw e;
+            return `Error: the cell did not finish in ${timeoutSeconds}s (${e.message}). Narrow it: a shorter window, a sample, or a script.`;
+          }
+        };
+        if (native) {
+          // Small models misname the one tool ("scripts.run", "javascript"); a call with `code` is a repl call.
+          const calls = (msg.tool_calls ?? []).filter((c) => c.function?.name === "repl" || /"code"\s*:/.test(c.function?.arguments ?? ""));
+          if (!calls.length) {
+            // Tool-call markup in the text is a call the provider did not parse, not an answer.
+            if (!content.trim() || /DSML|<\s*\/?\s*(tool_call|invoke|function_calls)/i.test(content)) {
+              totals.missteps++;
+              messages.push({ role: "assistant", content: content.trim() || "(empty reply)" });
+              messages.push({ role: "user", content: "Call the `repl` tool to run code, or reply with the final answer as plain text." });
+              continue;
+            }
+            messages.push({ role: "assistant", content });
+            answer = content.trim();
+            atLimit = left <= 2;
+            break;
+          }
+          messages.push({ role: "assistant", content: content || null, tool_calls: calls });
+          for (const [k, c] of calls.entries()) {
+            let code;
+            try {
+              code = JSON.parse(c.function.arguments || "{}").code;
+            } catch {
+              code = null;
+            }
+            const text = typeof code === "string" ? await runCode(code) : "Error: the call's arguments were not JSON with a `code` string.";
+            messages.push({ role: "tool", tool_call_id: c.id, content: text + (k === calls.length - 1 ? nudge : "") });
+          }
+          continue;
+        }
+        // Code-block mode: run only the first block and keep only the text up to its end, so an
+        // invented result written after it never enters the history.
+        const first = CELL.exec(content);
+        CELL.lastIndex = 0;
+        if (!first) {
+          messages.push({ role: "assistant", content });
+          answer = content.trim();
+          atLimit = left <= 2;
+          break;
+        }
+        messages.push({ role: "assistant", content: content.slice(0, first.index + first[0].length) });
+        messages.push({ role: "user", content: `Cell result:\n\`\`\`\n${await runCode(first[1])}\n\`\`\`${nudge}` });
+      }
+    } finally {
+      await repl.close().catch(() => {});
+    }
+    // Out of steps or time: one more call, without tools, for what it found.
+    let partial = false;
+    if (answer == null) {
+      partial = true;
+      const limit = outOfTime ? `the ${Math.round(timeoutMs / 1000)}s time limit` : `the ${MAX_STEPS}-step limit`;
+      messages.push({
+        role: "user",
+        content: `You are out of ${outOfTime ? "time" : "steps"}. Reply now in plain text, with no tool call: what you found (with its evidence), what you tried, and what is still missing.`,
+      });
+      try {
+        const res = await post({ model: be.model, messages, temperature: 0, max_tokens: 4000, ...ep.extra }, Math.max(1000, leftMs() + RESERVE_MS - 2000));
+        const body = await res.json().catch(() => ({}));
+        account(body);
+        const m = body.choices?.[0]?.message ?? {};
+        const text = (m.content ?? "").trim() || (m.reasoning ?? "").trim();
+        if (text) {
+          messages.push({ role: "assistant", content: text });
+          answer = `[stopped at ${limit}; this is what it found]\n\n${text}`;
+        }
+      } catch {}
+      answer ??= `[stopped at ${limit} after ${cells} cells, with nothing it could report]`;
+    }
+    if (cutAtLength) partial = true;
+    if (partial) answer += (cutAtLength ? "\n\n[the reply hit the length limit and may be cut off]" : "") + "\n\n[not finished: ask again with continue: true to carry on from here]";
+    else if (atLimit) answer += "\n\n[answered at the step limit: if something is missing, ask again with continue: true]";
+    writeLast(b, { askId, messages });
+    return {
+      answer,
+      partial,
+      cutAtLength,
+      atLimit,
+      ok: true,
+      model: be.model,
+      continued: !!prev,
+      turns: totals.calls,
+      cells,
+      ms: Date.now() - started,
+      costUsd: ep.reportsCost ? Math.round(totals.costUsd * 1e6) / 1e6 : null,
+      usage: { input: totals.input, cacheRead: totals.cacheRead, cacheWrite: totals.cacheWrite, output: totals.output },
+      providers: [...totals.providers],
+      missteps: totals.missteps,
+    };
+  }
+
+  const KINDS = { "claude-cli": askClaude, "codex-cli": askCodex, "copilot-cli": askCopilot, api: askApi };
+
+  // ---- the tool ----
+
+  server.registerTool(
+    "ask",
+    {
+      description: `${D.askDescription} For a follow-up, pass continue: true: the same investigator answers, keeping what it found. backend: ${NAMES.join(", ")} (default ${DEFAULT}).`,
+      inputSchema: {
+        question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
+        request: z.string().optional().describe("Same as question"),
+        prompt: z.string().optional().describe("Same as question"),
+        backend: z.enum(NAMES).optional(),
+        continue: z.boolean().optional().describe("Ask the same investigator as your last question on this backend, so it keeps what it found"),
+        timeoutSeconds: z.number().int().min(30).max(900).optional().describe("Default 300"),
+      },
+    },
+    async ({ question: q, request, prompt, backend = DEFAULT, continue: cont = false, timeoutSeconds = 300 }, extra) => {
+      const question = [q, request, prompt].find((v) => typeof v === "string" && v.trim());
+      if (!question) return { content: [{ type: "text", text: "ask needs `question`: the question or request, in plain words." }], isError: true };
+      // A client drops a call at its own tool timeout and the answer is lost; finish before it.
+      const clientMs = Number(process.env.MCP_TOOL_TIMEOUT) || 0;
+      const timeoutMs = Math.max(20_000, Math.min(timeoutSeconds * 1000, clientMs ? clientMs - RESERVE_MS : Infinity));
+      const kind = BACKENDS[backend].kind;
+      const started = Date.now();
+      let r;
+      try {
+        if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
+        r = await KINDS[kind](backend, question, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, extra?.signal);
+      } catch (e) {
+        const cancelled = !!extra?.signal?.aborted;
+        const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");
+        ctx.keep({ question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started });
+        return { content: [{ type: "text", text: `ask failed (${backend}): ${message}` }], isError: true };
+      }
+      ctx.keep({ question, backend, kind, ...r });
+      const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s${r.costUsd ? ` · $${r.costUsd.toFixed(4)}` : ""}]`;
+      return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok };
+    },
+  );
+}

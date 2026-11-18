@@ -1,0 +1,7 @@
+{
+  "about": "Verdicts changed by hand after reading the full answer against the source. Every verdict that was not 'correct' was read; these are the ones the judge got wrong. report.mjs applies them over the judge's verdict.",
+  "overrides": [
+    { "id": "n02-herdr-icon", "backend": "baseline-sonnet", "run": 1, "verdict": "correct", "reason": "Names the Omarchy logo and the exact path; the judge marked it partial only for not naming the logo's colour, which is wording, not a fact the question asked for." },
+    { "id": "n04-dock-clocks", "backend": "baseline-sonnet", "run": 1, "verdict": "correct", "reason": "Has the transparent bar, the two clocks (Omarchy's and OmaDash's, with the OmaClock correction) and the solid top bar plus bottom dock, and also the later change to one bottom strip, which the transcript confirms and the reference left out." }
+  ]
+}

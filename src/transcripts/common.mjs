@@ -1,0 +1,156 @@
+// Shared by the transcript adapters: one normalised event shape, a cached index of session files,
+// and a fast text pre-filter so a search parses only the files that can match.
+//
+// Every adapter turns its agent's own format into events:
+//   { i, ts, role, text, tool?, toolId?, input?, ok?, model? }
+//   role: "user" (what the person typed), "assistant" (the agent's text), "tool_call", "tool_result",
+//         "system" (instructions and context the agent injected, not typed by the person)
+// `i` is the event's position in the session, the citation an answer uses.
+import fs from "node:fs";
+import path from "node:path";
+import { STATE_ROOT } from "../config.mjs";
+
+export const clip = (s, n = 400) => (s == null ? "" : String(s).length > n ? String(s).slice(0, n) + "…" : String(s));
+
+/** Text from whatever a tool result or message content holds: a string, blocks, or an object. */
+export function textOf(x) {
+  if (x == null) return "";
+  if (typeof x === "string") return x;
+  if (Array.isArray(x)) return x.map(textOf).filter(Boolean).join("\n");
+  if (typeof x === "object") {
+    if (typeof x.text === "string") return x.text;
+    if (x.content != null) return textOf(x.content);
+    if (typeof x.output === "string") return x.output;
+    return JSON.stringify(x);
+  }
+  return String(x);
+}
+
+/** Files under `dir` whose name matches `re`, at most `depth` folders down. */
+export function walk(dir, re, depth = 6, out = []) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (depth > 0) walk(full, re, depth - 1, out);
+    } else if (re.test(e.name)) out.push(full);
+  }
+  return out;
+}
+
+export function readLines(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  return text.split("\n");
+}
+
+export function parseLines(file) {
+  const rows = [];
+  for (const line of readLines(file)) {
+    if (!line) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {}
+  }
+  return rows;
+}
+
+/** The first `bytes` of a file, cut back to whole lines. */
+export function head(file, bytes = 256 * 1024) {
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(bytes);
+    const n = fs.readSync(fd, buf, 0, bytes, 0);
+    const text = buf.subarray(0, n).toString("utf8");
+    return n === bytes ? text.slice(0, text.lastIndexOf("\n") + 1) : text;
+  } catch {
+    return "";
+  } finally {
+    if (fd != null) fs.closeSync(fd);
+  }
+}
+
+/**
+ * Session metadata for a list of files, read once per file version and kept in
+ * STATE_ROOT/index/<source>.json. `readMeta(file)` reads one file's metadata.
+ */
+export function indexed(source, files, readMeta) {
+  const dir = path.join(STATE_ROOT, "index");
+  const file = path.join(dir, `${source}.json`);
+  let cache = {};
+  try {
+    cache = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {}
+  const next = {};
+  let changed = false;
+  const out = [];
+  for (const f of files) {
+    let st;
+    try {
+      st = fs.statSync(f);
+    } catch {
+      continue;
+    }
+    const hit = cache[f];
+    let meta;
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) meta = hit.meta;
+    else {
+      changed = true;
+      try {
+        meta = readMeta(f);
+      } catch {
+        meta = null;
+      }
+    }
+    next[f] = { mtimeMs: st.mtimeMs, size: st.size, meta };
+    if (meta) out.push({ source, file: f, size: st.size, updatedAt: new Date(st.mtimeMs).toISOString(), ...meta });
+  }
+  if (changed || Object.keys(cache).length !== Object.keys(next).length) {
+    try {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(`${file}.tmp-${process.pid}`, JSON.stringify(next));
+      fs.renameSync(`${file}.tmp-${process.pid}`, file);
+    } catch {}
+  }
+  return out;
+}
+
+/**
+ * Does one raw line of the file hold every word of `needles` (case-insensitive)? An event is one
+ * line in every JSONL store, so a file without such a line cannot match. Cheap: no JSON parsing.
+ */
+export function fileMayMatch(file, needles) {
+  if (!needles.length) return true;
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8").toLowerCase();
+  } catch {
+    return false;
+  }
+  // JSON escapes quotes, backslashes and newlines inside strings; look for the escaped form.
+  const forms = needles.map((n) => JSON.stringify(n).slice(1, -1));
+  const first = forms[0];
+  let at = text.indexOf(first);
+  while (at !== -1) {
+    const start = text.lastIndexOf("\n", at) + 1;
+    let end = text.indexOf("\n", at);
+    if (end === -1) end = text.length;
+    const line = text.slice(start, end);
+    if (forms.every((f) => line.includes(f))) return true;
+    at = text.indexOf(first, end);
+  }
+  return false;
+}
+
+/** A user-visible title from a first prompt. */
+export const titleOf = (s) => clip(String(s ?? "").replace(/\s+/g, " ").trim(), 120);

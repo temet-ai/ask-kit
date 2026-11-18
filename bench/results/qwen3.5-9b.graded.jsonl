@@ -1,0 +1,13 @@
+{"hash":"bc0c9af0c596","id":"s03-quickshell-crash","backend":"qwen3.5-9b","run":1,"verdict":"wrong","reason":"Did not identify ODock running-apps list and said no change was made, contradicting the reference."}
+{"hash":"15ddacb2f594","id":"s03f-pinned-items","backend":"qwen3.5-9b","run":1,"verdict":"correct","reason":"States 10 pinned items."}
+{"hash":"639365dc36a7","id":"s04-mac-keyboard","backend":"qwen3.5-9b","run":1,"verdict":"wrong","reason":"Said it could not find the session."}
+{"hash":"7a0961fe8b40","id":"s09-herdr-vs-orca","backend":"qwen3.5-9b","run":1,"verdict":"correct","reason":"No shared foundations; Herdr Rust/GPUI, Orca Electron/TypeScript."}
+{"hash":"ac7e19d5cccc","id":"s10-herdr-sounds","backend":"qwen3.5-9b","run":1,"verdict":"partial","reason":"Sounds correct, but the toast is described as closing instantly rather than the quiet-toast mod; roughly equivalent but mod not named."}
+{"hash":"9f0b6918e412","id":"h05-karabiner","backend":"qwen3.5-9b","run":1,"verdict":"correct","reason":"Codex, session 01a1e59b, Windows mode."}
+{"hash":"2bbb011271c3","id":"h06-herdr-editor","backend":"qwen3.5-9b","run":1,"verdict":"partial","reason":"Names real session 8114aa7f and mentions mods, but misses the Files/Changes panels and built-in code viewer with syntax highlighting; the claim that the session adds herdr-code-review is only partly accurate."}
+{"hash":"2d76db624c08","id":"n01-hypr-pairs","backend":"qwen3.5-9b","run":1,"verdict":"wrong","reason":"Answer is a timeout with no content."}
+{"hash":"54016299e16c","id":"n02-herdr-icon","backend":"qwen3.5-9b","run":1,"verdict":"correct","reason":"Names Omarchy logo in lavender and the correct PNG path."}
+{"hash":"930d621403c6","id":"n02f-herdr-mods-css","backend":"qwen3.5-9b","run":1,"verdict":"correct","reason":"States no CSS and JavaScript building UI with GPUI."}
+{"hash":"039f8b89fea8","id":"n03-tab-label","backend":"qwen3.5-9b","run":1,"verdict":"correct","reason":"Gives \"tab 3\" and the correct cause (tab name used for every agent in the tab), matching fix (a)."}
+{"hash":"d6e86e0bb8ac","id":"n04-dock-clocks","backend":"qwen3.5-9b","run":1,"verdict":"partial","reason":"Has transparent bar and a separate bottom dock with a single top clock, but the two-clock cause is wrong (top bar and dock rather than two enabled time widgets) and ODock isn't named."}
+{"hash":"9b5d989e2444","id":"n05-agent-crashed-shell","backend":"qwen3.5-9b","run":1,"verdict":"wrong","reason":"Says no such crash occurred, contradicting the reference's real occasions."}

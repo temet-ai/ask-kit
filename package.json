@@ -1,0 +1,32 @@
+{
+  "name": "ask-kit",
+  "version": "0.1.0",
+  "description": "One plain-language `ask` tool for coding agents: a cheap model with a REPL and scripts answers about your past sessions and your code, outside your agent's context.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Dawid du Toit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/temet-ai/ask-kit.git"
+  },
+  "homepage": "https://github.com/temet-ai/ask-kit#readme",
+  "bugs": "https://github.com/temet-ai/ask-kit/issues",
+  "bin": {
+    "ask-kit": "bin/ask-kit.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node test/fixtures.mjs && node test/setup.mjs && node test/repl.mjs && node test/bundle.mjs",
+    "test:machine": "node test/adapters.mjs"
+  },
+  "files": ["bin", "src", "domains", "bundle", "AGENTS.md", "README.md", "LICENSE", "THIRD-PARTY-NOTICES.md"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@vscode/ripgrep": "1.18.0",
+    "acorn": "8.19.0",
+    "zod": "4.6.7"
+  }
+}

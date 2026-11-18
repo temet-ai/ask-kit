@@ -1,0 +1,3 @@
+# LF everywhere, also on Windows checkouts: the bundle's frontmatter, fixtures and scripts are
+# parsed as text, and a CRLF checkout breaks them.
+* text=auto eol=lf
