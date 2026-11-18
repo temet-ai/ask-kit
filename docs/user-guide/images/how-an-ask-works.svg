@@ -22,7 +22,7 @@
   <text x="52" y="218" class="mono red" font-size="13">  built and registered?")</text>
   <text x="52" y="290" class="mono cream" font-size="13">a short answer, with</text>
   <text x="52" y="308" class="mono cream" font-size="13">path:line evidence</text>
-  <text x="52" y="352" class="sans muted" font-size="13">takes in ~189 tokens (median)</text>
+  <text x="52" y="352" class="sans muted" font-size="13">takes in ~445 tokens (median)</text>
 
   <!-- arrows -->
   <line x1="306" y1="208" x2="394" y2="208" stroke="#551B2B" stroke-width="2.5" marker-end="url(#ar)"/>
@@ -48,7 +48,7 @@
   <text x="692" y="311" class="sans cream" font-size="12" text-anchor="middle">sessions · agent transcripts</text>
   <rect x="790" y="292" width="118" height="28" rx="14" fill="none" stroke="#E2CFC2" stroke-dasharray="4 3"/>
   <text x="849" y="311" class="sans muted" font-size="12" text-anchor="middle">+ your domains</text>
-  <text x="420" y="352" class="sans muted" font-size="13">works through ~104,000 tokens (median), kept for follow-ups</text>
+  <text x="420" y="352" class="sans muted" font-size="13">works through ~125,000 tokens (median), kept for follow-ups</text>
 
   <text x="32" y="412" class="sans muted" font-size="13">Your agent makes one tool call. The investigator writes the programs, in a context your agent never sees.</text>
 </svg>
