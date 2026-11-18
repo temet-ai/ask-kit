@@ -2,3 +2,8 @@ node_modules/
 *.log
 .DS_Store
 .claude/worktrees/
+# Agent transcript folders: a recording or test run that loses its temporary HOME writes them here.
+/.claude/projects/
+/.codex/
+/.copilot/
+/.gemini/
