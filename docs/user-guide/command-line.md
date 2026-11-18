@@ -16,6 +16,22 @@ ask-kit uninstall [--dry-run]    remove what ask-kit installed (not your edits)
 ask-kit serve [--domain d]       the MCP server your agents start
 ```
 
+## What init puts in each agent
+
+The source for all of these is in the repository's `bundle/` folder: `bundle/skills/`,
+`bundle/agents/ask-kit-tuner.md` and `bundle/rules/ask.md`.
+
+| Agent | `ask` tool | Skills | Tuner agent | When-to-ask rule |
+|---|---|---|---|---|
+| Claude Code | `claude mcp add -s user` | `~/.claude/skills/` | `~/.claude/agents/` | `~/.claude/rules/ask-kit.md` |
+| Codex | `config.toml` block, 600 s tool timeout | `~/.codex/skills/` | (as a skill) | block in `~/.codex/AGENTS.md` |
+| Copilot CLI | `~/.copilot/mcp-config.json` | `~/.copilot/skills/` | `~/.copilot/agents/` | `~/.copilot/instructions/ask-kit.instructions.md` |
+| opencode | `opencode.json` `mcp` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | block in its `AGENTS.md` |
+| Gemini CLI | `settings.json` | `~/.gemini/skills/` | (as a skill) | block in `~/.gemini/GEMINI.md` |
+
+Each file is recorded with its hash in `installed.json`. A file you edit is never overwritten,
+and `ask-kit uninstall` removes only what ask-kit wrote.
+
 ## Files
 
 | What | Linux and macOS | Windows |

@@ -1,14 +1,18 @@
-# Choose the model that digs
+# Choose the model
 
-The investigator is the model that answers each ask. It does not need to be clever, it needs to
-be cheap, fast and good at writing small pieces of JavaScript. Setup offers what this machine
-already has, in three kinds.
+The investigator is the model that answers each question. It has to be cheap and fast, and good
+at writing small pieces of JavaScript. Setup offers what this machine already has.
 
-## An API key
+| Kind | Cost | Speed | Answers |
+|---|---|---|---|
+| API key (suggested) | about a third of a cent a question | fastest | good |
+| Subscription you already have | nothing extra | slower | good |
+| Local model | free, and nothing leaves the machine | depends on your hardware | worse |
 
-The cheapest and fastest. ask-kit runs the loop itself against any OpenAI-compatible chat API,
-and the provider's prompt cache serves the fixed part of every question (the instructions, the
-API and the scripts), so each question pays only for its own work.
+## API key
+
+ask-kit works with any OpenAI-compatible chat API. The provider caches the part that is the same
+for every question, so each question pays only for its own work.
 
 | Provider | Key it looks for | Suggested models |
 |---|---|---|
@@ -17,42 +21,31 @@ API and the scripts), so each question pays only for its own work.
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-5-5`, `claude-sonnet-5-5` |
 | Google Gemini | `GEMINI_API_KEY` | `gemini-4-flash` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-chat` |
-| Another endpoint | (you say) | (you say) |
+| Another endpoint | you say | you say |
 
-The model ids for OpenAI, Anthropic and Gemini are suggestions. `ask-kit doctor` checks them
-against the provider's model list.
+`ask-kit doctor` checks that the model ids exist at the provider.
 
-On OpenRouter, the glm preset is pinned to one provider, so every question lands where the
-prefix is already cached.
+## Subscription
 
-## A subscription you already pay for
+- **Claude Code** (`haiku` or `sonnet`), or **Codex** (a ChatGPT plan): each question takes a few
+  seconds more to start.
+- **Copilot CLI**: slower still. Each question uses premium requests.
 
-No extra cost, but slower, because each question starts an agent CLI.
+![The same question took 23 s with Claude Code on haiku, 36 s with Codex and 134 s with Copilot CLI](images/subscription-speed.svg)
 
-- **Claude Code** (`haiku` or `sonnet`): warmed once, then each question forks the warm session
-  (`claude --resume <warm> --fork-session`).
-- **Codex** (your ChatGPT plan or OpenAI key): warmed once, then `codex exec fork <warm>` per
-  question.
-- **Copilot CLI**: Copilot cannot fork, so each question starts fresh with the instructions in its
-  prompt, and each uses premium requests.
+Sign the CLI in once by hand first. Its questions show up in its history.
 
-The CLI must be signed in: run it once by hand first. Its questions become sessions of that CLI,
-so they show in its history and go to its service under its terms.
+## Local model
 
-## A local model
+Ollama or LM Studio. Small models make more mistakes here, because the work is writing a correct
+small program for each step of a question they haven't seen before.
 
-Ollama (`localhost:11434`) or LM Studio (`localhost:1234`). Free and private; nothing leaves the
-machine. Small local models answer noticeably worse at this, because the work is writing correct
-code against an API they have never seen.
-
-## Different models for different domains
-
-The default backend serves every domain. To give one domain another, set
-`domains.<name>.backend` in `~/.config/ask-kit/config.json`, or ask an agent:
+## Change or mix models
 
 ```
+Read ~/.config/ask-kit/AGENTS.md, then switch ask's default model to codex.
 Read ~/.config/ask-kit/AGENTS.md, then answer code questions with deepseek.
 ```
 
-To try a backend on one question without changing anything, pass `--backend <name>` to
-`ask-kit ask`.
+To try a model on one question without changing anything:
+`ask-kit ask --backend <name> "<question>"`.

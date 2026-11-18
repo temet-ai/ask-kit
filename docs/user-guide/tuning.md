@@ -1,45 +1,54 @@
-# Tune it from the journal
+# Make it better
 
-ask gets better by changing the layer that caused a bad answer, then asking the same question
-again. The `ask-kit-improve` skill walks an agent through this; the `ask-kit-tuner` agent does
-the work. To start it:
+ask-kit saves every question it answers, with its time, cost and every step. When an answer is
+wrong or slow, you fix the cause and ask the same question again to check the fix worked.
+
+## The easy way
+
+Paste into any agent:
 
 ```
 Read ~/.config/ask-kit/AGENTS.md, then improve ask from the last week's journal.
 ```
 
-## 1. Find what went wrong
+The agent finds the bad answers, works out the cause, makes a small change, asks the question
+again and shows you the before and after. It changes nothing without your yes.
+
+## By hand
+
+### 1. Find the bad answers
 
 ```sh
 ask-kit report --since 7d
 ```
 
-The report lists every ask with its signals: failed, out of steps or time, cut off, slow,
-costly, many missteps (the model wrote markup instead of calling the tool), and re-asked (the
-same session asked again soon after, often a sign the first answer fell short). It ends with the
-scripts used and the cells that ran most often without a script: routes worth a script.
+It marks each question that failed, ran out of steps or time, was cut off, was slow or costly,
+or was asked again soon after (a sign the first answer wasn't enough). At the end it lists the
+searches the investigator kept writing by hand. Each of those could be a script.
 
-For one flagged ask, its cells are in the journal the report names, one JSON line per cell.
+### 2. Fix the cause
 
-## 2. Fix it where it went wrong
+| What went wrong | Fix |
+|---|---|
+| It misread the question or skipped a step | One sentence in the domain's `instructions.md`. Replace a line instead of adding one where you can. |
+| It wrote the same search by hand again and again | A script in the domain's `scripts/`. Check its saved drafts first, because one may already do it. |
+| It was slow because a search read too much | Make the script search less by default: a time window, one source, one project. |
+| The model itself failed (malformed calls, cut off, empty replies) | Try another model for that domain. |
 
-- **The investigator misread the question or skipped a step**: one sentence in the domain's
-  `instructions.md`, aimed at that failure. Replace a line rather than adding one where you can.
-- **It rebuilt the same search in raw cells**: a script in the domain's `scripts/`. Check the
-  investigator's drafts first; one may already be the script.
-- **It was slow because a search read too much**: make the script narrow by default (a time
-  window, a source, a project).
-- **The model itself** (missteps, cut off, empty replies): try another backend for that domain.
+Your changes take effect on the next question. Nothing needs restarting.
 
-Any change re-warms the investigator on the next question.
-
-## 3. Prove it
-
-Ask the flagged question again through the same backend:
+### 3. Check it
 
 ```sh
-ask-kit ask --domain sessions --backend <name> "<the question>"
+ask-kit ask --domain sessions --backend <name> "<the same question>"
 ```
 
-Compare the answer, steps, time and cost with the journal's row. Then ask two or three other
-questions that use what you changed, so a fix for one question did not break another.
+Compare the answer, steps, time and cost with the report. Then ask two or three other questions
+that use what you changed, to make sure you didn't break something else.
+
+## Habits that help without tuning
+
+- Put what you already know in the question. It is the cheapest fix there is.
+- Follow up instead of asking again from scratch. Each new question searches from zero.
+- If one domain keeps doing badly on one model, give that domain a different model
+  ([Choose the model](models.md)).

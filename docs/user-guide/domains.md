@@ -9,7 +9,7 @@ through all three.
 A folder with:
 
 - `domain.mjs`: the REPL's globals, the prompts and the words the router knows it by,
-- `api.d.ts`: the typed API the investigator writes code against,
+- `api.d.ts`: a typed description of what the domain lets the investigator's programs reach,
 - `instructions.md`: how to investigate, what counts as evidence and how to cite it,
 - `scripts/`: ready-made scripts for the common questions.
 

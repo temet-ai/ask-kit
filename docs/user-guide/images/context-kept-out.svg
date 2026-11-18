@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 350" width="960" height="350" role="img" aria-labelledby="t d">
+  <title id="t">How much context one ask keeps out of your agent</title>
+  <desc id="d">Median over 90 asks: the investigator read 195,733 tokens; the answer returned to the calling agent was about 340 tokens. Median ratio per ask 186 times. Median time 33 seconds, median cost 0.93 cents.</desc>
+  <style>
+    .sans{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+    .cream{fill:#f2ead8}.muted{fill:#9a968c}.red{fill:#e5352b}
+  </style>
+  <rect width="960" height="350" rx="16" fill="#16161a"/>
+  <text x="32" y="44" class="sans cream" font-size="20" font-weight="700">How much context one ask keeps out of your agent</text>
+
+  <text x="32" y="88" class="sans muted" font-size="14">Read by the investigator, in its own context</text>
+  <rect x="32" y="98" width="896" height="38" rx="6" fill="#e5352b"/>
+  <text x="912" y="123" class="sans cream" font-size="15" font-weight="700" text-anchor="end">195,733 tokens</text>
+
+  <text x="32" y="172" class="sans muted" font-size="14">Returned to your agent</text>
+  <rect x="32" y="182" width="4" height="38" rx="2" fill="#f2ead8"/>
+  <text x="48" y="207" class="sans cream" font-size="15" font-weight="700">~340 tokens</text>
+
+  <text x="32" y="270" class="sans red" font-size="28" font-weight="700">186×</text>
+  <text x="32" y="292" class="sans muted" font-size="13">less, median per ask</text>
+  <text x="300" y="270" class="sans cream" font-size="28" font-weight="700">33 s</text>
+  <text x="300" y="292" class="sans muted" font-size="13">median time</text>
+  <text x="568" y="270" class="sans cream" font-size="28" font-weight="700">$0.0093</text>
+  <text x="568" y="292" class="sans muted" font-size="13">median cost</text>
+
+  <text x="32" y="330" class="sans muted" font-size="12">Medians of 90 asks, 4–18 Nov 2026, on mike-ask, the proof of concept that ask-kit was made general from.</text>
+</svg>

@@ -1,0 +1,16 @@
+ask-kit scanner logo
+Generated with the built-in image_gen tool.
+Final asset: ask-kit-logo.png (transparent PNG).
+Style reference: the previous ask-kit badge, based on mike's retro badge.
+
+FINAL REVISION PROMPT
+
+Use case: precise-object-edit
+Asset type: transparent ask-kit logo for GitHub README, Pages and documentation.
+Input image: EDIT TARGET. Revise this existing badge to simplify the symbol, following the user's correction: "The image doesn't need to be a car. just have the scan line for it".
+Primary change: completely remove the illustrated car, including every wheel, window, hood, headlight, grille, body panel and vehicle contour. Replace the car with ONLY a single horizontal red scanner light inspired by KITT. The scanner is an abstract line of about eleven rectangular red light segments, vivid bright red near the middle, darker at both ends, with a restrained red glow. It is perfectly horizontal, centered in the upper portion of the badge and visually substantial, about two thirds of the circular badge width. There must be no car or vehicle silhouette anywhere.
+Keep: the warm cream lowercase bold italic "ask-kit" wordmark, its actual visible hyphen, rounded dark wordmark band, side red stripes, cream and red outer ring, dark petrol-black badge interior, and subtle retro screenprint texture. Keep the limited warm cream, near-black and vermilion palette; the scanner itself is bright scarlet.
+Composition: make a strong balanced minimal emblem with the scanner above the wordmark. You may tighten the badge's vertical proportions to avoid a large empty upper area. A generous dark field around the scanner gives the red line impact. One clean cohesive logo, recognizable at 240px width.
+Text (verbatim): "ask-kit"; no other text.
+Finish: clean cream outer silhouette with no stray pixels or specks, complete badge comfortably within the frame with transparent margin. Actual transparent alpha outside the silhouette, solid opaque artwork inside, no fake checkerboard background. No vehicle, no robot face, no eyes, no landscape, no stars, no extra symbols, no watermark, no mockup.
+

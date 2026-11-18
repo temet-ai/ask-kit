@@ -1,56 +1,113 @@
-# Ask a question
+# Use it
 
-After setup, ask your agent in plain words and it calls the tool:
+Mostly you don't call `ask` at all. You give your agent its task as usual. Setup installed a
+rule that makes the agent call `ask` whenever it needs to find something out, instead of
+searching and reading files in its own context. It reads the files itself once it's about to
+edit them.
+
+You can also ask directly. Starting your message with "ask" makes sure the agent uses the tool.
+
+## Ask about the code
+
+The code is the repository the agent is working in, as it is now.
+
+| You want to | Type |
+|---|---|
+| Find where something lives | `ask where the retry timeout is set` |
+| Find what controls it | `ask which settings and env vars change how uploads are retried` |
+| Follow the calls | `ask what calls loadConfig, and from where` |
+| See how something is done here | `ask how the other exporters are built and registered` |
+| Find when it changed | `ask when the cache key format last changed, and in which commit` |
+
+## Ask about past work
+
+Past work means what your agents did in earlier sessions, in Claude Code, Codex, Copilot CLI,
+Gemini CLI or opencode.
+
+| You want to | Type |
+|---|---|
+| Pick up where you left off | `ask what I was doing on the billing branch yesterday, and what was left` |
+| Find a decision and why | `ask what we decided about the retry timeout, and why` |
+| Find who changed something | `ask which session changed the CI cache key, and what else it changed` |
+| See what another agent found | `ask what the Codex session on Tuesday found about the flaky login test` |
+| Get back a command | `ask what command I used to seed the dev database last week` |
+
+If a question is about why the code changed, it is about past work, so it goes to sessions.
+
+## Ask about anything else
+
+Every domain you add is another thing your agent can ask about without loading it into its own
+context. See [Domains](domains.md).
+
+## Read the answer
 
 ```
-ask what we decided about the retry timeout
-ask which session changed the CI cache key, and why
-ask where the config file is read in this repo
+ask → A Codex session found the retry test's timeout was too tight for CI and widened it in
+      test/retry.test.js (codex 5ca1ab1e #12, #19).
+      [sessions · glm-5.3-flash · 16s · $0.0022]
 ```
 
-The rule `init` installed tells the agent to call `ask` when the answer lies in past work or in
-code it has not read yet, instead of grepping and reading files itself.
+- `codex 5ca1ab1e #12` is the agent, the session and the turn the claim comes from. Code answers
+  cite `path:line`.
+- The last line shows the investigator that answered, its model, how long it took and what it
+  cost.
+- An answer can be wrong and still sound sure. Check the one claim your next step depends on,
+  for example `ask to quote turn #12 of that session`.
 
-## What makes a good question
+## Follow up
 
-- **Name what you already know.** A date, a project, a branch, a session id, a file. The
-  investigator searches narrowly from there instead of reading everything.
-- **One question at a time.** Two unrelated questions are two asks.
-- **Ask for the evidence you want.** "Which session, and what did it change" gets session ids
-  and files back; "is it done" gets a yes or no and the turn it rests on.
+A follow-up goes to the same investigator. It still has everything it found, so it doesn't
+search again and is quicker and cheaper than a new question.
 
-Every answer cites what it relied on: a session and turn for transcripts (`codex 5ca1ab1e #12`),
-a `path:line` for code. An answer can be wrong in a confident voice, so check the one claim your
-next step depends on.
+```
+you:  ask which sessions worked on the deploy script this week
+ask → Three: ...
+you:  follow up: what did the second one change, exactly?
+you:  follow up: and did anyone test that change?
+```
 
-## Follow-ups
+Say "follow up" and the agent passes `continue: true`. If the answer ends with
+`[answered at the step limit ...]`, follow up with `carry on`.
 
-Pass `continue: true` and the question goes to the same investigator, which still holds what it
-found. The REPL's variables are saved after every cell and restored for the follow-up, so "and
-what happened after that?" does not start the search again.
+For an unrelated question, start a new ask.
 
-Use a follow-up to dig into something the answer named, or to finish an answer that stopped
-short. Start a new ask for an unrelated question.
+## Get better answers
 
-## Choosing the investigator
+- **Say what you already know**: a date, a branch, a file, a session id. The search starts there
+  instead of reading everything.
+- **One question per ask.** Two questions get two asks.
+- **Say what you want back**: "which session, and what did it change" gets ids and files; "is
+  it done?" gets yes or no and the turn that shows it.
 
-One `ask` serves every enabled domain. When the call does not say which, a router picks one: a
-one-word call to the cheap router model when one is set, otherwise keyword rules. The agent can
-name it with `about` (`sessions` or `code`, or a domain you added). A follow-up goes back to the
-investigator that answered last.
+## Choose the investigator or model
 
-From the shell:
+Usually you don't. A router picks sessions or code from the question, and setup chose the
+model. To choose anyway, say so:
+
+```
+ask the code investigator where the retry timeout is set
+ask with codex as the backend: which session changed the cache key?
+```
+
+The agent passes `about` (the investigator) or `backend` (the model).
+
+## From the shell
 
 ```sh
 ask-kit ask "which sessions touched the deploy script this week?"
 ask-kit ask --domain code "where is the retry timeout set?"
 ask-kit ask --continue "and who changed it last?"
-ask-kit ask --backend codex "same question, answered by Codex"
+ask-kit ask --backend codex "which session changed the cache key?"
 ```
 
-## What it can and cannot do
+## More examples
 
-The investigator only reads. Transcripts come through the `history` API; code through ripgrep,
-file reads and an allowlist of git subcommands. It cannot edit files, run your tests or reach the
-network beyond the model it runs on. When an agent CLI is the investigator, that CLI's own tools
-are turned off or sandboxed read-only.
+- [Write code with it](use-coding.md)
+- [Search code and past work](use-searching.md)
+- [Pick up where you left off](use-resuming.md)
+- [Make it better](tuning.md)
+
+## What it can't do
+
+The investigator only reads: transcripts, files, ripgrep, and some git commands that only read.
+It can't edit files, run your tests or reach the network, apart from the model it runs on.
