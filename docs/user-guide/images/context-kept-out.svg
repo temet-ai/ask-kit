@@ -3,17 +3,17 @@
   <desc id="d">Medians over 335 asks to mike-ask on 17 and 18 November 2026: the investigator worked through 103,994 tokens of context; the answer returned to the calling agent was about 189 tokens. Median time 17 seconds, median cost 0.37 cents.</desc>
   <style>
     .sans{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-    .cream{fill:#f2ead8}.muted{fill:#9a968c}.red{fill:#e5352b}
+    .cream{fill:#3A1220}.muted{fill:#8F666E}.red{fill:#551B2B}
   </style>
-  <rect width="960" height="350" rx="16" fill="#16161a"/>
+  <rect width="960" height="350" rx="16" fill="#FBF4EB"/>
   <text x="32" y="44" class="sans cream" font-size="20" font-weight="700">How much context one ask keeps out of your agent</text>
 
   <text x="32" y="88" class="sans muted" font-size="14">Worked through by the investigator, in its own context</text>
-  <rect x="32" y="98" width="896" height="38" rx="6" fill="#e5352b"/>
-  <text x="912" y="123" class="sans cream" font-size="15" font-weight="700" text-anchor="end">103,994 tokens</text>
+  <rect x="32" y="98" width="896" height="38" rx="6" fill="#551B2B"/>
+  <text x="912" y="123" fill="#FBF4EB" class="sans" font-size="15" font-weight="700" text-anchor="end">103,994 tokens</text>
 
   <text x="32" y="172" class="sans muted" font-size="14">Returned to your agent</text>
-  <rect x="32" y="182" width="4" height="38" rx="2" fill="#f2ead8"/>
+  <rect x="32" y="182" width="4" height="38" rx="2" fill="#3A1220"/>
   <text x="48" y="207" class="sans cream" font-size="15" font-weight="700">~189 tokens</text>
 
   <text x="32" y="270" class="sans red" font-size="28" font-weight="700">335</text>

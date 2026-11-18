@@ -2,19 +2,19 @@
   <title id="t">What happens inside one ask</title>
   <desc id="d">Your agent sends one question to ask. A cheap investigator answers it by writing a small JavaScript program for each step, in its own context, reaching the code, your past sessions and any domain you add, and sends back a short answer with path:line evidence.</desc>
   <defs>
-    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#e5352b"/></marker>
-    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f2ead8"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#551B2B"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3A1220"/></marker>
   </defs>
   <style>
     .sans{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    .cream{fill:#f2ead8}.muted{fill:#9a968c}.red{fill:#e5352b}.dim{fill:#6f6b63}
+    .cream{fill:#3A1220}.muted{fill:#8F666E}.red{fill:#551B2B}.dim{fill:#9F7C82}
   </style>
-  <rect width="960" height="440" rx="16" fill="#16161a"/>
+  <rect width="960" height="440" rx="16" fill="#FBF4EB"/>
   <text x="32" y="44" class="sans cream" font-size="20" font-weight="700">What happens inside one ask</text>
 
   <!-- your agent -->
-  <rect x="32" y="72" width="270" height="300" rx="12" fill="#202027" stroke="#3a3a42"/>
+  <rect x="32" y="72" width="270" height="300" rx="12" fill="#F4E8DC" stroke="#E2CFC2"/>
   <text x="52" y="104" class="sans cream" font-size="16" font-weight="700">Your agent</text>
   <text x="52" y="124" class="sans muted" font-size="13">main context, writes the code</text>
   <text x="52" y="166" class="mono muted" font-size="13">you: add a CSV exporter</text>
@@ -22,19 +22,19 @@
   <text x="52" y="218" class="mono red" font-size="13">  built and registered?")</text>
   <text x="52" y="290" class="mono cream" font-size="13">a short answer, with</text>
   <text x="52" y="308" class="mono cream" font-size="13">path:line evidence</text>
-  <text x="52" y="352" class="sans muted" font-size="13">keeps ~340 tokens</text>
+  <text x="52" y="352" class="sans muted" font-size="13">takes in ~189 tokens (median)</text>
 
   <!-- arrows -->
-  <line x1="306" y1="208" x2="394" y2="208" stroke="#e5352b" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="306" y1="208" x2="394" y2="208" stroke="#551B2B" stroke-width="2.5" marker-end="url(#ar)"/>
   <text x="350" y="196" class="sans muted" font-size="12" text-anchor="middle">question</text>
-  <line x1="396" y1="298" x2="308" y2="298" stroke="#f2ead8" stroke-width="2.5" marker-end="url(#ac)"/>
+  <line x1="396" y1="298" x2="308" y2="298" stroke="#3A1220" stroke-width="2.5" marker-end="url(#ac)"/>
   <text x="350" y="322" class="sans muted" font-size="12" text-anchor="middle">answer</text>
 
   <!-- investigator -->
-  <rect x="400" y="72" width="528" height="300" rx="12" fill="#202027" stroke="#e5352b" stroke-opacity=".55"/>
+  <rect x="400" y="72" width="528" height="300" rx="12" fill="#F4E8DC" stroke="#551B2B" stroke-opacity=".55"/>
   <text x="420" y="104" class="sans cream" font-size="16" font-weight="700">Investigator</text>
   <text x="420" y="124" class="sans muted" font-size="13">its own context, a cheap model, writes a program for each step</text>
-  <rect x="420" y="138" width="488" height="140" rx="8" fill="#0e0e11"/>
+  <rect x="420" y="138" width="488" height="140" rx="8" fill="#EFE0D3"/>
   <text x="436" y="162" class="mono dim" font-size="13">// cell 1: find it, every spelling</text>
   <text x="436" y="181" class="mono cream" font-size="13">await scripts.run("where", { name: "exporter" })</text>
   <text x="436" y="205" class="mono dim" font-size="13">// cell 2: written for this question</text>
@@ -42,13 +42,13 @@
   <text x="436" y="248" class="mono dim" font-size="13">// cell 3: what changed lately</text>
   <text x="436" y="267" class="mono cream" font-size="13">await repo.git("log", "-5", "--", "src/export")</text>
 
-  <rect x="420" y="292" width="175" height="28" rx="14" fill="none" stroke="#3a3a42"/>
+  <rect x="420" y="292" width="175" height="28" rx="14" fill="none" stroke="#E2CFC2"/>
   <text x="507" y="311" class="sans cream" font-size="12" text-anchor="middle">code · ripgrep, files, git</text>
-  <rect x="605" y="292" width="175" height="28" rx="14" fill="none" stroke="#3a3a42"/>
+  <rect x="605" y="292" width="175" height="28" rx="14" fill="none" stroke="#E2CFC2"/>
   <text x="692" y="311" class="sans cream" font-size="12" text-anchor="middle">sessions · agent transcripts</text>
-  <rect x="790" y="292" width="118" height="28" rx="14" fill="none" stroke="#3a3a42" stroke-dasharray="4 3"/>
+  <rect x="790" y="292" width="118" height="28" rx="14" fill="none" stroke="#E2CFC2" stroke-dasharray="4 3"/>
   <text x="849" y="311" class="sans muted" font-size="12" text-anchor="middle">+ your domains</text>
-  <text x="420" y="352" class="sans muted" font-size="13">median ask: 7 cells, ~196,000 tokens read, then thrown away</text>
+  <text x="420" y="352" class="sans muted" font-size="13">works through ~104,000 tokens (median), kept for follow-ups</text>
 
   <text x="32" y="412" class="sans muted" font-size="13">Your agent makes one tool call. The investigator writes the programs, in a context your agent never sees.</text>
 </svg>
