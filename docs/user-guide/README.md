@@ -1,6 +1,6 @@
 # ask-kit
 
-[![ask-kit — playful brown stacked lettering on warm ivory](images/ask-kit-logo.png)](https://github.com/temet-ai/ask-kit)
+[![ask-kit — playful brown stacked wordmark](images/ask-kit-logo.png)](https://github.com/temet-ai/ask-kit)
 
 Most of a coding agent's context goes on finding things out: searching, opening files, following
 calls, checking what was tried before. All of it stays in the context and crowds out the work

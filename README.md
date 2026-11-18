@@ -1,4 +1,4 @@
-<h1 align="left"><a href="https://github.com/temet-ai/ask-kit"><img src="docs/assets/ask-kit-logo.png" alt="ask-kit — playful brown stacked lettering on warm ivory" width="240"></a></h1>
+<h1 align="left"><a href="https://github.com/temet-ai/ask-kit"><img src="docs/assets/ask-kit-logo.png" alt="ask-kit — playful brown stacked wordmark" width="240"></a></h1>
 
 Most of a coding agent's context goes on finding things out: searching, opening files, following
 calls, checking what was tried before. All of it stays in the context and crowds out the work

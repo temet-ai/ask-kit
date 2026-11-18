@@ -1,19 +1,24 @@
-ask-kit approved stacked wordmark
-Generated with the built-in image_gen tool.
-Final asset: ask-kit-logo.png. This is the exact approved brown lettering on warm ivory; keep its background and colors.
-Canonical source: docs/assets/logo-concepts/04-stacked-wordmark.png.
-The user chose the playful stacked lettering with no scanner, then explicitly reaffirmed the brown version. The later transparent and ivory exports are NOT approved and must not replace this artwork.
-No scanner, car, speech bubble, chevrons, diamonds, teal, or recoloring.
-
 ask-kit stacked wordmark
-Generated with the built-in image_gen tool.
-Selected direction: concept 02, with the scanner removed and spacing tightened.
-Asset: 04-stacked-wordmark.png (ivory-background concept preview).
+Generated and edited with the built-in image_gen tool.
 
-Use case: precise-object-edit
-Input image: EDIT TARGET, the selected stacked ask-kit logo concept.
-Make one precise revision: remove the entire five-color scanner strip between the words. Leave no line, divider, hyphen, dots or decorative substitute in that space.
-Preserve the exact playful, chunky soft-serif lettering: lowercase "ask" on the first line, lowercase "kit" on the second. Keep the warm deep cocoa-plum ink, the existing friendly letter shapes and rounded flared terminals, and the same warm ivory background.
-Move the lower word upward enough to close the space vacated by the scanner, leaving a small clear, balanced gap between the two rows. Keep both words the same optical width, with aligned left edges and well-balanced kerning. The lettering should form a compact, cohesive two-line wordmark. Do not make the letters touch or overlap.
-Keep everything else unchanged. One clean finished logo, flat vector-like rendering. No bubble, icon, badge, ring, frame, chevrons, stripes, diamonds, stars, sparkles, teal, mint or extra colors. No caption, mockup, texture or watermark.
+Canonical asset: docs/assets/ask-kit-logo.png
+Identical guide copy: docs/user-guide/images/ask-kit-logo.png
+
+Current user requirements:
+- Friendly chunky soft-serif lowercase "ask" above "kit".
+- Actual warm cocoa brown, targeting #795548. The earlier reddish plum / burgundy is rejected.
+- True transparent alpha: no white or ivory background, tile, or border.
+- Tightly fitted around the lettering; preserve natural aspect ratio when displaying it.
+- Position top-left, top-aligned with adjacent text.
+- No scanner, car, speech bubble, chevrons, diamonds, or teal.
+
+The ivory-background concept in logo-concepts/04-stacked-wordmark.png records the chosen letterform direction only. Its background and plum colour are superseded; do not use it as the deployed logo.
+
+Final edit prompt:
+Use case: precise-object-edit.
+Recolor the supplied transparent stacked ask-kit wordmark to TRUE WARM COCOA BROWN. The current burgundy/red/purple colour is WRONG and explicitly rejected by the user.
+Change ONLY the colour of the six letters, preserving the exact existing letter shapes, position, tight framing and transparent background.
+Use a solid neutral warm milk-chocolate / walnut brown, hex #795548 (RGB 121,85,72), with normal antialiased transparent edges. This colour must read unmistakably BROWN, not red, not maroon, not plum, not purple, not orange, not wine. Avoid any red gradient or burgundy shadows. Flat uniform #795548 ink throughout the letters.
+Keep lowercase "ask" stacked immediately above lowercase "kit", identical friendly chunky soft-serif letterforms, existing proportions, and small row gap.
+Output true transparent RGBA. Preserve transparency outside all letters and inside the a counter. Tight crop with only 8-12 transparent pixels around the outer letter bounds; slightly wider than tall. Do not add any white or ivory background or tile. Do not add a bubble, scanner, decoration, diamond, chevron, teal, outline, shadow, glow, texture or caption. Do not redesign or change the typography. Only recolor the existing shapes to neutral warm brown.
 
