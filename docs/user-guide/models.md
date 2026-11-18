@@ -16,7 +16,7 @@ for every question, so each question pays only for its own work.
 
 | Provider | Key it looks for | Suggested models |
 |---|---|---|
-| OpenRouter | `OPENROUTER_API_KEY` | `z-ai/glm-5.3-flash`, `deepseek/deepseek-v4.1-flash-1017`, `anthropic/claude-haiku-5-5` |
+| OpenRouter | `OPENROUTER_API_KEY` | `z-ai/glm-5.3-flash`, `deepseek/deepseek-v4.1-flash-1017`, `anthropic/claude-haiku-5.5` |
 | OpenAI | `OPENAI_API_KEY` | `gpt-6-mini`, `gpt-6` |
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-5-5`, `claude-sonnet-5-5` |
 | Google Gemini | `GEMINI_API_KEY` | `gemini-4-flash` |

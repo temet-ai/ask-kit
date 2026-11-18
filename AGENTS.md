@@ -26,9 +26,21 @@ One command, the same on every system:
 npm install -g --allow-git=root github:temet-ai/ask-kit
 ```
 
-npm 12 refuses packages from git unless `--allow-git` is given; older npm ignores the flag. If
-global npm installs are not allowed, clone instead and use
-the full path wherever this file says `ask-kit`:
+npm 12 refuses packages from git unless `--allow-git` is given; older npm ignores the flag.
+
+If it fails with `EACCES` or "permission denied", npm's global folder belongs to root. This is
+usual on Linux when Node came from the system package manager (`npm prefix -g` prints `/usr`).
+Don't use sudo; install into the person's home instead:
+
+```sh
+npm install -g --prefix ~/.local --allow-git=root github:temet-ai/ask-kit
+```
+
+`ask-kit` is then `~/.local/bin/ask-kit`. If `command -v ask-kit` finds nothing, `~/.local/bin`
+is not on PATH: use the full path for now and tell the person to add it to PATH.
+
+If npm can't install at all, clone instead and use the full path wherever this file says
+`ask-kit`:
 
 ```sh
 git clone https://github.com/temet-ai/ask-kit <folder>   # e.g. ~/.local/share/ask-kit, or %LOCALAPPDATA%\ask-kit

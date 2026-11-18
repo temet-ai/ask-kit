@@ -47,7 +47,15 @@ ask-kit init
 ask-kit setup     # the same questions, in the terminal
 ```
 
-If npm can't install packages globally, clone the repository, run `npm install` in it, and run
+If the install fails with `EACCES`, npm's global folder belongs to root (usual on Linux with the
+system's Node, where `npm prefix -g` prints `/usr`). Install into your home instead, and make sure
+`~/.local/bin` is on your PATH:
+
+```sh
+npm install -g --prefix ~/.local --allow-git=root github:temet-ai/ask-kit
+```
+
+If npm can't install at all, clone the repository, run `npm install` in it, and run
 `node <folder>/bin/ask-kit.mjs` wherever this guide says `ask-kit`.
 
 [Command line and files](command-line.md) lists where each agent's files go.

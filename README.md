@@ -68,7 +68,8 @@ It shows what it will change before it changes anything. Restart your agents aft
 they call `ask` by themselves when they need to find something out.
 
 Without an agent: `npm install -g --allow-git=root github:temet-ai/ask-kit`, then `ask-kit init`
-and `ask-kit setup`. It needs Node.js 22.13 or newer and git.
+and `ask-kit setup`. It needs Node.js 22.13 or newer and git. If npm answers `EACCES`, add
+`--prefix ~/.local` to the install command.
 [Set it up](docs/user-guide/setup.md) has the details.
 
 ## Context, time and cost per ask

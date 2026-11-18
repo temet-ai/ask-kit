@@ -28,7 +28,14 @@ function backendFor(id, d, keys) {
   const given = keys?.[kind];
   if (given?.value) be.key = { value: true }; // replaced by storeKey in apply()
   else if (given?.env || given?.file) be.key = given;
-  else if (d.apis[kind]?.keyRefs?.[0]) be.key = d.apis[kind].keyRefs[0];
+  else if (d.apis[kind]?.keyRefs?.length) {
+    // Keep the env name and a file that holds the key: an agent may start ask without the shell's
+    // environment, and then the file still works.
+    const refs = d.apis[kind].keyRefs;
+    const env = refs.find((r) => r.env && !r.file);
+    const file = refs.find((r) => r.file);
+    be.key = env && file ? { env: env.env, file: file.file, var: file.var } : refs[0];
+  }
   else throw new Error(`no key for ${preset.label}: answer keys.${kind} with {env}, {file, var} or {value}`);
   return be;
 }

@@ -13,13 +13,14 @@ export const API_PRESETS = {
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
     keyFiles: ["~/.config/openrouter/active.env"],
+    keyCheck: "/key", // its model list answers without a key; this route refuses a bad one
     reportsCost: true,
     models: [
       // The best of the cheap models on the benchmark (bench/RESULTS.md) at well under a cent a question. The provider pin
       // keeps every question on one provider, so the prefix cache hits.
       { id: "z-ai/glm-5.3-flash", note: "cheapest that answers well (~$0.003/question)", providerOrder: ["DeepInfra"] },
       { id: "deepseek/deepseek-v4.1-flash-1017", note: "best on code questions, about the same price" },
-      { id: "anthropic/claude-haiku-5-5", note: "Anthropic's small model through OpenRouter" },
+      { id: "anthropic/claude-haiku-5.5", note: "Anthropic's small model through OpenRouter" },
     ],
   },
   openai: {
@@ -97,5 +98,5 @@ export const AGENTS = {
   codex: { label: "Codex", bin: "codex", source: "codex", client: "codex" },
   "copilot-cli": { label: "GitHub Copilot CLI", bin: "copilot", source: "copilot-cli", client: "copilot-cli" },
   "gemini-cli": { label: "Gemini CLI", bin: "gemini", source: "gemini-cli", client: "gemini-cli" },
-  opencode: { label: "opencode", bin: "opencode", source: "opencode", client: null },
+  opencode: { label: "opencode", bin: "opencode", source: "opencode", client: "opencode" },
 };

@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ROOT } from "../config.mjs";
+import { API_PRESETS } from "../providers.mjs";
 import { which } from "../platform.mjs";
 
 const BIN = path.join(ROOT, "bin", "ask-kit.mjs");
@@ -47,6 +48,15 @@ function claudeCode() {
   };
 }
 
+const CODEX_ENV_VARS = [
+  ...new Set(Object.values(API_PRESETS).map((p) => p.keyEnv).filter(Boolean)),
+  "ASK_KIT_CONFIG",
+  "ASK_KIT_STATE",
+  "XDG_CONFIG_HOME",
+  "XDG_STATE_HOME",
+  "XDG_DATA_HOME",
+];
+
 const TOML_MARK = ["# >>> ask-kit (managed by `ask-kit setup`; edits inside are replaced)", "# <<< ask-kit"];
 function codex() {
   const file = path.join(process.env.CODEX_HOME || home(".codex"), "config.toml");
@@ -58,6 +68,13 @@ function codex() {
     // Codex drops a tool call at 60 s unless told otherwise; an investigation can take minutes.
     "tool_timeout_sec = 600",
     "startup_timeout_sec = 30",
+    // Codex starts MCP servers with only HOME, PATH, USER and a few more, so an API key kept in the
+    // environment, or a moved config folder, would be missing. Pass them through by name.
+    `env_vars = [${CODEX_ENV_VARS.map((v) => JSON.stringify(v)).join(", ")}]`,
+    // A fresh Codex asks before every MCP tool call, and `codex exec` then fails the call. ask only
+    // reads transcripts and the repository, so it runs without asking.
+    "[mcp_servers.ask.tools.ask]",
+    'approval_mode = "approve"',
     TOML_MARK[1],
   ].join("\n");
   const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
@@ -94,17 +111,30 @@ function jsonServer(client, file, keyPath, entry) {
     what: `set ${keyPath}.ask in ${file}`,
     run() {
       const j = read();
-      j[keyPath] = { ...(j[keyPath] ?? {}), ask: entry };
+      // keyPath may be nested ("mcp.servers"): create each level that is missing.
+      const parent = keyPath.split(".").reduce((o, k) => (o[k] = o[k] && typeof o[k] === "object" ? o[k] : {}), j);
+      parent.ask = entry;
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify(j, null, 2) + "\n");
     },
     remove() {
       const j = read();
-      if (!j[keyPath]?.ask) return;
-      delete j[keyPath].ask;
+      const parent = keyPath.split(".").reduce((o, k) => o?.[k], j);
+      if (!parent?.ask) return;
+      delete parent.ask;
       fs.writeFileSync(file, JSON.stringify(j, null, 2) + "\n");
     },
   };
+}
+
+/** opencode's major version; 2 (the current one) when it can't be read. */
+function opencodeMajor() {
+  try {
+    const m = /(\d+)\.\d+/.exec(cli("opencode", ["--version"]));
+    return m ? Number(m[1]) : 2;
+  } catch {
+    return 2;
+  }
 }
 
 export const REGISTER = {
@@ -113,8 +143,9 @@ export const REGISTER = {
   "copilot-cli": () =>
     jsonServer("copilot-cli", path.join(process.env.COPILOT_HOME || home(".copilot"), "mcp-config.json"), "mcpServers", { type: "local", ...SERVE, tools: ["*"] }),
   "gemini-cli": () => jsonServer("gemini-cli", home(".gemini", "settings.json"), "mcpServers", { ...SERVE, timeout: 600_000 }),
+  // opencode 2 reads servers from mcp.servers; opencode 1 read them from mcp itself.
   opencode: () =>
-    jsonServer("opencode", path.join(process.env.XDG_CONFIG_HOME || home(".config"), "opencode", "opencode.json"), "mcp", {
+    jsonServer("opencode", path.join(process.env.XDG_CONFIG_HOME || home(".config"), "opencode", "opencode.json"), opencodeMajor() >= 2 ? "mcp.servers" : "mcp", {
       type: "local",
       command: [SERVE.command, ...SERVE.args],
       enabled: true,

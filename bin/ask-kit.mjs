@@ -263,6 +263,14 @@ async function doctor() {
         const j = await res.json().catch(() => ({}));
         const ids = (j.data ?? []).map((m) => m.id);
         status = !res.ok ? `HTTP ${res.status}` : ids.length && !ids.includes(b.model) ? `reachable, but ${b.model} is not in its model list` : "ok";
+        // Some providers (OpenRouter) list models without a key, so check the key on its own.
+        if (status === "ok" && p.keyEnv && !p.local) {
+          if (!key) status = `no key: set ${p.keyEnv} or rerun setup`;
+          else if (p.keyCheck) {
+            const kr = await fetch(`${p.baseUrl}${p.keyCheck}`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) });
+            if (!kr.ok) status = `the key was refused (HTTP ${kr.status}): check ${b.key?.env ?? b.key?.file ?? "the key"}`;
+          }
+        }
         if (status === "ok" && b.preset === "ollama") {
           // ask-kit asks Ollama for this much context; a model that tops out lower gets its prompt cut.
           const { ollamaContextLength, OLLAMA_DEFAULT_CTX } = await import("../src/ollama.mjs");
