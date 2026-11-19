@@ -12,7 +12,7 @@
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
-//   ask-kit smith scaffold <source> [--name n] · prove <name> [--rounds 3] · install <name>   kits from that digging
+//   ask-kit smith scaffold <source> [--name n] · prove <name> [--rounds 3] · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
 //   ask-kit kit new|link|list|test|profile|actions|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
@@ -150,7 +150,16 @@ async function main() {
         (await import("../src/agentsmd.mjs")).writeAgentsMd();
         return print(r);
       }
-      throw new Error("smith: scaffold <source> [--name n] [--since 30d] · prove <name> [--rounds 3] [--backends a,b] · install <name>");
+      if (sub === "promote") {
+        if (!arg) throw new Error("smith promote needs a kit's name");
+        const r = await smith.promote(arg, { since: typeof flag("since") === "string" ? flag("since") : "30d" });
+        if (flag("json")) return print(r);
+        for (const s of r.skipped) console.error(`skipped ${s.script} ("${s.template}"): ${s.why}`);
+        if (!r.entries.length) return console.log(`${arg}: nothing to promote yet (ask-kit report lists what is worth an action).`);
+        console.log(`${r.toml}\n\n# ${r.entries.length} action${r.entries.length === 1 ? "" : "s"} for ${r.dir}/ask-kit.toml. Add them there, then: ask-kit kit actions ${arg}`);
+        return;
+      }
+      throw new Error("smith: scaffold <source> [--name n] [--since 30d] · prove <name> [--rounds 3] [--backends a,b] · install <name> · promote <kit> [--since 30d]");
     }
     case "gallery": {
       const { listGallery } = await import("../src/gallery.mjs");

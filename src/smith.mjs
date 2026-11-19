@@ -8,6 +8,8 @@
 //                      found by hand; failures go to a model that rewrites the instructions, up to
 //                      three rounds
 //   install <name>     move a proven draft into the kits folder and enable it
+//   promote <kit>      the questions `ask-kit report` finds keep running one script, as [[actions]]
+//                      entries (printed for the kit's author to add; smith never edits a kit)
 //
 // A drafted kit only reads: the tools an MCP server offers that change something are left out of
 // `allow` and listed in a comment, for the user to add. A setting's value is never copied into a
@@ -26,10 +28,14 @@ import { which } from "./platform.mjs";
 
 const NAME = /^[a-z][a-z0-9-]*$/;
 const SECRET = /TOKEN|SECRET|PASSWORD|PASSWD|KEY|CREDENTIAL|AUTH|COOKIE|SESSION|EMAIL/i;
-const READS = /^(get|list|search|read|view|find|show|describe|fetch|query|lookup|check|count|diff|status|whoami|explain|inspect|browse|summari[sz]e)/i;
+// A word in a tool's name that changes something (jira_add_comment, env_switch, k8s_port_forward).
+const WRITES = /^post[_-]|(^|[_-])(add|create|update|delete|remove|transition|merge|approve|send|set|switch|ensure|connect|forward|restart|stop|start|run|trigger|retry|cancel|close|reopen|edit|write|push|label|assign|unassign|upload|move|rename|kill|exec|apply|deploy|publish|submit|reply|comment|rebase|revert|lock|unlock|enable|disable|install|grant|revoke)([_-]|$)/i;
 
-/** Does an MCP tool only read? By its name, after any server prefix (gitlab_get_mr is get_mr). */
-export const readsOnly = (tool) => READS.test(tool.replace(/^[a-z0-9]+_(?=(get|list|search|read|view|find|show|describe|fetch|query|lookup|check|count|diff|status))/i, ""));
+// A prompt that asks for a change rather than an answer.
+const ACTING = /^(create|add|post|merge|approve|fix|implement|write|update|delete|remove|push|commit|make|build|deploy|move|rename|send|reply|comment|close|open|raise|file|log|set|change|apply)\b/i;
+
+/** Does an MCP tool only read? By its name: no word in it changes something. */
+export const readsOnly = (tool) => !WRITES.test(tool);
 
 // ---- discover: where the source is on this machine ----
 
@@ -173,8 +179,9 @@ export async function scaffold(source, o = {}) {
   const dir = path.join(draftsDir(), name);
   if (fs.existsSync(path.join(dir, MANIFEST))) throw new Error(`${dir} already has a draft; prove it, or remove the folder to start again`);
 
-  const mined = await mine({ kit: source, scan: sc, n: o.n ?? 12 });
-  const questions = mined.rows.filter((r) => r.found).map((r) => ({ id: r.id, q: r.q, reference: r.found, askedAt: r.source.split(" ").at(-1), source: r.source }));
+  // A drafted kit only reads, so a mined task that asks it to change something can't be its test.
+  const mined = await mine({ kit: source, scan: sc, n: (o.n ?? 12) * 2 });
+  const questions = mined.rows.filter((r) => r.found && !ACTING.test(r.q.replace(/^(okay|ok|so|now|then|please|pls),?\s+/i, ""))).slice(0, o.n ?? 12).map((r) => ({ id: r.id, q: r.q, reference: r.found, askedAt: r.source.split(" ").at(-1), source: r.source }));
   if (!questions.length) throw new Error(`${source}: no typed question with an answer to test against`);
 
   let offer = "";
@@ -275,6 +282,101 @@ export async function prove(name, o = {}) {
   const changed = all.filter((x) => x.verdict === "changed").map((x) => x.id);
   const passed = all.filter((x) => x.pass).length;
   return { name, dir, passed, of: all.length, changed, failed: all.filter((x) => !x.pass && x.verdict !== "changed").map((x) => x.id), rounds: meta.rounds.length - before };
+}
+
+// ---- promote: questions that keep running one script become [[actions]] ----
+
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const capture = (key, v) => `(?<${key}>${typeof v === "number" ? "\\d+(?:\\.\\d+)?" : /\s/.test(String(v)) ? ".+?" : "[^\\s?!,]+"})`;
+
+/**
+ * One [[actions]] entry from a report cluster ({kit, template, script, questions, params}), or
+ * {skip: why}. The pattern is the first question with each param value that differs between
+ * questions turned into a named capture; a value the questions share is a default in `params`.
+ * The entry is kept only when every example question matches it as compileActions matches.
+ */
+export function actionFrom(cluster, { taken = new Set(), acts = [] } = {}) {
+  const sets = (cluster.params ?? []).map((p) => {
+    try {
+      return JSON.parse(p);
+    } catch {
+      return null;
+    }
+  }).filter((p) => p && typeof p === "object" && !Array.isArray(p));
+  const pairs = cluster.questions.map((q) => ({ q, p: sets.find((s) => Object.values(s).every((v) => typeof v === "object" || String(q).toLowerCase().includes(String(v).toLowerCase()))) ?? (sets.length ? null : {}) }));
+  if (pairs.some((x) => !x.p)) return { skip: "a question's params could not be found in its words" };
+  const keys = [...new Set(pairs.flatMap((x) => Object.keys(x.p)))];
+  const varying = keys.filter((k) => new Set(pairs.map((x) => JSON.stringify(x.p[k]))).size > 1);
+  const defaults = Object.fromEntries(keys.filter((k) => !varying.includes(k)).map((k) => [k, pairs[0].p[k]]));
+  if (varying.some((k) => !/^[A-Za-z_]\w*$/.test(k) || pairs.some((x) => typeof x.p[k] === "object"))) return { skip: "a param that varies is not a plain value" };
+  // Place the varying values in the first question, left to right, and escape the text between.
+  const q0 = String(pairs[0].q).replace(/[\s?.!]+$/, "");
+  const lower = q0.toLowerCase();
+  const spots = varying.map((k) => ({ k, v: pairs[0].p[k], at: lower.indexOf(String(pairs[0].p[k]).toLowerCase()) })).sort((a, b) => a.at - b.at);
+  if (spots.some((s) => s.at < 0)) return { skip: "a varying value is not in the first question" };
+  let pattern = "";
+  let i = 0;
+  for (const s of spots) {
+    if (s.at < i) return { skip: "two values overlap in the question" };
+    pattern += reEsc(q0.slice(i, s.at)).replace(/\s+/g, "\\s+") + capture(s.k, s.v);
+    i = s.at + String(s.v).length;
+  }
+  pattern += reEsc(q0.slice(i)).replace(/\s+/g, "\\s+");
+  const re = new RegExp(`^\\s*(?:${pattern})[\\s?.!]*$`, "i");
+  const missed = pairs.filter((x) => {
+    const m = String(x.q).match(re);
+    return !m || varying.some((k) => String(m.groups?.[k]).toLowerCase() !== String(x.p[k]).toLowerCase());
+  });
+  if (missed.length) return { skip: `the pattern does not cover: ${missed.map((x) => x.q).join(" | ")}` };
+  let name = cluster.script.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+/, "") || "action";
+  for (let n = 2; taken.has(name); n++) name = `${cluster.script.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-${n}`;
+  taken.add(name);
+  return {
+    action: { name, title: q0.slice(0, 60), script: cluster.script, match: [pattern], ...(Object.keys(defaults).length ? { params: defaults } : {}), ...(acts.includes(cluster.script) ? { acts: true } : {}) },
+    from: { n: cluster.n, sessions: cluster.sessions, costUsd: cluster.costUsd, questions: cluster.questions },
+  };
+}
+
+// A regex reads best as a TOML literal string ('...', no escapes); one holding a quote is a basic string.
+const tomlValue = (v) =>
+  typeof v === "string" ? (/['\n]/.test(v) ? JSON.stringify(v) : `'${v}'`) : typeof v === "object" ? `{ ${Object.entries(v).map(([k, x]) => `${k} = ${tomlValue(x)}`).join(", ")} }` : String(v);
+
+/** [[actions]] entries as manifest text, each with a comment saying what it was promoted from. */
+export function actionsToml(entries) {
+  return entries
+    .map(({ action: a, from }) =>
+      `# Promoted by ask-kit smith from ${from.n} questions in ${from.sessions} sessions, e.g. ${JSON.stringify(from.questions[0])}.\n[[actions]]\n` +
+      Object.entries(a).map(([k, v]) => `${k} = ${Array.isArray(v) ? `[${v.map(tomlValue).join(", ")}]` : tomlValue(v)}`).join("\n"),
+    )
+    .join("\n\n");
+}
+
+/**
+ * The report's "Worth an action" clusters for `kit`, as [[actions]] entries. o: {since, clusters}.
+ * Returns {kit, entries, skipped, toml}; nothing is written to the kit.
+ */
+export async function promote(kit, o = {}) {
+  const dir = (await import("./kits.mjs")).findKit(kit);
+  if (!dir) throw new Error(`no kit ${kit}`);
+  const m = readManifest(dir);
+  const clusters = o.clusters ?? (await import("./report.mjs")).report({ since: o.since ?? "30d" }).worthAnAction.filter((c) => c.kit === kit);
+  const taken = new Set((m.actions ?? []).map((a) => a.name));
+  const have = new Set((m.actions ?? []).map((a) => a.script));
+  const entries = [];
+  const skipped = [];
+  for (const c of clusters) {
+    if (have.has(c.script)) {
+      skipped.push({ template: c.template, script: c.script, why: `an action already runs ${c.script}` });
+      continue;
+    }
+    const r = actionFrom(c, { taken, acts: [].concat(m.acts ?? []) });
+    if (r.skip) skipped.push({ template: c.template, script: c.script, why: r.skip });
+    else entries.push(r);
+  }
+  const { checkActions } = await import("./actions.mjs");
+  const problems = checkActions(entries.map((e) => e.action));
+  if (problems.length) throw new Error(`promote made an entry kits would refuse: ${problems.join("; ")}`);
+  return { kit, dir, entries, skipped, toml: actionsToml(entries) };
 }
 
 // ---- install ----

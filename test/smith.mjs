@@ -39,6 +39,7 @@ const turn = (prompt, ids, answer) => {
 };
 turn("Which letter from Moist von Lipwig is still waiting at the post office?", ["a", "b", "c"], "Letter `L-7` from Moist is waiting, addressed to Adora Belle.");
 turn("Who sent the letter that went to the Patrician yesterday?", ["d", "e", "f"], "Drumknott sent `L-9` on behalf of Vetinari's office.");
+turn("okay, send a reply to Adora Belle saying the golems are on their way", ["g", "h", "i"], "Sent.");
 const dir = path.join(tmp, "claude", "projects", repo.replace(/[/.]/g, "-"));
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, "s1.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
@@ -50,6 +51,10 @@ assert.equal(smith.readsOnly("get_post"), true);
 assert.equal(smith.readsOnly("gitlab_get_mr"), true);
 assert.equal(smith.readsOnly("send_post"), false);
 assert.equal(smith.readsOnly("gitlab_create_note"), false);
+assert.equal(smith.readsOnly("gitlab_mr_diff_get"), true);
+assert.equal(smith.readsOnly("k8s_tail_logs"), true);
+assert.equal(smith.readsOnly("gitlab_mr_comments_add"), false);
+assert.equal(smith.readsOnly("k8s_port_forward"), false);
 assert.throws(() => smith.discover("web"), /many sites/);
 assert.throws(() => smith.discover("mcp: nowhere", { cwds: [repo] }), /no agent config/);
 
@@ -115,6 +120,24 @@ const ins = smith.install("owl");
 assert.equal(ins.dir, path.join(tmp, "config", "kits", "owl"));
 assert.ok(findKit("owl"), "installed kits are found");
 assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, "config", "config.json"), "utf8")).domains.owl.enabled, true);
+
+// promote: a cluster from report's "Worth an action" becomes an [[actions]] entry.
+const { parse: parseToml } = await import("smol-toml");
+const { compileActions } = await import("../src/actions.mjs");
+const cluster = { kit: "owl", template: "which letters are waiting for <text> at the N office", script: "waiting", n: 4, sessions: 3, costUsd: 0.02, questions: ["Which letters are waiting for Adora Belle at the Ankh office?", "which letters are waiting for Moist at the Ankh office"], params: ['{"to":"Adora Belle","office":"Ankh"}', '{"to":"Moist","office":"Ankh"}'] };
+const a = smith.actionFrom(cluster);
+assert.equal(a.action.script, "waiting");
+assert.deepEqual(a.action.params, { office: "Ankh" }, "a value every question shares is a default");
+const [compiled] = compileActions({ actions: [a.action] });
+const hit = "Which letters are waiting for Sam Vimes at the Ankh office?".match(compiled.match[0]);
+assert.equal(hit?.groups.to, "Sam Vimes", "a value that varied is a named capture");
+assert.equal(compiled.match[0].test("Which letters are waiting for Sam at the Ankh office and why?"), false, "a question with more in it goes to the model");
+assert.match(smith.actionFrom({ ...cluster, params: ['{"to":"Rincewind"}'] }).skip, /could not be found/);
+const parsed = parseToml(smith.actionsToml([a]));
+assert.deepEqual(JSON.parse(JSON.stringify(parsed.actions[0])), a.action, "the manifest text parses back to the entry");
+const promoted = await smith.promote("owl", { clusters: [cluster, { ...cluster, script: "get-post", template: "x", questions: ["what is in letter L-9"], params: ['{"id":"L-9"}'] }] });
+assert.equal(promoted.entries.length, 2);
+assert.match(promoted.toml, /# Promoted by ask-kit smith from 4 questions in 3 sessions/);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("smith: ok");

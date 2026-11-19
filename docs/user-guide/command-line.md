@@ -14,6 +14,7 @@ ask-kit report [--since 7d] [--json]   flagged asks, scripts used, routes worth 
 ask-kit kit actions <kit> [--enable|--disable <action>] [--json]   a kit's [[actions]]: status and last 20 runs
 ask-kit gaps [--since 30d] [--json]   lookups agents did by hand instead of asking, by kit
 ask-kit mine <kit> [--since 30d] [--n 20] [--json]   those lookups' questions as draft bench rows
+ask-kit smith scaffold|prove|install|promote ...   a kit built from those lookups, proven, kept improving
 ask-kit gallery                  shared domains
 ask-kit add <repo> [--yes]       show a shared domain's files; --yes installs and enables it
 ask-kit lines                    the one-line prompts for any agent
@@ -105,6 +106,57 @@ The drafts are written to `<state>/drafts/bench/<kit>.json`. `found` is what was
 question was asked. Code and services move on, so read each answer in the source as it is now
 before you write `expect`. Then copy the row into the kit's `bench/questions.json` without the
 helper fields.
+
+## ask-kit smith
+
+`smith` builds a kit from what `gaps` found and keeps it improving. Its four steps:
+
+| Command | What it does |
+|---|---|
+| `smith scaffold <source> [--name n]` | Drafts a kit for a source `gaps` lists under No kit (`"mcp: flux"`, `gitlab`, `files: ~/notes`) |
+| `smith prove <name> [--rounds 3]` | Tests the draft on the questions it was mined from, fixing its instructions between rounds |
+| `smith install <name>` | Moves a proven draft into the kits folder and enables it |
+| `smith promote <kit>` | Turns questions that keep running one script into `[[actions]]` entries |
+
+**scaffold** finds the source on this machine:
+
+- An MCP server is found in a `.mcp.json` above the folders the digging happened in, or in each
+  agent's own config. Its tools are listed by starting it.
+- A program is found on `PATH`, and its `--help` is read.
+- A folder is used as it is.
+
+It mines up to 12 questions with `mine`, leaving out ones that ask for a change. The default
+backend then writes the kit's `says`, `keywords`, `route_hint` and instructions from the tools
+and the questions. The draft goes to `<state>/drafts/kits/<name>`, and nothing routes to it there.
+
+A drafted kit only reads. An MCP tool whose name says it changes something (`add`, `create`,
+`transition`, `switch` and the like) is left out of `allow` and named in a comment, so you can
+add it yourself. No value from the agent's config is copied into the kit. An environment
+reference such as `${GITLAB_TOKEN}` stays a reference. Any other value becomes a `[[settings]]`
+entry whose `detect` reads it from that config file each time. A server that finds its project
+from the folder it starts in gets that folder as `cwd`.
+
+**prove** runs `kit test` on the draft. Each mined question carries a `reference`: what the agent
+found by hand at the time. A judge model grades each answer against its reference:
+
+- `correct`: the answer passes.
+- `partial` or `wrong`: the question failed. Failures go to a model that rewrites
+  `instructions.md`, and the failed questions are asked again, for at most `--rounds` rounds.
+- `changed`: the answer cites evidence that the source has moved on since the reference was
+  written. prove reports these for you to fix by hand, and doesn't count them as failures.
+
+Each round is recorded in the draft's `smith.json`. Any bench row with a `reference` and no
+`expect` is graded this way, so you can write rows like that by hand too.
+
+**promote** reads `ask-kit report`'s "Worth an action" list for the kit. For each cluster it
+writes an `[[actions]]` entry:
+
+- The match pattern is built from a real question.
+- Each value that differed between the questions becomes a named capture.
+- Each value they all shared becomes a default in `params`.
+
+An entry is kept only when every example question matches it. smith prints the entries and
+never edits a kit's manifest. Add them yourself, then check them with `ask-kit kit actions <kit>`.
 
 ## What init puts in each agent
 
