@@ -87,6 +87,7 @@ More:
 - [Kits](kits.md): teach `ask` about something new: install a shared kit or make one from a folder or a CLI.
 - [Domains](domains.md): the older form of a kit.
 - [How it works](how-it-works.md)
+- [Code mode, recursive language models and subagents](code-mode.md): how ask-kit relates to each.
 - [Command line and files](command-line.md)
 - [What it stores and sends](privacy.md)
 - [Troubleshooting](troubleshooting.md)

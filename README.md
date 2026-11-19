@@ -37,7 +37,9 @@ can use it: Claude Code, Codex, GitHub Copilot CLI, Gemini CLI, opencode.
 For each step of a question, the investigator writes a small JavaScript program and runs it in a
 REPL. The program does whatever the step needs: loops, filters, joins, counts, comparisons,
 parsing. It is written fresh for that question. A domain gives the programs access to the data.
-What a program prints is all that returns to the investigator's model.
+What a program prints is all that returns to the investigator's model. Code mode, recursive
+language models and Claude Code subagents each do part of this;
+[How ask-kit relates to them](docs/user-guide/code-mode.md) goes through each.
 
 ![Your agent sends one question; the investigator writes small programs for it in its own context, reaching code, sessions and your own domains, and returns a short answer with path:line evidence](docs/user-guide/images/how-an-ask-works.svg)
 
