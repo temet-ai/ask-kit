@@ -46,11 +46,12 @@ To read what was journaled, the files are under `<ASK_KIT_STATE>/<domain>/`: `<A
 the ask row (`"type":"ask"`) and `ask-<id>.jsonl` the investigator's cells (field list:
 docs/user-guide/reference/journal.md).
 
-## 4. End cleanly and register it
+## 4. End cleanly
 
 Close every MCP client and fake server you opened, then `console.log("ok"); process.exit(0);`.
-An open stdio child keeps Node alive and `npm test` hangs. Add `&& node test/<name>.mjs` to the
-`test` script in package.json.
+An open stdio child keeps Node alive and `npm test` hangs. A file directly in `test/` runs in
+`npm test` by being there (`test/run.mjs` picks up every `test/*.mjs`); there is no list to add
+it to.
 
 ## 5. Prove it
 

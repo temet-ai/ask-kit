@@ -12,14 +12,14 @@ set -u
 limit=${OFFLINE_TIMEOUT:-60}
 isolate=1
 unshare -rn true 2>/dev/null || { isolate=0; echo "warn: unshare -rn is not available here; the network is NOT isolated" >&2; }
-testscript=$(node -e 'process.stdout.write(require("./package.json").scripts.test || "")')
 fails=0
 
 for f in "$@"; do
   before=$fails
   bad() { echo "FAIL $f: $1"; fails=$((fails + 1)); }
   [ -f "$f" ] || { bad "no such file"; continue; }
-  case " $testscript " in *"node $f "*|*"node $f&"*|*"node ./$f "*) ;; *) bad "not in package.json's \"test\" script (add '&& node $f')";; esac
+  # npm test runs every test/*.mjs through test/run.mjs, except run.mjs and adapters.mjs.
+  case "${f#./}" in test/run.mjs|test/adapters.mjs) bad "test/run.mjs skips this file, so npm test never runs it";; test/*/*) bad "npm test runs only files directly in test/";; test/*.mjs) ;; *) bad "npm test runs only test/*.mjs";; esac
   if hits=$(grep -nE '/mnt/data/|/home/[a-z]|/Users/[A-Za-z]|~/\.config|\.config/ask-kit|temet/kit/|\.local/state/ask-kit' "$f"); then
     bad "names a real machine path (use a temp dir or test/fixtures/):"$'\n'"$hits"
   fi
