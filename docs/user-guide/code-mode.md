@@ -23,8 +23,8 @@ investigator's model. The example in
 stands in for two file listings, a file read and a comparison. With separate tool calls, each of
 those is its own round trip and its result joins the context.
 
-Your agent makes a single `ask` call, and the investigator's whole session, programs and results
-included, runs in the investigator's context. The README's
+Your agent makes a single `ask` call, and the investigator's programs and their output stay in the
+investigator's context. The README's
 [context, time and cost per ask](../../README.md#context-time-and-cost-per-ask) has the
 measurement: over 105 real asks to mike-ask, the medians per ask were 125,025 tokens worked
 through by the investigator, about 445 sent back to the calling agent, 36 seconds and $0.011.
