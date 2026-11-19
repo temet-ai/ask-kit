@@ -198,7 +198,7 @@ and `--ref` pins a version. The manifest also names every call that changes some
 | `[[actions]]` (named, titled scripts), `roleFor` called by the `ask` tool | Not built |
 | `http` source, `kit new --from mcp\|openapi`, `kit update`, `log`, `config-dir`, `id`, `min_ask_kit` | Not built |
 | mike pack, fleet kit, marketplace page | Not built |
-| Share of asks answered with no model, in `kit test` and `report` | In progress, uncommitted on 2026-11-19: `noModel` per bench question in `kit test`, `noModelShare` in the report |
+| Share of asks answered with no model, in `kit test` and `report` | Built (commit a17229c, 2026-11-19): cells per question and `noModel` in `kit test`, bench questions with `do` run as shots, `shots` and `noModelShare` in `ask-kit report` |
 
 ## What changes, in order, with the measure for each
 

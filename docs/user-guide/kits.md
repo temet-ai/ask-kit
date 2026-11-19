@@ -208,8 +208,16 @@ belongs to the other kit's investigator.
 ask-kit kit test notes --backends deepseek-v4.1-flash-1017,glm-5.3-flash
 ```
 
-asks every question in the kit's bench on each backend and reports passed, median seconds and
-cost. A bench is real questions, the ones agents asked or dug for by hand (ask the `sessions`
+asks every question in the kit's bench on each backend and prints one summary line per backend:
+questions passed, median seconds, cost, the cells the investigator ran (the total, and the
+median per question) and how many questions were answered with no model:
+
+```
+github · deepseek-v4.1-flash-1017: 5/5, median 55s, $0.0093, 66 cells (median 11), 0/5 answered with no model
+```
+
+Each question's own line (on stderr) gives its seconds, cost and cells. The cells come from the
+ask's journal row; `--out <file>` saves every result with its `cells` and `noModel`. A bench is real questions, the ones agents asked or dug for by hand (ask the `sessions`
 kit to find them), never invented ones; each expectation is checked against the source when it
 is written.
 
@@ -218,6 +226,15 @@ is written.
   { "id": "ci-why", "q": "why did CI fail on main yesterday?", "expect": ["run \\d+", "test"], "any": ["timeout", "assert"] }
 ] }
 ```
+
+A question can have `"do": "<script>"` and `"params": { ... }` in place of `q`. It then runs as
+`ask-kit run <kit> <script>` (a [shot](#run-a-script-with-no-model)), calls no model, and counts
+in the summary's "answered with no model". The `expect` and `any` patterns are checked against
+the script's output.
+
+`ask-kit report` prints the same measures for real use: its first line gives the asks, the
+flagged ones, the shots with their share of all asks ("with no model"), cost and median seconds,
+and `ask-kit report --json` has them as `shots` and `noModelShare`.
 
 ## Share it
 
