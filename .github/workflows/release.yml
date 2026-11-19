@@ -66,6 +66,8 @@ jobs:
       - name: Publish to the MCP Registry
         run: |
           v=$(node -p 'require("./server.json").version')
+          # The registry checks the version on npm, which takes a few minutes to show a new publish.
+          for i in $(seq 1 40); do npm view "@temet-ai/ask-kit@$v" version >/dev/null 2>&1 && break; sleep 15; done
           if curl -fs "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.temet-ai/ask-kit&version=$v" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.exit((JSON.parse(d).servers||[]).some(s=>(s.server||s).version===process.argv[1])?0:1))' "$v"; then echo "::notice::the MCP Registry has $v already"; else ./mcp-publisher publish; fi
 
       - run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
