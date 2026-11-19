@@ -41,10 +41,11 @@ for (const r of await listGallery()) {
   }
   // The older domain.mjs form has no manifest; it is listed with what GitHub says about it.
   const readme = await raw(r.repo, branch, "README.md");
-  let questions = 0;
+  // The questions its bench asks: what people can ask it, in the author's own words.
+  let questions = [];
   try {
     const b = JSON.parse((await raw(r.repo, branch, "bench/questions.json")) ?? "[]");
-    questions = (Array.isArray(b) ? b : (b.questions ?? [])).length;
+    questions = (Array.isArray(b) ? b : (b.questions ?? [])).map((x) => x.q ?? x.question).filter((q) => typeof q === "string");
   } catch {}
   kits.push({
     repo: r.repo,
@@ -68,7 +69,7 @@ for (const r of await listGallery()) {
     questions,
     install: `ask-kit kit install ${r.repo}`,
   });
-  console.log(`${r.repo}: ${m ? "kit" : "domain"}, ${questions} bench question(s)`);
+  console.log(`${r.repo}: ${m ? "kit" : "domain"}, ${questions.length} bench question(s)`);
 }
 
 fs.writeFileSync(out, JSON.stringify({ built: new Date().toISOString(), kits }, null, 2) + "\n");

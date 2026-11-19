@@ -67,7 +67,8 @@ digging:
 It shows what it will change before it changes anything. Restart your agents afterwards, and
 they call `ask` by themselves when they need to find something out.
 
-In Claude Code you can install it as a plugin instead, with no npm step:
+In Claude Code you can install it as a plugin instead. Its npm packages come with the install, and
+it needs Node.js 22.13 or newer:
 
 ```
 /plugin marketplace add temet-ai/ask-kit
