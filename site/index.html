@@ -181,10 +181,11 @@ const kind = (k) => (k.form !== "kit" ? "unknown" : k.acts.length ? "acts" : "re
 function changes(k) {
   return { acts: `<span class="acts">${plural(k.acts.length, "call")} that change things</span>`, reads: `<span class="reads">Reads only</span>`, unknown: `<span class="reads">No manifest</span>` }[kind(k)];
 }
-/** The README intro without its first sentence when that only restates `says`. */
+/** The README intro, without its first sentence when that is the stock "An ask-kit kit that lets..." line. */
 function intro(k) {
   const text = (k.intro || "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-  const rest = text.split(/(?<=\.)\s+/).slice(1).join(" ");
+  const parts = text.split(/(?<=\.)\s+/);
+  const rest = (/^An? \S*ask-kit\S* kit\b/i.test(parts[0] ?? "") ? parts.slice(1) : parts).join(" ");
   return rest ? esc(rest).replace(/`([^`]+)`/g, "<code>$1</code>") : "";
 }
 
@@ -290,7 +291,7 @@ function renderKit(repo) {
     ["Stars", k.stars && String(k.stars)],
     ["Updated", esc(ago(k.updated))],
     ["Owner", `<a href="https://github.com/${esc(k.owner)}">${esc(k.owner)}</a>`],
-    ["Files", `<a href="${esc(k.url)}">repository</a> · <a href="${esc(blob("ask-kit.toml"))}">ask-kit.toml</a>`],
+    ["Files", `<a href="${esc(k.url)}">repository</a><br><a href="${esc(blob(k.form === "kit" ? "ask-kit.toml" : "README.md"))}">${k.form === "kit" ? "ask-kit.toml" : "README.md"}</a>`],
   ].filter(([, v]) => v);
   main.innerHTML = `<div class="detail">
     <div>
