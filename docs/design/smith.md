@@ -70,7 +70,7 @@ acts = ["askkit.kit.link", "askkit.kit.install", "kits.write"]
 | `discover <tool>` | What the machine has for a tool: CLI, MCP server, API with docs, credentials present |
 | `mine <source>` | Real questions about the source from the transcripts. The answer each chain reached becomes the expected answer, with the transcript it came from. |
 | `scaffold` | `ask-kit kit new --from ...`, then `says` and `instructions.md` drafted from the mined questions, not from guesses |
-| `prove` | `ask-kit kit test` on the mined bench, on each backend. It fixes and retries, and stops at the pass mark or after three rounds, then reports what still fails. |
+| `prove` | `ask-kit kit test` on the mined bench, once, on the default backend, and only when the operator asks for that run. It reports what fails; it does not fix and rerun in rounds. |
 | `tune <kit>` | Takes the journal's flagged asks (failed, out of steps, re-asked, slow), finds which layer caused each, fixes it there and reruns the bench |
 | `promote` | Scripts that investigators keep running unchanged become `[[actions]]` (answers with no model call). Drafts that keep being rewritten become scripts. |
 | `split` / `retire` | Splits a kit whose routed questions fall into two clusters. Retires a kit nobody has asked in N weeks, after asking. |

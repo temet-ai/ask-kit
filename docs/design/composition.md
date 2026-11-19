@@ -158,9 +158,10 @@ it does today.
 
 Because the model takes 87% of the time:
 
-- **Backend per domain from the benchmark.** The 40% of asks that hit the limit are mostly
-  deepseek. Re-run the per-domain benchmark and move each domain to the backend that finishes.
-  Benchmark every instruction change on glm, the default, before shipping (lesson 2713).
+- **Backend per domain from the journal.** The 40% of asks that hit the limit are mostly
+  deepseek. The journal already holds each domain's time, steps and limit hits per backend from
+  real use; move a domain to the backend that finishes there. No benchmark rounds: a benchmark
+  runs once, only when Dawid asks for that run.
 - **Scripts that answer in one cell** for the questions that recur, so a run takes two steps
   instead of 18.
 
