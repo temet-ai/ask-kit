@@ -43,7 +43,7 @@ context. See [Domains](domains.md).
 ```
 ask → A Codex session found the retry test's timeout was too tight for CI and widened it in
       test/retry.test.js (codex 5ca1ab1e #12, #19).
-      [sessions · glm-5.3-flash · 16s · $0.0022]
+      [sessions · glm-5.3-flash · 16s]
 ```
 
 - `codex 5ca1ab1e #12` is the agent, the session and the turn the claim comes from. Code answers

@@ -232,13 +232,12 @@ The CLI backends ignore `onStep`.
 When it ends, the handler returns the answer text plus a footer, and `isError: !r.ok`:
 
 ```js
-const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s${r.costUsd ? ` · $${r.costUsd.toFixed(4)}` : ""}]`;
+const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]`;
 ```
 
-The footer shows the domain, the backend name from config (not the model id), the time in whole
-seconds and, when the backend reports one, the cost in dollars. `costUsd` is `null` for Codex and
-Copilot and for API presets that do not report cost (only OpenRouter does), so no cost appears for
-those. If the router chose the domain, it adds its own `[routed to ...]` line after this.
+The footer shows the domain, the backend name from config (not the model id) and the time in whole
+seconds. The cost is left out: agents that saw it in every footer repeated it in their own replies. The journal entry below keeps
+`costUsd`. If the router chose the domain, it adds its own `[routed to ...]` line after this.
 
 ## 5. The journal entry
 

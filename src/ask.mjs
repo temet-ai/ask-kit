@@ -717,7 +717,8 @@ export function registerAsk(server, ctx) {
           if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
           const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, ac.signal, onStep, onEarly);
           ctx.keep({ question, backend, kind, ...r, ...(detached ? { earlyMs: detachedMs } : {}) });
-          const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s${r.costUsd ? ` · $${r.costUsd.toFixed(4)}` : ""}]`;
+          // No cost here: callers quote whatever the footer says. The journal keeps costUsd.
+          const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]`;
           return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok };
         } catch (e) {
           const cancelled = ac.signal.aborted;

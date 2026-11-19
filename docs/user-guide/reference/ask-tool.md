@@ -105,19 +105,20 @@ A successful ask returns one text block: the answer, then a blank line, then a f
 ```
 Exporters implement Exporter in src/export/base.ts:12 ...
 
-[code · glm-5.3-flash · 21s · $0.0031]
+[code · glm-5.3-flash · 21s]
 ```
 
 (An illustration of the shape; the text is the investigator's own.)
 
-The footer is `[<domain> · <backend> · <seconds>s · $<cost>]`.
+The footer is `[<domain> · <backend> · <seconds>s]`. It leaves out the cost: agents that saw it in
+every footer repeated it in their own replies. The journal records each ask's cost, and
+`ask-kit report` shows it.
 
 | Part | Meaning |
 |---|---|
 | `<domain>` | The domain that answered. |
 | `<backend>` | The backend's name from the config. |
 | `<seconds>` | Time of this ask, rounded. For `claude-cli` and `codex-cli` it leaves out the warm-up. |
-| `· $<cost>` | Four decimals. Shown only when the cost is known and above zero: OpenRouter backends and `claude-cli`. Not shown for Codex, Copilot CLI and other APIs. |
 
 The router adds a last line when it chose the domain itself:
 
