@@ -153,6 +153,7 @@ whether or not the config lists it. The config decides only what the router offe
 |---|---|---|---|
 | `backend` | string | none | Name of an `api` backend. The router asks it for one word naming the domain. |
 | `model` | string | that backend's `model` | A different (usually cheaper) model for the routing call. Setup never writes it. |
+| `timeoutMs` | number | `8000` | How long the routing call may take. Past it, session history answers. |
 
 `router` is `null` or missing when no backend is an API. Setup sets `router.backend` to the first
 `api` backend in the list: the investigator you chose, else the first extra.
@@ -162,12 +163,14 @@ How the router chooses, in order:
 1. The `about` parameter of the call.
 2. A follow-up (`continue: true`) goes to the domain that answered last for this caller.
 3. A single enabled domain.
-4. One call to `router.backend`: temperature 0, 200 tokens, 8 seconds, the question cut at 2000
-   characters, reply must be one enabled domain name.
-5. Keyword rules, when the call fails or says something else. These test `sessions` first and
-   then `code`, and fall back to the first enabled domain.
+4. A kit whose `patterns` match a question with no past-work words in it.
+5. One call to `router.backend`: temperature 0, 200 tokens, `timeoutMs` (8 seconds), the question
+   cut at 2000 characters, reply must be one enabled domain name. When it times out, `sessions`
+   answers.
+6. Keyword rules, when the call fails or says something else. These test past-work words
+   (`sessions`) first, then kit `keywords`, then `code`, and fall back to the first enabled domain.
 
-The router call sends the working directory and the question to the model. See
+The router call sends the working directory, the enabled domains' descriptions and the question to the model. See
 [What it stores and sends](../privacy.md).
 
 ## Limits that are not config

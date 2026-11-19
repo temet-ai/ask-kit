@@ -43,14 +43,25 @@ export function report({ since = "7d" } = {}) {
   const asks = [];
   const scripts = {};
   const handCells = {};
+  const misroutes = [];
+  let routed = 0;
   for (const file of journals(STATE_ROOT)) {
     const domain = path.relative(STATE_ROOT, file).split(path.sep)[0];
+    const isRouter = domain === "router";
+    if (isRouter && path.basename(file) === "bench.jsonl") continue;
     for (const line of fs.readFileSync(file, "utf8").split("\n")) {
       if (!line) continue;
       let r;
       try {
         r = JSON.parse(line);
       } catch {
+        continue;
+      }
+      // The router's records: routes it decided itself, and misroutes of those.
+      if (isRouter) {
+        if (!(Date.parse(r.at) >= from)) continue;
+        if (r.type === "misroute") misroutes.push({ at: r.at, question: String(r.question ?? "").slice(0, 140), routed: r.routed, how: r.how, correct: r.correct, why: r.why, journal: file });
+        else if (["model", "rules", "pattern", "timeout"].includes(r.how)) routed++;
         continue;
       }
       if (Date.parse(r.ts) < from) continue;
@@ -97,5 +108,8 @@ export function report({ since = "7d" } = {}) {
     flaggedAsks: flagged,
     scripts: Object.entries(scripts).sort((a, b) => b[1].runs - a[1].runs).map(([name, s]) => ({ name, ...s })),
     worthAScript: Object.entries(handCells).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([shape, n]) => ({ shape, n })),
+    // Routes the router chose itself (model, rules, pattern, timeout) and those that were wrong.
+    routed,
+    misroutes: misroutes.sort((a, b) => a.at.localeCompare(b.at)),
   };
 }

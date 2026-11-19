@@ -1,8 +1,7 @@
 # Journal reference
 
 ask-kit records every ask and every REPL cell. The records are plain JSON lines you can read with
-`jq`, and `ask-kit report` summarises them. This page describes the files, the fields and how the
-report uses them.
+`jq`, and `ask-kit report` summarises them.
 
 Sources:
 [`src/server.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/server.mjs) (`journal`,
@@ -22,7 +21,8 @@ Files are created with mode `0600` and only ever appended to.
 |---|---|---|
 | `<state>/<caller session>.jsonl` | The server the calling agent talks to | One `ask` record per ask from that session. |
 | `<state>/<investigator session>.jsonl` | The investigator's REPL server | One cell record per cell the investigator ran. For `api` and Copilot CLI asks the session is `ask-<uuid>`. |
-| `<STATE_ROOT>/router/<caller session>.jsonl` | The router | One routing record per routed ask. |
+| `<STATE_ROOT>/router/<caller session>.jsonl` | The router | One routing record per routed ask, and a misroute record for each route that turned out wrong. |
+| `<STATE_ROOT>/router/bench.jsonl` | The router | One router-bench row per misroute: `at`, `question`, `routed`, `correct`, `why`. `node bench/router.mjs` routes them again. |
 
 Nothing rotates or deletes a journal. To see which journal a record is in, look at the `journal`
 field of `ask-kit report --json`.
@@ -106,11 +106,29 @@ Written by the router before it forwards a call.
 | `at` | ISO time. |
 | `question` | The question, cut at 500 characters. |
 | `domain` | The domain chosen. |
-| `how` | `caller`, `follow-up`, `only`, `model` or `rules`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
+| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout` or `rules`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
 | `routeMs` | Time the choice took. |
-| `routeError` | When the router model failed and the keyword rules decided: why, cut at 160 characters. |
+| `routeError` | When the router model failed and the fallback decided: why, cut at 160 characters. |
 
-The report ignores routing records.
+### Misroute record
+
+A route the router decided itself (`how` is `pattern`, `model`, `timeout` or `rules`) is a
+misroute when the same calling session asks again within two minutes with an `about` naming
+another domain. The router writes this record to the caller's routing file, and a row to
+`router/bench.jsonl`.
+
+| Field | Meaning |
+|---|---|
+| `at` | ISO time of the correction. |
+| `type` | `misroute`. |
+| `question` | The question that was misrouted, cut at 500 characters. |
+| `routed` | Where the router sent it. |
+| `how` | How the router chose it. |
+| `correct` | Where it should have gone: the domain the caller named. |
+| `why` | `re-asked`. |
+| `afterMs` | Time between the two asks. |
+
+The report counts the routes the router decided and lists the misroutes.
 
 ## `ask-kit report`
 
@@ -167,6 +185,9 @@ Since 2026-11-11T09:27:08.327Z: 12 asks, 2 flagged, $0.0341, median 18 s
 Scripts: code/where 9, sessions/grep 4 (1 failed)
 Written by hand 3+ times (worth a script):
   4×  <shape>
+Misroutes: 1 of 9 routed by the router (router bench rows: <state>/router/bench.jsonl)
+  <at>  <routed> (by <how>) → <correct>, re-asked
+    <question, cut at 140 characters>
 ```
 
 `--json` prints:
@@ -181,6 +202,8 @@ Written by hand 3+ times (worth a script):
 | `flaggedAsks` | `[{ ts, domain, backend, session, question, ms, costUsd, cells, signals, journal }]`. `cells` is `cells` or else `turns`. |
 | `scripts` | `[{ name, runs, failed }]`, most used first. |
 | `worthAScript` | `[{ shape, n }]`. |
+| `routed` | Routes the router decided itself (`pattern`, `model`, `timeout`, `rules`) in range. |
+| `misroutes` | `[{ at, question, routed, how, correct, why, journal }]`, oldest first. |
 
 The domain in the report is the first path part under the state folder. For the `code` domain it
 is `code` for every repository.

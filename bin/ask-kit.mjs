@@ -87,6 +87,10 @@ async function main() {
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);
       if (r.scripts.length) console.log(`\nScripts: ${r.scripts.map((s) => `${s.name} ${s.runs}${s.failed ? ` (${s.failed} failed)` : ""}`).join(", ")}`);
       if (r.worthAScript.length) console.log(`\nWritten by hand 3+ times (worth a script):\n${r.worthAScript.map((w) => `  ${w.n}×  ${w.shape}`).join("\n")}`);
+      if (r.routed || r.misroutes.length) {
+        console.log(`\nMisroutes: ${r.misroutes.length} of ${r.routed} routed by the router (router bench rows: ${(await import("../src/router.mjs")).benchFile()})`);
+        for (const m of r.misroutes) console.log(`  ${m.at}  ${m.routed} (by ${m.how}) → ${m.correct}, ${m.why}\n    ${m.question}`);
+      }
       return;
     }
     case "gallery": {

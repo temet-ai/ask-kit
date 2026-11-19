@@ -43,11 +43,21 @@ In this order, first match wins:
 
 | `how` | When |
 |---|---|
+| `shot` | `do` was given: the kit named, or the one kit with that script. |
 | `caller` | `about` was given. |
 | `follow-up` | `continue` is `true` and an earlier ask from this caller exists. It goes to the domain that answered last. |
 | `only` | One domain is enabled. |
+| `pattern` | A kit's `patterns` match the question and it has no past-work words ("session", "yesterday", "did we", "decided"). With past-work words the match is a hint in the router model's prompt instead. |
 | `model` | `router.backend` is set and its one-word answer names an enabled domain. |
-| `rules` | The model call failed or said something else, or no router model is set. Keyword rules. |
+| `timeout` | The router model did not answer within `router.timeoutMs`: session history (`sessions`) answers. |
+| `rules` | The model call failed or said something else, or no router model is set. Keyword rules: past-work words first, then kit `keywords`, then code words, else the first enabled domain. |
+
+A kit's `route_hint` that names a domain not enabled here (`ops`, `mike`) is rewritten before the
+router model reads it: `mike` and `sessions` become the past-work domain, other names are dropped.
+
+When the same caller asks again within two minutes with an `about` naming another domain than
+the router chose, the router records a misroute: see
+[Misroute record](journal.md#misroute-record).
 
 The router remembers the last domain per calling session on disk, so a follow-up from a new
 process (the shell, a restarted agent) still reaches the same investigator.
