@@ -18,12 +18,17 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, resolveKey } from "./config.mjs";
+import { ROOT, loadConfig, resolveKey } from "./config.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { runCli } from "./platform.mjs";
 import { ollamaChat, OLLAMA_DEFAULT_CTX } from "./ollama.mjs";
 import { parseDo, runShot, shotFooter } from "./shots.mjs";
 import { NO_DATA_META } from "./capabilities.mjs";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { ACTION_META, SHADOW_EVERY, logRun, logShadow, matchAction, noteQuestion, runCount, shapeProblem, statusOf } from "./actions.mjs";
+
+// Set while a shadow run is in progress.
+const shadowing = new AsyncLocalStorage();
 
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
@@ -111,7 +116,9 @@ export function registerAsk(server, ctx) {
       return {};
     }
   };
-  const writeLast = (b, value) => fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
+  // A shadow run (an action's answer checked by the model in the background) leaves the caller's
+  // follow-up where the action put it.
+  const writeLast = (b, value) => shadowing.getStore() || fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
   // Shots kept for this caller: the REPL they ran in (ask-<askId>) and the names a follow-up has not been told about.
   const SHOTS_KEY = "__shots";
   const readShots = () => readLast()[SHOTS_KEY] ?? null;
@@ -586,6 +593,7 @@ export function registerAsk(server, ctx) {
     writeLast(b, { askId, messages });
     return {
       answer,
+      askId,
       partial,
       cutAtLength,
       atLimit,
@@ -689,6 +697,46 @@ export function registerAsk(server, ctx) {
         }
       }
       if (!question) return { content: [{ type: "text", text: "ask needs `question`: the question or request, in plain words (or `do` to run a script)." }], isError: true };
+      // Actions: one of the kit's scripts answers the question with no model (src/actions.mjs).
+      // Anything short of a clean answer falls through to the investigator below.
+      let fell = null;
+      if (!cont && D.actions?.length) {
+        const cfg = loadConfig({ required: false }) ?? config;
+        const hit = matchAction(D.actions.filter((a) => statusOf(domainName, a, cfg).on), question);
+        noteQuestion(domainName, SESSION, hit);
+        if (hit) {
+          const { action, params: p } = hit;
+          let r;
+          try {
+            r = await shoot(backend, action.script, p, Math.min(timeoutSeconds, 120));
+          } catch (e) {
+            r = { ok: false, text: String(e?.message ?? e), ms: Date.now() - started };
+          }
+          const why = r.ok ? shapeProblem(action, r.text) : "error";
+          const run = logRun(domainName, { action: action.name, script: action.script, session: SESSION, question: question.slice(0, 500), params: p, ms: r.ms, ...(why ? { fellThrough: why } : {}), ...(why === "error" ? { error: r.text.slice(0, 300) } : {}) });
+          if (!why) {
+            ctx.keep({ question, action: action.name, do: action.script, params: p, ok: true, ms: Date.now() - started, cells: 1, answer: r.text });
+            // A shadow check, one run in SHADOW_EVERY: the model answers the same question in the
+            // background, and both answers go to the action log for `report` to show side by side.
+            const every = cfg.actions?.shadowEvery ?? SHADOW_EVERY;
+            const kind = BACKENDS[backend].kind;
+            if (every > 0 && KINDS[kind] && runCount(domainName, action.name) % every === 0) {
+              const base = { run: run.id, action: action.name, session: SESSION, question: question.slice(0, 500), actionAnswer: r.text.slice(0, 4000), backend };
+              shadowing.run(true, () =>
+                KINDS[kind](backend, question, Math.min(timeoutSeconds, 300) * 1000, false)
+                  .then((m) => logShadow(domainName, { ...base, ok: m.ok !== false, modelAnswer: String(m.answer ?? "").slice(0, 4000), ms: m.ms, costUsd: m.costUsd ?? null, cells: m.cells ?? null }))
+                  .catch((e) => logShadow(domainName, { ...base, ok: false, error: String(e?.message ?? e).slice(0, 300) })),
+              );
+            }
+            const shown = Object.keys(p).length ? ` ${JSON.stringify(p)}` : "";
+            return {
+              content: [{ type: "text", text: `${r.text}\n\n[answered by ${domainName}'s action ${action.name}: script ${action.script}${shown}, no model; continue: true hands it to the investigator]` }],
+              _meta: { [ACTION_META]: { kit: domainName, action: action.name, run: run.id } },
+            };
+          }
+          fell = { action: action.name, why, ...(run.off ? { turnedOff: run.off } : {}) };
+        }
+      }
       // A follow-up to an ask that answered early collects the rest of that run first.
       if (cont && pending.has(backend)) {
         const out = await pending.get(backend);
@@ -726,7 +774,7 @@ export function registerAsk(server, ctx) {
           const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, ac.signal, onStep, onEarly);
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
-          ctx.keep({ question, backend, kind, ...r, ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}) });
+          ctx.keep({ question, backend, kind, ...r, ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.
           const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
@@ -734,7 +782,7 @@ export function registerAsk(server, ctx) {
         } catch (e) {
           const cancelled = ac.signal.aborted;
           const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");
-          ctx.keep({ question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started });
+          ctx.keep({ question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started, ...(fell ? { actionFellThrough: fell } : {}) });
           return { content: [{ type: "text", text: `ask failed (${backend}): ${message}` }], isError: true };
         } finally {
           extra?.signal?.removeEventListener("abort", onAbort);
@@ -746,7 +794,7 @@ export function registerAsk(server, ctx) {
       detachedMs = first.early.ms;
       extra?.signal?.removeEventListener("abort", onAbort);
       pending.set(backend, run);
-      ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text });
+      ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text, ...(fell ? { actionFellThrough: fell } : {}) });
       return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + (config.footer ? `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` : "") }] };
     },
   );

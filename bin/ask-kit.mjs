@@ -13,7 +13,7 @@
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|profile|install|enable|disable   kits: ask-kit.toml folders
+//   ask-kit kit new|link|list|test|profile|actions|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -85,13 +85,25 @@ async function main() {
       const { report } = await import("../src/report.mjs");
       const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d" });
       if (flag("json")) return print(r);
-      console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, ${r.shots} shots (${Math.round((r.noModelShare ?? 0) * 100)}% with no model), $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
+      console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, ${r.shots} shots, ${r.actionAnswers} answered by actions (${Math.round((r.noModelShare ?? 0) * 100)}% with no model; ${r.realNoModelShare == null ? "-" : `${Math.round(r.realNoModelShare * 100)}%`} on real use), $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);
       if (r.scripts.length) console.log(`\nScripts: ${r.scripts.map((s) => `${s.name} ${s.runs}${s.failed ? ` (${s.failed} failed)` : ""}`).join(", ")}`);
       if (r.worthAScript.length) console.log(`\nWritten by hand 3+ times (worth a script):\n${r.worthAScript.map((w) => `  ${w.n}×  ${w.shape}`).join("\n")}`);
       if (r.routed || r.misroutes.length) {
         console.log(`\nMisroutes: ${r.misroutes.length} of ${r.routed} routed by the router (router bench rows: ${(await import("../src/router.mjs")).benchFile()})`);
         for (const m of r.misroutes) console.log(`  ${m.at}  ${m.routed} (by ${m.how}) → ${m.correct}, ${m.why}\n    ${m.question}`);
+      }
+      if (r.actions.length) {
+        console.log("\nActions:");
+        for (const a of r.actions) console.log(`  ${a.kit}.${a.action}: ${a.runs} runs, ${a.answered} answered${Object.keys(a.fellThrough).length ? `, fell through: ${Object.entries(a.fellThrough).map(([k, n]) => `${n} ${k}`).join(", ")}` : ""}${a.reasked ? `, ${a.reasked} asked again` : ""}${a.off ? `\n    turned off: ${a.off}` : ""}`);
+      }
+      if (r.shadows.length) {
+        console.log("\nShadow runs (the action's answer, then the model's):");
+        for (const s of r.shadows) console.log(`  ${s.at}  ${s.kit}.${s.action}  ${s.question}\n    action: ${s.actionAnswer.replace(/\s+/g, " ").slice(0, 300)}\n    model (${s.backend}${s.ms != null ? `, ${Math.round(s.ms / 1000)}s` : ""}${s.costUsd != null ? `, $${s.costUsd}` : ""}): ${(s.modelAnswer ?? `failed: ${s.error}`).replace(/\s+/g, " ").slice(0, 300)}`);
+      }
+      if (r.worthAnAction.length) {
+        console.log("\nWorth an action (real questions asked again whose cells ran the same script; ranked by count × cost):");
+        for (const w of r.worthAnAction) console.log(`  ${w.n}× in ${w.sessions} session(s)  ${w.kit} · ${w.script}  $${w.costUsd}, median ${w.medianSeconds ?? "-"} s\n    "${w.template}"\n    e.g. ${w.questions[0]}${w.params.length ? `\n    params seen: ${w.params.join("  ")}` : ""}`);
       }
       return;
     }
@@ -439,11 +451,45 @@ async function kitCommand() {
       for (const k of r.kits) console.log(`${k.name.padEnd(18)}${String(k.chosen).padStart(7)}${String(k.asks).padStart(6)}${String(k.medianSeconds ?? "-").padStart(10)}${k.costUsd.toFixed(4).padStart(9)}${String(k.medianCells ?? "-").padStart(7)}${String(k.misroutes).padStart(11)}${String(k.fallbacks).padStart(11)}${String(k.noData).padStart(9)}${String(k.routerTokens).padStart(12)}${String(k.loadMs ?? "-").padStart(9)}${k.hidden ? `  (hidden: ${k.hidden})` : ""}`);
       return;
     }
+    case "actions": {
+      // A kit's [[actions]]: status (on, or off and why), the last 20 runs, and --enable/--disable.
+      const name = positional[1];
+      if (!name) throw new Error("kit actions needs a kit name");
+      const dir = kits.findKit(name);
+      if (!dir) throw new Error(`no kit ${name}; ask-kit kit list shows them`);
+      const acts = await import("../src/actions.mjs");
+      const list = acts.compileActions(kits.readManifest(dir));
+      const on = typeof flag("enable") === "string" ? flag("enable") : null;
+      const off = typeof flag("disable") === "string" ? flag("disable") : null;
+      if (on || off) {
+        const a = list.find((x) => x.name === (on ?? off));
+        if (!a) throw new Error(`${name} has no action ${on ?? off}; its actions: ${list.map((x) => x.name).join(", ") || "none"}`);
+        const c = loadConfig();
+        const own = { ...(c.domains?.[name]?.actions ?? {}) };
+        if (on) {
+          // Your yes: clears a demotion (its window starts again) and turns on an action that acts.
+          acts.enableAction(name, a.name);
+          if (own[a.name] === false || a.acts) own[a.name] = true;
+        } else own[a.name] = false;
+        c.domains = { ...(c.domains ?? {}), [name]: { ...(c.domains?.[name] ?? {}), actions: own } };
+        saveConfig(c);
+      }
+      const c = loadConfig({ required: false }) ?? {};
+      const state = acts.readState(name);
+      const rows = list.map((a) => {
+        const s = acts.statusOf(name, a, c, state);
+        return { name: a.name, title: a.title, script: a.script, acts: a.acts, on: s.on, ...(s.on ? {} : { why: s.why }), match: a.patterns, ...(a.expect ? { expect: a.expect.source } : {}), last20: acts.windowOf(name, a.name) };
+      });
+      if (flag("json")) return print(rows);
+      if (!rows.length) return console.log(`${name} has no [[actions]] (docs/user-guide/kits.md, "Actions").`);
+      for (const r of rows) console.log(`${r.on ? "●" : "○"} ${r.name.padEnd(20)} ${r.title}  (script ${r.script}${r.acts ? ", changes things" : ""})\n    ${r.on ? "on" : r.why}\n    last ${r.last20.runs} runs: ${r.last20.answered} answered, ${r.last20.failed} fell through on an error or the shape, ${r.last20.reasked} asked again\n    match: ${r.match.join("  |  ")}`);
+      return;
+    }
     case "install":
       if (!positional[1]) throw new Error("kit install needs a repository (owner/repo) or a folder");
       return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes") }));
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo> [--yes] · enable|disable <name>");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo> [--yes] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 

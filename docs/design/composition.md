@@ -168,11 +168,12 @@ Because the model takes 87% of the time:
 
 | Tier | Today | To build |
 |---|---|---|
-| Cells the model writes | Journaled with their code; `report` lists repeated cell shapes | Cluster real questions (benchmark runs excluded) and their cells, ranked by count times cost |
+| Cells the model writes | Journaled with their code and each script's params; `report` lists repeated cell shapes, and its "Worth an action" section clusters real questions (kit tests and benchmarks left out) by kit, question template and the library script their cells ran, ranked by count times cost, with the params seen | Clustering by the chain of cells, for questions no one script answers |
 | Library script | Written by hand (tuner, ask-kit-improve) | `smith promote` drafts one from a cluster's cells |
 | Proven | `kit test` with hand-written regexes | A shadow run: the real clustered questions, with the model's answer as the reference, comparing answer, time and cost |
-| Action, no model | Shots via `do` and `ask-kit run` | `[[actions]]` with `match` patterns whose named captures fill the params. Runs before any model and falls through to the model on any mismatch. An action that changes something stays off until the user says yes |
-| Guarded | Failures show in `report` | A rolling window of 20 uses, a check of the result's shape, a shadow model run on 1 use in 20. A failing action is turned off and proven again |
+| Action, no model | Shots via `do` and `ask-kit run`. `[[actions]]` (src/actions.mjs, 2026-11-19): `match` patterns that must match the whole question, named captures and `params` defaults fill the script's params, run through the shot path. An enabled action claims the route ahead of kit patterns and the router model; the kit's server tries it before its investigator. It falls through to the model on no match, an error, empty output or output failing `expect`. An action whose script is in `acts`, or with `acts = true`, is off until `domains.<kit>.actions.<name> = true` | Writing `[[actions]]` from a "Worth an action" cluster (`smith promote`) |
+| Guarded | Every run journaled in `<state>/actions/<kit>.jsonl` (params, ms, why it fell through). Of the last 20 runs, more than 3 that fell through on an error or the shape, or whose caller asked again within 120 s, turn the action off in state; `report` shows "turned off: why", `kit actions <kit> --enable` turns it on with a fresh window. One answered run in 20 (`actions.shadowEvery`) also runs the model in the background; `report` shows both answers side by side | Judging shadow pairs, and proving an action again (a bench of its real questions) before it is turned back on |
+
 **Scripts stay JavaScript.** The investigator writes and edits them in its REPL, so promotion
 ends at a script or an action; it never produces native code. A native program comes in as a
 source the script calls, the way `history.grep` should hand its scan to `rg`. A kit declares the

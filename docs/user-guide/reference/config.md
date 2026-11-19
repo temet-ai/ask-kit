@@ -29,6 +29,7 @@ Source: [`src/config.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/con
 | `domains` | object | none, required | Which domains are on. See [`domains`](#domains). |
 | `router` | object or `null` | `null` when no backend is an API | How the router picks a domain. See [`router`](#router). |
 | `footer` | boolean | `false` | `true` adds a last line to each answer with the domain, backend and seconds (`[code · glm-5.3-flash · 21s]`), and the router's `[routed to <domain> by <how>]` line. Off by default, because agents repeat whatever the reply carries. The journal records time, backend and cost either way. |
+| `actions` | object | `{ "shadowEvery": 20 }` | `shadowEvery`: one answered run of an action in this many also runs the investigator in the background, for `ask-kit report` to show both answers. `0` turns shadow runs off. See [Actions](../kits.md#actions). |
 | `setupAt` | string (ISO time) | time of setup | Written by `plan()`. Nothing reads it. |
 
 `loadConfig` throws `ask-kit is not set up yet` when the file is missing, and the server then
@@ -137,6 +138,7 @@ A name with no folder fails the router when it starts (`no domain "<name>"`).
 | `enabled` | boolean | on | `false` takes the domain out of the router and out of the tool's `about` list. |
 | `backend` | string | none | A backend name from `backends.list` that answers this domain's asks. Beats `backends.default`. A name that is not in `list` is ignored. |
 | `priority` | number | the manifest's | Pins the priority of every capability the domain provides (`[[provides]]` in a kit, `provides` in a domain.mjs). The highest wins. Settles a tie that `ask-kit doctor` reports. |
+| `actions` | object | none | Per action of the kit's `[[actions]]`: `true` turns on one that changes something, `false` turns any off. Read on every ask, so no restart is needed. `ask-kit kit actions <kit> --enable` and `--disable` write it. |
 | `from` | string | none | Written by `ask-kit add`: the repository or folder a domain came from. |
 | `commit` | string | none | Written by `ask-kit add`: the commit installed. |
 | any other key | any | none | Read by the domain itself. A domain's `makeGlobals({ push, config })` receives the whole config. The [notes domain in the how-to](../guides/write-a-domain.md) reads `domains.notes.dir`. |

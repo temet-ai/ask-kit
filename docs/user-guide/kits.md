@@ -59,6 +59,7 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `cite` | How answers cite evidence |
 | `requires`, `platforms` | Programs that must be on PATH, and the systems it runs on (`linux`, `macos`, `windows`). A kit whose programs, `required` settings or folders are missing is not offered on that machine; `kit list` says why. |
 | `acts` | What the kit can change; shown at install |
+| `[[actions]]` `name`, `title`, `script`, `match`, `params`, `expect`, `acts` | A question one of `match`'s regexes matches as a whole is answered by `script` with no model; named captures fill its params, `params` gives defaults, and output that does not match `expect` goes to the model instead. An action whose script is in `acts`, or that sets `acts = true`, is off until you turn it on. See [Actions](#actions). |
 | `[[settings]]` `key`, `about`, `default`, `detect`, `secret`, `required` | A value the kit needs, with `about` saying what it is (shown by `kit list` when it is missing, in the install preview and on the kits page): from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder when the kit is first used, never when the router starts), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
 | `state_key` | One state folder per value (the github kit keeps one per repository) |
 | `[[sources]]` `kind = "folder"` | `path`, `exclude` (globs never searched or read: what the investigator reads goes to a model) |
@@ -113,6 +114,91 @@ goes to the same REPL, and its prompt has one line saying `shots.duty` is there.
 backend the line names the REPL that holds the shot, and the investigator brings it in with the
 `load` tool. The journal row for a shot has `shot: true` and the script's name, and no backend,
 model or cost.
+
+## Actions
+
+A shot needs the caller to know the script. An action lets the question itself pick it: the kit
+says which questions a script answers, and those questions are answered with no model.
+
+```toml
+[[actions]]
+name = "duty"
+title = "Who is on duty at a post"
+script = "duty"
+match = ['who is on duty at (?<post>\w+(?: \w+)?)']
+expect = 'officers'
+```
+
+`ask("Who is on duty at Cable Street?")` then returns the script's output and one line saying
+where it came from:
+
+```
+{
+ "post": "Cable Street",
+ "officers": [
+  "Angua"
+ ]
+}
+
+[answered by watch's action duty: script duty {"post":"Cable Street"}, no model; continue: true hands it to the investigator]
+```
+
+- `match` is one regex or a list. It must match the whole question; only spaces and a closing
+  `?`, `.` or `!` may follow. Matching ignores case. "Who is on duty at Cable Street and why was
+  Nobby moved?" does not match, so the investigator answers it.
+- Named captures (`(?<post>...)`) become the script's params, on top of the defaults in `params`.
+  A capture that is all digits is passed as a number, and `true` or `false` as a boolean.
+- When the router chooses, an enabled action's match claims the question before kit patterns and
+  before the router model, so the question costs no model call at all. With `about`, or when the
+  router picked the kit some other way, the kit's server tries its actions before its investigator.
+  A `continue: true` question never runs an action.
+- The script runs the way a shot does, so its value stays in the REPL as `shots.<script>` for a
+  follow-up.
+
+The question goes to the investigator, as if the kit had no action, when no pattern matches, the
+script throws, its output is empty (`null`, `undefined`, `[]`, `{}` or nothing), or the output
+does not match `expect`. The caller sees only the investigator's answer.
+
+### Actions that change something
+
+An action whose `script` is named in the kit's `acts`, or that sets `acts = true`, is off until
+you turn it on:
+
+```sh
+ask-kit kit actions watch --enable dismiss
+```
+
+That writes `domains.watch.actions.dismiss = true` to the config. Setting it to `false` turns any
+action off; `--disable <name>` does that.
+
+### How an action is turned off for you
+
+Every run is journaled in `<state>/actions/<kit>.jsonl` with its params, time and, when it fell
+through, why. Of an action's last 20 runs, a run counts as bad when it fell through on an error,
+empty output or `expect`, or when the caller asked again within 120 seconds. Asking again means
+either a new question to the same kit that is not the same action with other params, or a
+correction sent to another kit with `about`. A `continue: true` follow-up does not count. When
+more than 3 of the 20 are bad, the action is turned off. That is recorded in
+`<state>/actions/<kit>.json`, not in your config, and `ask-kit report` shows it under
+"turned off" with the reason. `ask-kit kit actions <kit>` lists every action with its status and
+its last 20 runs, and `--enable <name>` turns it on again with a fresh window.
+
+### Shadow runs
+
+One answered run in 20 also runs the investigator on the same question, in the background, after
+the caller has the action's answer. Both answers go to the action log, and `ask-kit report` shows
+them side by side under "Shadow runs". Nothing judges them; reading them is how you see an action
+drift. `actions.shadowEvery` in the config sets the 20; `0` turns shadow runs off. A shadow run
+costs one ask on the kit's backend. It is lost if the server exits first, as `ask-kit ask` does
+when it has printed the answer.
+
+### Finding questions worth an action
+
+`ask-kit report` has a section "Worth an action": real questions (kit tests and benchmarks left
+out) grouped by kit, by the question with its numbers, quoted text, ids and paths blanked, and by
+the library script their cells ran, ranked by count times cost. Each entry shows the script and
+the param values the investigator called it with. That is what you need to write the
+`[[actions]]` entry; nothing writes one for you.
 
 ## Get an early answer
 

@@ -19,6 +19,11 @@ that CLI's service under its own terms, and the sessions appear in its history.
 - Under `~/.local/state/ask-kit/`: the journals of every ask and cell, REPL snapshots, warm
   investigator sessions and the transcript index. The router keeps each routed question, and in
   `router/bench.jsonl` every misrouted question with where it went and where it should have gone.
+- In `~/.local/state/ask-kit/actions/`: each question a kit's action answered or tried, with the
+  params it ran the script with. For a shadow run (one action answer in 20), both answers are
+  kept in full up to 4,000 characters each; this is the only place ask-kit keeps an answer's
+  text. The shadow run sends the question to the kit's model, as any ask does.
+  `actions.shadowEvery: 0` in the config stops it.
 - `ask-kit gaps` keeps the lookup chains and asks it found in each session in
   `~/.local/state/ask-kit/index/gaps.json`: time, kit, area, token count and the first 200
   characters of the prompt. It sends nothing.

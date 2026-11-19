@@ -54,6 +54,8 @@ slashes removed and every other run of characters outside `A-Z a-z 0-9 . _ -` tu
 | `<state>/warm/mcp-*.json`, `copilot-mcp-*.json` | `claude-cli`, `copilot-cli` asks | A per-ask MCP config naming the REPL server. Removed when the ask ends. |
 | `<STATE_ROOT>/router/<caller>.jsonl` | the router | One line per routed ask: `at`, `question` (500 characters), `domain`, `how`, `routeMs`, `routeError`. |
 | `<STATE_ROOT>/router/last-<caller>.json` | the router | `{ domain, at }`: the domain that answered last, for follow-ups. |
+| `<STATE_ROOT>/actions/<kit>.jsonl` | the kit's server, the router | One line per action run (`type: "run"`: `id`, `action`, `script`, `session`, `question` (500 characters), `params`, `ms`, `fellThrough`, `error`), per re-ask of an action's answer (`type: "reask"`: `run`, `why`, `afterMs`) and per shadow run (`type: "shadow"`: `run`, `question`, `actionAnswer` and `modelAnswer` (4,000 characters each), `backend`, `ms`, `costUsd`, `cells`). |
+| `<STATE_ROOT>/actions/<kit>.json` | the kit's server, `kit actions --enable` | Per action turned off: `{ off, why, at }`; per action turned on again: `{ enabledAt }`. |
 | `<STATE_ROOT>/index/<source>.json` | the transcript adapters | A cache of each session file's metadata (modification time, size, id, title), so a listing does not re-read every transcript. Safe to delete. |
 | `<STATE_ROOT>/index/gaps.json` | `ask-kit gaps` | Per session (`<source>:<id>`, with its modification time and size): the lookup chains and asks found, each with time, kit, area, tokens and the first 200 characters of its prompt. Rebuilt when kits change. Safe to delete. |
 | `<STATE_ROOT>/gallery/<owner>-<repo>/` | `ask-kit add` | A shallow clone of a shared domain, replaced on each add. |
@@ -63,7 +65,7 @@ server uses the caller's session id. An investigator's REPL uses `ask-<uuid>` fo
 Copilot CLI asks. `<caller>` is the file-safe form of the calling agent's session id.
 
 `ask-kit report` reads every `.jsonl` file under the state folder except in folders named `warm`,
-`drafts`, `gallery` and `index`.
+`drafts`, `gallery`, `index` and `actions`, and reads `actions` separately for its action sections.
 
 Deleting the state folder loses journals, snapshots, warm sessions and drafts. Nothing else.
 
