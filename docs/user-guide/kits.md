@@ -65,11 +65,142 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `[[sources]]` `kind = "mcp"` | `command` (the MCP server), `env`, `allow` (the tools it may call), `caller_args` (per tool, the argument set to the calling session, so actions are the caller's), `caller_env`. Each tool becomes a function: `mike.get_fleet({ fleet })`. |
 | `[[sources]]` `kind = "module"` | `module` (exports `make({ settings, push, config, kitDir, cwd })`), `api` (its `api.d.ts`) |
 | `instructions`, `scripts` | Your own instructions file and scripts folder (default `scripts/`) |
+| `skills` | A folder of Markdown playbooks (default `skills/`). A file's name is the skill's name and its first line the purpose. See [Skills and roles](#skills-and-roles). |
+| `[[roles]]` `name`, `when`, `instructions`, `patterns` | A playbook for one kind of question: `when` in plain words, `instructions` a file in the kit, `patterns` (regexes; checked when the manifest loads, not yet used to pick a role) |
+| `uses` | Names of other installed kits whose sources and scripts join this kit's REPL. See [Use another kit's sources](#use-another-kits-sources). |
 | `bench` | Real questions with the patterns each answer must hold (default `bench/questions.json`) |
 | `[[build]] command` | Run at install, after the preview (the docs kit downloads its copy) |
 
 `ask-kit kit link <dir>` uses a working folder in place: edits load on the next question.
 `ask-kit kit list` shows every kit; `kit enable` and `kit disable` switch one.
+
+## Run a script with no model
+
+Any script the kit's REPL can run can run as a shot: the kit's own `scripts` folder, the host's
+`find`, `outline` and `tree` for a folder kit, and the scripts of kits it uses. A shot calls no
+investigator and no backend and returns the script's result. The calling agent passes `do` and
+`params` to `ask`:
+
+```
+ask(do: "watch.duty", params: { post: "Pseudopolis Yard" })
+```
+
+```
+{
+ "post": "Pseudopolis Yard",
+ "officers": [
+  "Sam Vimes",
+  "Carrot Ironfoundersson"
+ ]
+}
+
+[watch · shot duty · 0s]
+```
+
+`do` is `<kit>.<script>`; a bare `<script>` works when `about` names the kit or only one kit has
+that script. An unknown script is refused with the kit's list of scripts. From a shell the same
+shot is `ask-kit run <kit> <script> [key=value ...]`, which prints the same text; a value that
+parses as JSON (`n=3`, `all=true`) is passed as JSON.
+
+```sh
+ask-kit run watch duty post="Pseudopolis Yard"
+```
+
+The script runs as a cell of the kit's REPL, `shots.duty = await scripts.run("duty", params)`, so
+the value stays there. With an `api` or `copilot-cli` backend, a later `continue: true` question
+goes to the same REPL, and its prompt has one line saying `shots.duty` is there. With another
+backend the line names the REPL that holds the shot, and the investigator brings it in with the
+`load` tool. The journal row for a shot has `shot: true` and the script's name, and no backend,
+model or cost.
+
+## Get an early answer
+
+When an investigator already holds the main fact and wants to check the rest, it can send the
+fact at once. The ask returns it ending with `[partial: more is coming: ask again with continue:
+true]` while the investigation carries on in the kit's server:
+
+```
+Angua is on duty at Cable Street (scripts.run duty).
+
+[partial: more is coming: ask again with continue: true]
+
+[watch · fake · early · 0s]
+```
+
+`ask` with `continue: true` then returns the rest of that run, waiting for it if it has not
+finished, with the line `[the rest of your earlier question; ...]`. A run sends at most one early
+answer. It works with `api` backends only. `ask-kit ask` from a shell passes `early: false`,
+because the process ends with its reply; any caller can pass `early: false` for a single
+complete answer. The first journal row has `early: true` and `partial: true`; the finished run's
+row has `earlyMs`.
+
+## Skills and roles
+
+A kit can keep playbooks for particular jobs. Each loads only when the investigator asks for it.
+
+```toml
+[[roles]]
+name = "triage"
+when = "a question about something failing or broken"
+patterns = ["\\b(fail|broken|crash)\\w*"]
+instructions = "roles/triage.md"
+```
+
+With a `skills/` folder holding `owner.md` and `changelog.md` (each starting with a line saying
+what the playbook is for), the instructions ask-kit writes for the kit end with:
+
+```
+Skills (playbooks; `skills.read(name)` loads one before you start the job it names):
+- `changelog`: Summarise a changelog in three lines
+- `owner`: Find the owner of a file
+
+Roles (when a question fits one, `skills.read("role:<name>")` and follow it):
+- `role:triage`: a question about something failing or broken
+```
+
+In the REPL, `skills.list()` returns each entry's `name`, `kind` and `purpose`, and
+`skills.read(name)` returns the file; a role is read as `role:<name>` (or the bare name). Each
+read is journaled. When the kit has its own `instructions` file, the same lines are added after
+it. A role needs `name`, `when` and an existing `instructions` file; `kit list` shows a manifest
+that lacks one with the reason.
+
+## Use another kit's sources
+
+```toml
+name = "top"
+says = "a kit that uses base"
+uses = ["base"]
+```
+
+`uses` puts the other kit's globals, its `api.d.ts` section, its scripts and its skills and
+roles (a name this kit already has keeps this kit's own) into this kit's REPL, and the
+instructions gain a line naming each kit used. The used kit must be installed and able
+to run on the machine; if it is not, this kit is unavailable and `kit list` says why. A kit that
+uses itself, or a chain that comes back round (`a` uses `b` uses `a`), is refused. A used kit's
+own `folder` is not merged.
+
+## Ask another kit from a REPL cell
+
+Inside any kit's REPL, `ask.kit(name, question, { continue })` asks another enabled kit's
+investigator and returns its answer text with its footer:
+
+```js
+const a = await ask.kit("code", "where is the router defined?");
+```
+
+The call starts the other kit's server as the router does and passes the calling session
+through, so `{ continue: true }` follows up on that kit's last answer. Only one level is
+allowed: a kit started by `ask.kit` that calls `ask.kit` gets an error naming the limit. An
+unknown kit, or one that is disabled or cannot run, is refused with the list of kits that can,
+and a kit cannot ask itself. Each call is journaled as a call of kind `ask.kit` with the target
+kit, seconds, cost and backend read from the answer's footer:
+
+```json
+{"kind":"ask.kit","kit":"code","detail":"where is the router defined?","ms":198,"seconds":7,"costUsd":0.0031,"backend":"stub-model"}
+```
+
+Use `uses` when the other kit's calls belong in your own cells, and `ask.kit` when a question
+belongs to the other kit's investigator.
 
 ## Prove it
 

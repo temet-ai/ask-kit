@@ -2,7 +2,7 @@
 title: Kits - ask-kit as a host
 status: draft
 created: 2026-11-18
-updated: 2026-11-18
+updated: 2026-11-19
 summary: ask-kit becomes a lean, generic host (router, investigator loop, REPL, journal, backends, install) and everything it knows or does comes from kits, folders with a TOML manifest that point at a source (a folder, a CLI, an MCP server, an HTTP API, a JS module). Modelled on herdr's plugin system and on what made coding agents good.
 session_id:
   - 4e289079-da5f-498b-bd4d-facad52bf096
@@ -145,9 +145,20 @@ A question matching a kit's `patterns` goes straight to that kit with no router 
 shows which scripts investigators keep running unchanged, and those become actions. This is the
 same path as draft, then script, then action, that turns repeated digging into a fast lookup.
 
+**Built (commit a3202dc, 2026-11-19):** `do` and `params` on `ask` and the router,
+`ask-kit run <kit> <script> [key=value]`, the shot held as `shots.<script>` for a `continue: true`
+ask, and early answers (`early_answer`, the partial note, `continue: true` collects the rest). A
+shot runs any script the kit's REPL lists (its own, the host's folder scripts, a used kit's); the `[[actions]]` table that names and titles
+them is not built.
+
 ## Composition
 
-- `uses` shares sources between kits.
+**Built (commits 80f7da3 and 8c0413d):** `uses`, `ask.kit`, and the kit's own playbooks, which
+this note had not listed: `skills` (a folder of Markdown) and `[[roles]]` (`name`, `when`,
+`instructions`, `patterns`), read in the REPL with `skills.list()` and `skills.read(name)`.
+
+- `uses` shares sources between kits. A missing or unavailable used kit makes this kit
+  unavailable, and a cycle is refused.
 - Inside a REPL, `ask.kit("sessions", "...")` asks another kit (depth 1, journaled). The fleet kit
   uses it to ask whether something was done before.
 - A pack is one repository with several kits, installed by `owner/repo/subdir`. The mike pack
@@ -177,6 +188,17 @@ scripts or actions, and proves the fix with that kit's bench.
 As in herdr: kits are code that runs as you. There is no sandbox. Installing shows a preview,
 and `--ref` pins a version. The manifest also names every call that changes something
 (`acts`), so the preview can show what a kit can do, not only what it runs.
+
+## What is built and what remains (2026-11-19)
+
+| Part | State |
+|---|---|
+| Manifest, `folder`, `cli`, `module`, `mcp` sources, `kit new --from folder\|cli`, `link`, `list`, `test`, `install`, `enable`, `disable`, `patterns` routing, `requires`, `platforms` | Built (see the user guide) |
+| Shots, early answers, skills, roles, `uses`, `ask.kit` | Built, with offline tests: `test/shots.mjs`, `test/early.mjs`, `test/kits.mjs`, `test/kitcall.mjs` |
+| `[[actions]]` (named, titled scripts), `roleFor` called by the `ask` tool | Not built |
+| `http` source, `kit new --from mcp\|openapi`, `kit update`, `log`, `config-dir`, `id`, `min_ask_kit` | Not built |
+| mike pack, fleet kit, marketplace page | Not built |
+| Share of asks answered with no model, in `kit test` and `report` | In progress, uncommitted on 2026-11-19: `noModel` per bench question in `kit test`, `noModelShare` in the report |
 
 ## What changes, in order, with the measure for each
 
