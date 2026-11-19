@@ -34,19 +34,26 @@ and docker as well. Read `docs/user-guide/guides/debug-a-bad-answer.md`
 
 ## Prove it
 
-1. Before the change, score what it reaches on both models, glm-5.3-flash and
-   deepseek-v4.1-flash-1017: kits with the `ask-kit-kit-test` skill's script; sessions and code
-   with `bench/run-ask.mjs --only <ids>` per backend, as in
-   `docs/user-guide/guides/run-the-benchmark.md` ("Compare a change"), with `ASK_KIT_CONFIG` and
-   `ASK_KIT_STATE` set to scratch folders. To try a kit without a line, copy it into a real
-   folder (`mkdir -p $d/kits && cp -rL ~/.config/ask-kit/kits/<name> $d/kits/`) and edit the copy;
+Real model runs cost Dawid's OpenRouter stipend, and he has stopped work that ran them in
+rounds (2026-11-19). So:
+
+1. The "before" is the journal: the failing asks' rows and cells, and the last kit test `--out`
+   file if there is one. Don't run a before.
+2. Make one change. Replace a line where you can; a longer prompt costs every question. To try a
+   kit without a line, copy it into a real folder
+   (`mkdir -p $d/kits && cp -rL ~/.config/ask-kit/kits/<name> $d/kits/`) and edit the copy;
    never edit through a scratch config whose `kits` is a link to the live kits. On 2026-11-19 a
    `sed -i` and `rm -rf .git` meant for a copy went through such a link and hit the real
    ask-kit-docker and ask-kit-github checkouts.
-2. Make one change. Replace a line where you can; a longer prompt costs every question.
-3. Run the same set again. Compare per backend: passes, then cells per question, then cost.
-4. Keep the change only if neither backend loses a pass or gains cells on the set. A line that
-   helps deepseek and hurts glm (or the reverse) is reverted. Report both summaries.
+3. Ask the brief's author before any real run. With a yes: one run, only the questions the
+   change reaches (`--only`), on the backend the kit uses, with the `ask-kit-kit-test` skill's
+   script (sessions and code: `bench/run-ask.mjs --only <ids>`). It runs once, on that one
+   backend.
+4. Report the run and what still fails. The kit's real use, in `ask-kit report`, is the next
+   measure.
+
+Run a long command in the foreground (timeout up to 600000 ms) or wait on it with Monitor. A run
+left in the background when you stop is orphaned and its result reaches no one (2026-11-19).
 
 Questions come from the kits' `bench/questions.json` and `bench/questions.json` in this repo:
 real questions with hand-checked answers. Never write synthetic bench questions; a new question

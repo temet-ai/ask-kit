@@ -42,8 +42,13 @@ quotes, long lines; keep the file's style).
   `~/.config/ask-kit` (config.json, and AGENTS.md rewritten with this checkout's paths): run them
   with `ASK_KIT_CONFIG` and `ASK_KIT_STATE` set to a scratch folder (copy config.json in when you
   need the installed kits).
-- After an edit: `node --check <file>`, then `node test/<name>.mjs`, then `npm test` (about two
-  seconds, no network).
+- After an edit: `node --check <file>`, then `node test/run.mjs <name>` for the files you
+  touched, then `npm test` once before you hand back (every test/*.mjs, about 45 s, no network).
+  A new test file needs no list entry.
+- `kit test` and the benches call real models on Dawid's stipend: never run them unless the
+  brief says to run that specific one, and then once (the `ask-kit-kit-test` skill says how).
+- Run long commands in the foreground or wait on them with Monitor. A run left in the background
+  when you stop is orphaned and its result reaches no one.
 - Score a kit with the `ask-kit-kit-test` skill's script, never a bare `kit test` from a clone
   or worktree: real model calls, minutes per kit, and the scores a host change must hold.
 - The real kits are their own repositories under `/mnt/data/projects/temet/kit/ask-kit-<name>`

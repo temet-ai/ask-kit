@@ -6,7 +6,8 @@ description: Write and prove a test for ask-kit's host code (src/, bin/ask-kit.m
 # A test for ask-kit's host with no model and no network
 
 ask-kit's tests are plain Node scripts (`node:assert/strict`, no framework) that print `ok` and
-exit 0. The whole `npm test` runs in about two seconds. A test never calls a model, the network or
+exit 0. `npm test` runs every test/*.mjs through test/run.mjs (about 45 s); `node test/run.mjs
+<name>` runs the ones whose file name contains it. A new test file runs by being in test/. A test never calls a model, the network or
 a real kit; synthetic data lives only in test fixtures, with Discworld names (`Sam Vimes`,
 `ankh-morpork/watch`) and hosts `example.com` or `.invalid` (CONTRIBUTING.md).
 

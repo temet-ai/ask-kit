@@ -19,10 +19,4 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: node test/fixtures.mjs
-      - run: node test/setup.mjs
-      - run: node test/repl.mjs
-      - name: bundle
-        if: hashFiles('test/bundle.mjs') != ''
-        run: node test/bundle.mjs
-      - run: node test/plugin.mjs
+      - run: npm test

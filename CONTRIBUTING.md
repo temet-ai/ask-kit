@@ -16,12 +16,20 @@ Node.js 22.13 or newer and git. From the repository root:
 
 ```sh
 npm ci
-npm test                 # fixtures for every transcript format, setup, the REPL, the bundle
+npm test                 # every test/*.mjs through test/run.mjs; no model, no network
+node test/run.mjs router # only the test files whose names contain "router"
 npm run test:machine     # reads this machine's real transcripts; not run in CI
 node bin/ask-kit.mjs --help
 ```
 
-CI runs `npm test` on Linux, macOS and Windows with Node 22 and 24. After changing a dependency,
+A new test file under `test/` runs by being there: there is no list to add it to. CI runs
+`npm test` on Linux, macOS and Windows with Node 22 and 24.
+
+After changing a file in `bundle/` (skills, the tuner agent, the rule), run
+`node bin/ask-kit.mjs plugin build` to refresh the Claude Code plugin's copies in `plugin/`;
+`test/plugin.mjs` fails until you do. The kits page is `site/`: `node site/build-index.mjs`
+writes `site/kits.json` from GitHub, and any static server in `site/` shows it. The `kits-site`
+workflow rebuilds and deploys it on a push and every six hours. After changing a dependency,
 regenerate the notices with `node scripts/notices.mjs > THIRD-PARTY-NOTICES.md`.
 
 ## Rules every change keeps
