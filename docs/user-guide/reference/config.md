@@ -158,6 +158,7 @@ whether or not the config lists it. The config decides only what the router offe
 | `backend` | string | none | Name of an `api` backend. The router asks it for one word naming the domain. |
 | `model` | string | that backend's `model` | A different (usually cheaper) model for the routing call. Setup never writes it. |
 | `timeoutMs` | number | `8000` | How long the routing call may take. Past it, session history answers. |
+| `body` | object | `{"reasoning": {"enabled": false}}` on the `openrouter` preset, else none | Extra fields for the routing call's request. A reasoning model can spend the call's 200 tokens thinking and reply with nothing, so OpenRouter is told not to reason. |
 
 `router` is `null` or missing when no backend is an API. Setup sets `router.backend` to the first
 `api` backend in the list: the investigator you chose, else the first extra.

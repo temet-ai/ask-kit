@@ -65,6 +65,14 @@ assert.equal(timed.fallback("who keeps the guild ledger?", err), "sessions");
 assert.equal(timed.fallback("who keeps the guild ledger?", new Error("router model said \"x\"")), "guild", "other failures use the rules");
 await slow.close();
 
+// `router.body` adds fields to the routing call (OpenRouter gets reasoning off by default).
+const word = await fakeBackend([{ answer: "guild" }]);
+const withBody = await makeRouter({ ...cfg, backends: { default: "fake", list: { fake: fake.backend, word: word.backend } }, router: { backend: "word", body: { reasoning: { enabled: false } } } });
+assert.equal(await withBody.byModel("who keeps the guild ledger?"), "guild");
+assert.deepEqual(word.requests[0].reasoning, { enabled: false });
+assert.equal(word.requests[0].max_tokens, 200, "body does not override the call's own fields");
+await word.close();
+
 // Through `ask-kit serve`: the router decides (rules: no router model), the caller corrects it with
 // `about` within two minutes, and the misroute is journaled and becomes a router-bench row.
 const env = { ...process.env, ASK_KIT_CONFIG: config, ASK_KIT_STATE: state, ASK_KIT_SESSION: "router-test" };

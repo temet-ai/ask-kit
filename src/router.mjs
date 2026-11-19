@@ -158,7 +158,9 @@ export async function makeRouter(config) {
       res = await fetch(`${base}/chat/completions`, {
         method: "POST",
         headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
-        body: JSON.stringify({ model: config.router.model ?? routerBe.model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: systemPrompt(q) }, { role: "user", content: q.slice(0, 2000) }] }),
+        // A reasoning model can spend all 200 tokens thinking and reply with nothing (mike-ask on
+        // deepseek, 2026-11-19), so OpenRouter is told not to reason; `router.body` adds or overrides fields.
+        body: JSON.stringify({ ...(routerBe.preset === "openrouter" ? { reasoning: { enabled: false } } : {}), ...config.router.body, model: config.router.model ?? routerBe.model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: systemPrompt(q) }, { role: "user", content: q.slice(0, 2000) }] }),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
