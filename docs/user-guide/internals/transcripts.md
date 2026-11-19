@@ -101,9 +101,12 @@ all call `sessions()`, so they write this cache too.
 - `events(ref, {roles, from, to, maxText})` calls the adapter, which parses the whole file
   again on every call, then filters.
 - `grep(query, opts)` takes words (all must appear in one event, any case) or a `RegExp`. For each
-  session in the window it first asks `fileMayMatch(file, words)`. That check lower-cases the file
-  and looks for one raw line that holds every word, in its JSON-escaped form, without parsing. A
-  file that fails is skipped. It is not used for a `RegExp` (no words) or for an adapter with
+  session in the window it first asks `filesMayMatch(files, words)`, which runs one `rg -l -i -F`
+  (bundled ripgrep) for the first word, in its JSON-escaped form, over all candidate files, in
+  batches that fit a command line. With several words, each file ripgrep lists goes through
+  `fileMayMatch(file, words)`, which lower-cases the file and looks for one raw line that holds
+  every word. Without ripgrep, with `ASK_KIT_NO_RG=1`, or when a batch fails, `fileMayMatch` runs
+  on every file. A file that fails is skipped. It is not used for a `RegExp` (no words) or for an adapter with
   `noPrefilter`. Otherwise the adapter parses the file and each event of the wanted roles is
   tested. The default roles are `user`, `assistant`, `tool_call` and `tool_result`; `system` is
   searched only when asked for.

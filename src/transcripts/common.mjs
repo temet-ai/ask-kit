@@ -8,6 +8,8 @@
 // `i` is the event's position in the session, the citation an answer uses.
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { rgPath } from "../platform.mjs";
 import { STATE_ROOT } from "../config.mjs";
 
 export const clip = (s, n = 400) => (s == null ? "" : String(s).length > n ? String(s).slice(0, n) + "…" : String(s));
@@ -150,6 +152,57 @@ export function fileMayMatch(file, needles) {
     at = text.indexOf(first, end);
   }
   return false;
+}
+
+/**
+ * `fileMayMatch` over many files at once: the subset of `files` that may hold a matching line.
+ * One ripgrep (`-l -i -F`) lists the files holding the first word; with more words each listed
+ * file is then checked by `fileMayMatch`, so the result equals the JS prefilter's. File paths go
+ * as arguments in batches under the Windows command-line limit, never through a shell. Without
+ * ripgrep (or with ASK_KIT_NO_RG=1, or if a batch fails) the JS prefilter runs on those files.
+ */
+export async function filesMayMatch(files, needles) {
+  if (!needles.length) return new Set(files);
+  const rg = process.env.ASK_KIT_NO_RG ? null : rgPath();
+  const out = new Set();
+  const viaJs = (list) => {
+    for (const f of list) if (fileMayMatch(f, needles)) out.add(f);
+  };
+  if (!rg) {
+    viaJs(files);
+    return out;
+  }
+  // The same escaped form fileMayMatch looks for.
+  const first = JSON.stringify(needles[0]).slice(1, -1);
+  const batches = [];
+  let cur = [];
+  let len = 0;
+  for (const f of files) {
+    if (cur.length && len + f.length + 3 > 24_000) {
+      batches.push(cur);
+      cur = [];
+      len = 0;
+    }
+    cur.push(f);
+    len += f.length + 3;
+  }
+  if (cur.length) batches.push(cur);
+  for (const batch of batches) {
+    const listed = await new Promise((resolve) => {
+      execFile(rg, ["-l", "-i", "-F", "-a", "--no-config", "--no-messages", "--null", "-e", first, "--", ...batch], { maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
+        // exit 1 is "no file matched"; anything else is a failure for this batch.
+        if (err && err.code !== 1) return resolve(null);
+        resolve(String(stdout).split("\0").filter(Boolean));
+      });
+    });
+    if (listed === null) {
+      viaJs(batch);
+      continue;
+    }
+    const known = new Set(batch);
+    for (const f of listed) if (known.has(f) && (needles.length === 1 || fileMayMatch(f, needles))) out.add(f);
+  }
+  return out;
 }
 
 /** A user-visible title from a first prompt. */

@@ -5,7 +5,7 @@ import { adapter as codex } from "./codex.mjs";
 import { adapter as copilotCli } from "./copilot-cli.mjs";
 import { adapter as geminiCli } from "./gemini-cli.mjs";
 import { adapter as opencode } from "./opencode.mjs";
-import { clip, fileMayMatch } from "./common.mjs";
+import { clip, filesMayMatch } from "./common.mjs";
 import { STATE_ROOT } from "../config.mjs";
 
 export const ADAPTERS = Object.fromEntries([claudeCode, codex, copilotCli, geminiCli, opencode].map((a) => [a.name, a]));
@@ -114,8 +114,9 @@ export function makeHistory({ sources, push = () => {} }) {
       const hits = [];
       let scanned = 0;
       let total = 0;
+      const maybe = await filesMayMatch(list.filter((s) => !ADAPTERS[s.source].noPrefilter).map((s) => s.file), words);
       for (const s of list) {
-        if (!ADAPTERS[s.source].noPrefilter && !fileMayMatch(s.file, words)) continue;
+        if (!ADAPTERS[s.source].noPrefilter && !maybe.has(s.file)) continue;
         scanned++;
         for (const e of await ADAPTERS[s.source].events(s)) {
           if (!roles.includes(e.role) || !e.text || !test(e.text)) continue;
