@@ -164,7 +164,7 @@ Because the model takes 87% of the time:
 - **Scripts that answer in one cell** for the questions that recur, so a run takes two steps
   instead of 18.
 
-### 6. Promotion: from cells to scripts to actions to native
+### 6. Promotion: from cells to scripts to actions
 
 | Tier | Today | To build |
 |---|---|---|
@@ -173,14 +173,19 @@ Because the model takes 87% of the time:
 | Proven | `kit test` with hand-written regexes | A shadow run: the real clustered questions, with the model's answer as the reference, comparing answer, time and cost |
 | Action, no model | Shots via `do` and `ask-kit run` | `[[actions]]` with `match` patterns whose named captures fill the params. Runs before any model and falls through to the model on any mismatch. An action that changes something stays off until the user says yes |
 | Guarded | Failures show in `report` | A rolling window of 20 uses, a check of the result's shape, a shadow model run on 1 use in 20. A failing action is turned off and proven again |
-| Native | None | `[[actions]]` with `native = { command, args }` and a `verify` bench whose output must match the script's. The script stays as the fallback. The router prefers native, then script, then model |
+**Scripts stay JavaScript.** The investigator writes and edits them in its REPL, so promotion
+ends at a script or an action; it never produces native code. A native program comes in as a
+source the script calls, the way `history.grep` should hand its scan to `rg`. A kit declares the
+program as a `cli` source with `requires`, like `gh` or `docker`.
 
-**When native pays:** roughly 50 or more runs a day, or more than 2 s of CPU per run. Today that
-is ask-kit's transcript search alone. Its first step needs no Rust: an `rg -l` prefilter in
-`history.grep` takes a call from 15 to 40 s to under a second (30 to 80 times faster). A native
-transcript index comes after, if session-history use through ask-kit grows. mike-ask's slow
-sources are mike's API (request count and latency tails), which batching endpoints on mike's
-side fix and native code in ask-kit would not.
+**When to look for a faster program.** Promotion's data flags a hot path: roughly 50 or more runs
+a day, or more than 2 s of CPU in one run. The first question is whether a fast program already
+exists (`rg`, `fd`, `jq`, `duckdb`, a service's own CLI) for the script to call. Only when none
+does is one worth building, by someone, outside the script system, and the kit then calls it the
+same way. Today the one hot path is ask-kit's transcript search: an `rg -l` prefilter in
+`history.grep` takes a call from 15 to 40 s to under a second (30 to 80 times faster).
+mike-ask's slow sources are mike's API (request count and latency tails), which batching
+endpoints on mike's side fix.
 
 ### 7. Coverage is the measure of all of it
 
@@ -205,7 +210,7 @@ sessions, $285 at list price) put code first (331 sessions) and mike's tools sec
 | 6. `ask-kit gaps` | 7 | Coverage: the share of digging, weighted by tokens, that went to `ask` |
 | 7. The `rg` prefilter in `history.grep` (small, can go first) | 6 | Seconds per call |
 | 8. Promotion to actions, once real use shows repeating questions | 6 | Share of asks answered with no model, on real use only |
-| 9. Native fast paths, when a promoted action passes the cost-times-frequency line | 6 | Time per run against the script |
+| 9. A faster program for a script to call, when a hot path passes the cost-times-frequency line and an existing one fits | 6 | Time per run, before and after |
 
 ## Sources
 
