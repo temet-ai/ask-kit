@@ -191,7 +191,7 @@ export async function serveRouter() {
         const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
         const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
-        return { ...out, content: [{ type: "text", text: `${text}${["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
+        return { ...out, content: [{ type: "text", text: `${text}${!config.footer || ["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {
         return { content: [{ type: "text", text: `ask failed (${name}): ${e.message ?? e}` }], isError: true };
       }

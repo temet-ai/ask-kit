@@ -69,8 +69,8 @@ follow-up from a new process still reaches the same investigator. `continue` is 
 domain server only when the chosen domain is the remembered one (`cont && name === last`). An
 `about` that names a different domain therefore turns the follow-up into a fresh question.
 
-The router appends `[routed to <domain> by <how>]` to the answer unless `how` is `caller` or
-`only`. It writes one line per ask to `STATE_ROOT/router/<session>.jsonl` with the question
+With `footer: true` in the config, the router appends `[routed to <domain> by <how>]` to the
+answer unless `how` is `caller` or `only`. It writes one line per ask to `STATE_ROOT/router/<session>.jsonl` with the question
 (500 characters), the domain, `how` and `routeMs`.
 
 The router waits for the domain server with a timeout of `(timeoutSeconds ?? 300) * 1000 + 30000`
@@ -229,15 +229,17 @@ backend, and `askApi` calls it as each cell starts (`runCode`). `onStep` sends
 `callTool` has an `onprogress` that sends each note on to its own caller under the caller's token.
 The CLI backends ignore `onStep`.
 
-When it ends, the handler returns the answer text plus a footer, and `isError: !r.ok`:
+When it ends, the handler returns the answer text, and `isError: !r.ok`. With `footer: true` in
+the config it adds a footer:
 
 ```js
-const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]`;
+const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
 ```
 
 The footer shows the domain, the backend name from config (not the model id) and the time in whole
-seconds. The cost is left out: agents that saw it in every footer repeated it in their own replies. The journal entry below keeps
-`costUsd`. If the router chose the domain, it adds its own `[routed to ...]` line after this.
+seconds. It is off by default because agents repeat whatever the reply carries; the journal entry
+below keeps the time, backend and `costUsd` either way. If the router chose the domain, it adds
+its own `[routed to ...]` line after this, under the same setting.
 
 ## 5. The journal entry
 

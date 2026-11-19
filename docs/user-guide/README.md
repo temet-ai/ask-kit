@@ -19,7 +19,6 @@ agent → ask: how are the exporters built and registered, and which tests cover
 ask   → Exporters implement Exporter in src/export/base.ts:12 and are registered in
         src/export/index.ts:30. JsonExporter (src/export/json.ts) is the closest model;
         tests are in test/export/*.test.ts.
-        [code · glm-5.3-flash · 21s]
 ```
 
 The agent reads that three-line answer and starts the change from there. (The exchange above is

@@ -28,6 +28,7 @@ Source: [`src/config.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/con
 | `backends` | object | none, required | The models. See [`backends`](#backends). |
 | `domains` | object | none, required | Which domains are on. See [`domains`](#domains). |
 | `router` | object or `null` | `null` when no backend is an API | How the router picks a domain. See [`router`](#router). |
+| `footer` | boolean | `false` | `true` adds a last line to each answer with the domain, backend and seconds (`[code · glm-5.3-flash · 21s]`), and the router's `[routed to <domain> by <how>]` line. Off by default, because agents repeat whatever the reply carries. The journal records time, backend and cost either way. |
 | `setupAt` | string (ISO time) | time of setup | Written by `plan()`. Nothing reads it. |
 
 `loadConfig` throws `ask-kit is not set up yet` when the file is missing, and the server then
@@ -79,7 +80,7 @@ A backend entry always has a `kind`. The other keys depend on the kind.
 OpenRouter backends also get `usage: { include: true }` in the request, and a `session_id`
 (`ask-kit-<domain>-<backend>-<fingerprint>`) that keeps a question on one provider so the prompt
 cache hits. Only OpenRouter reports a cost, so only an OpenRouter backend has a price in the
-footer and journal.
+journal.
 
 ### Keys for agent CLIs
 

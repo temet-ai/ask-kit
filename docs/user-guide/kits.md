@@ -182,7 +182,7 @@ own `folder` is not merged.
 ## Ask another kit from a REPL cell
 
 Inside any kit's REPL, `ask.kit(name, question, { continue })` asks another enabled kit's
-investigator and returns its answer text with its footer:
+investigator and returns its answer text:
 
 ```js
 const a = await ask.kit("code", "where is the router defined?");
@@ -193,7 +193,8 @@ through, so `{ continue: true }` follows up on that kit's last answer. Only one 
 allowed: a kit started by `ask.kit` that calls `ask.kit` gets an error naming the limit. An
 unknown kit, or one that is disabled or cannot run, is refused with the list of kits that can,
 and a kit cannot ask itself. Each call is journaled as a call of kind `ask.kit` with the target
-kit, seconds, cost and backend read from the answer's footer:
+kit and seconds, and with the cost and backend when the answer carries a footer
+(`footer: true`); the other kit's own journal has them either way:
 
 ```json
 {"kind":"ask.kit","kit":"code","detail":"where is the router defined?","ms":198,"seconds":7,"costUsd":0.0031,"backend":"stub-model"}

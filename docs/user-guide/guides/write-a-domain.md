@@ -385,8 +385,7 @@ ask-kit ask --domain notes "what are the action items from the billing retro?"
 
 The first question for a `claude-cli` or `codex-cli` backend also builds the warm session, so it
 takes longer. A good answer cites notes by name and line, in the form `projects/billing.md:5`,
-ends with the footer `[notes · <backend> · <seconds>s · ...]`, and says what it searched for if
-it found nothing.
+and says what it searched for if it found nothing.
 
 If the folder in `dir` does not exist, `makeNotes` throws when the server starts, and the ask
 fails with a connection error from the server instead of an answer. If `dir` points at a different

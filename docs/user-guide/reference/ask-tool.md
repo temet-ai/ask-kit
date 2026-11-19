@@ -100,34 +100,32 @@ A follow-up needs an earlier question on the same backend. Without one it fails 
 
 ## What comes back
 
-A successful ask returns one text block: the answer, then a blank line, then a footer.
+A successful ask returns one text block holding the answer and nothing else:
 
 ```
 Exporters implement Exporter in src/export/base.ts:12 ...
-
-[code · glm-5.3-flash · 21s]
 ```
 
 (An illustration of the shape; the text is the investigator's own.)
 
-The footer is `[<domain> · <backend> · <seconds>s]`. It leaves out the cost: agents that saw it in
-every footer repeated it in their own replies. The journal records each ask's cost, and
-`ask-kit report` shows it.
+The time, backend and cost of each ask go to the journal (`ask-kit report` shows them), not to
+the reply: agents repeat whatever the reply carries. A bracketed line is added only when the
+caller has something to do, such as `[not finished: ask again with continue: true]`.
 
-| Part | Meaning |
-|---|---|
-| `<domain>` | The domain that answered. |
-| `<backend>` | The backend's name from the config. |
-| `<seconds>` | Time of this ask, rounded. For `claude-cli` and `codex-cli` it leaves out the warm-up. |
-
-The router adds a last line when it chose the domain itself:
+With `"footer": true` in the config, each answer also ends with a footer, and the router adds a
+line when it chose the domain itself:
 
 ```
+[code · glm-5.3-flash · 21s]
 [routed to code by model]
 ```
 
-The word after `by` is `model`, `rules` or `follow-up`. Nothing is added when you gave `about`
-or when one domain is enabled.
+| Part | Meaning |
+|---|---|
+| `code` | The domain that answered. |
+| `glm-5.3-flash` | The backend's name from the config. |
+| `21s` | Time of this ask, rounded. For `claude-cli` and `codex-cli` it leaves out the warm-up. |
+| `by model` | How the router chose: `model`, `rules` or `follow-up`. No routing line when you gave `about` or when one domain is enabled. |
 
 ### Notes the answer can carry
 

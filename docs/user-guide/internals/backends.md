@@ -120,7 +120,7 @@ backend in the list, or `null` when there is none.
 a `models` list (suggestions, cheapest first). Two flags change behaviour in `ask.mjs`:
 
 - `reportsCost` (OpenRouter only): `costUsd` is taken from `usage.cost` in the replies. Other
-  presets report `costUsd: null`, so the footer shows no cost.
+  presets report `costUsd: null`, so the journal has no cost for them.
 - `local` (Ollama and LM Studio): no key needed.
 
 The loop posts to `<baseUrl>/chat/completions`. The body has `model`, `messages`,

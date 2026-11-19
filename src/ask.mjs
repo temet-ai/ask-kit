@@ -673,7 +673,7 @@ export function registerAsk(server, ctx) {
           if (target.kit && target.kit !== domainName) throw new Error(`this is the ${domainName} kit; ${target.kit}.${target.script} belongs to another (send it through the router's ask)`);
           const r = await shoot(backend, target.script, params, timeoutSeconds);
           ctx.keep({ question: question ?? `do ${domainName}.${target.script}`, shot: true, do: target.script, params, ok: r.ok, ms: r.ms, cells: 1, answer: r.text, ...(r.ok ? {} : { error: r.text.slice(0, 300) }) });
-          return { content: [{ type: "text", text: r.text + shotFooter(domainName, target.script, Date.now() - started) }], isError: !r.ok };
+          return { content: [{ type: "text", text: r.text + (config.footer ? shotFooter(domainName, target.script, Date.now() - started) : "") }], isError: !r.ok };
         } catch (e) {
           const message = String(e?.message ?? e);
           ctx.keep({ question: question ?? `do ${doWhat}`, shot: true, do: target?.script ?? String(doWhat), ok: false, error: message.slice(0, 300), ms: Date.now() - started });
@@ -717,8 +717,9 @@ export function registerAsk(server, ctx) {
           if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
           const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, ac.signal, onStep, onEarly);
           ctx.keep({ question, backend, kind, ...r, ...(detached ? { earlyMs: detachedMs } : {}) });
-          // No cost here: callers quote whatever the footer says. The journal keeps costUsd.
-          const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]`;
+          // Run details go to the journal; the reply shows them only with `footer: true` in config,
+          // because callers quote whatever the reply carries.
+          const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
           return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok };
         } catch (e) {
           const cancelled = ac.signal.aborted;
@@ -736,7 +737,7 @@ export function registerAsk(server, ctx) {
       extra?.signal?.removeEventListener("abort", onAbort);
       pending.set(backend, run);
       ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text });
-      return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` }] };
+      return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + (config.footer ? `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` : "") }] };
     },
   );
 }

@@ -31,7 +31,7 @@ const shot = await client.callTool({ name: "ask", arguments: { do: "watch.duty",
 const shotText = textOf(shot);
 assert.ok(!shot.isError, shotText);
 assert.match(shotText, /"Sam Vimes"/);
-assert.match(shotText, /\[watch · shot duty · \d+s\]$/, "the footer names the kit and the script");
+assert.doesNotMatch(shotText, /\[watch · shot duty/, "no footer unless config sets footer: true");
 assert.doesNotMatch(shotText, /\d+ ms, \d+ call/, "the REPL's timing note is not passed on");
 assert.equal(fake.requests.length, 0, "a shot calls no backend");
 

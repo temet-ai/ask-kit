@@ -140,7 +140,7 @@ acme: {
 | `baseUrl` | Where requests go. |
 | `keyEnv` | The variable `detect` looks for, and the one used when a backend's `key` gives nothing. |
 | `keyFiles` | Optional list of `NAME=value` files `detect` also searches for the key. |
-| `reportsCost` | `true` when the reply's `usage.cost` is in dollars, so the footer and journal show a price. Leave it out otherwise: the cost shows as unknown. |
+| `reportsCost` | `true` when the reply's `usage.cost` is in dollars, so the journal shows a price. Leave it out otherwise: the cost shows as unknown. |
 | `models` | Suggestions, cheapest first. The first is setup's default for this provider. Each can carry `providerOrder`. |
 | `local` | `true` for a server on this machine that needs no key. `detect` probes `<baseUrl>/models`. |
 

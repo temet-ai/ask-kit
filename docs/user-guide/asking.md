@@ -43,13 +43,12 @@ context. See [Domains](domains.md).
 ```
 ask → A Codex session found the retry test's timeout was too tight for CI and widened it in
       test/retry.test.js (codex 5ca1ab1e #12, #19).
-      [sessions · glm-5.3-flash · 16s]
 ```
 
 - `codex 5ca1ab1e #12` is the agent, the session and the turn the claim comes from. Code answers
   cite `path:line`.
-- The last line shows the investigator that answered, its model, how long it took and what it
-  cost.
+- The time, model and cost of each ask are in the journal (`ask-kit report`), not in the answer.
+  `"footer": true` in the config adds them as a last line.
 - An answer can be wrong and still sound sure. Check the one claim your next step depends on,
   for example `ask to quote turn #12 of that session`.
 
