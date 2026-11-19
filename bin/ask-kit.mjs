@@ -8,6 +8,7 @@
 //   ask-kit apply <file|-> [--dry-run]   apply answers (JSON) from an agent or a file
 //   ask-kit doctor               check the config: sources, backends, tools
 //   ask-kit ask "<question>" [--domain d] [--backend b] [--continue]   ask from the shell
+//   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
 //   ask-kit kit new|link|list|test|install|enable|disable   kits: ask-kit.toml folders
@@ -73,6 +74,8 @@ async function main() {
       return doctor();
     case "ask":
       return askFromShell();
+    case "run":
+      return runShotFromShell();
     case "report": {
       const { report } = await import("../src/report.mjs");
       const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d" });
@@ -399,7 +402,8 @@ async function askFromShell() {
   let out;
   try {
     out = await client.callTool(
-      { name: "ask", arguments: { question, ...(typeof backend === "string" ? { backend } : {}), ...(flag("continue") ? { continue: true } : {}) } },
+      // No early answers from a shell: the process ends with the reply, and the rest of the run with it.
+      { name: "ask", arguments: { question, early: false, ...(typeof backend === "string" ? { backend } : {}), ...(flag("continue") ? { continue: true } : {}) } },
       undefined,
       { timeout: 900_000, onprogress },
     );
@@ -411,6 +415,31 @@ async function askFromShell() {
   console.log(process.stdout.isTTY && !process.env.NO_COLOR ? terminalMarkdown(text) : text);
   await client.close();
   if (out.isError) process.exitCode = 1;
+}
+
+// ---- a shot from the shell: one kit script, no model, kept in the kit's REPL for `ask --continue` ----
+
+async function runShotFromShell() {
+  const [kit, script, ...words] = argv.slice(1);
+  if (!kit || !script) throw new Error("run needs a kit and a script: ask-kit run <kit> <script> [key=value ...]");
+  const { parseParams } = await import("../src/shots.mjs");
+  const params = parseParams(words);
+  const { loadDomain } = await import("../src/domains.mjs");
+  const d = await loadDomain(kit);
+  if (d.unavailable) throw new Error(`${kit} cannot run here: ${d.unavailable}`);
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+  // The same session id as `ask-kit ask` from this shell, so `ask-kit ask --continue` finds the shot.
+  const env = { ...process.env, ASK_KIT_DOMAIN: kit, ASK_KIT_SESSION: process.env.ASK_KIT_SESSION || `shell-${process.ppid}` };
+  const client = new Client({ name: "ask-kit-shell", version: "0" });
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, "src", "server.mjs")], env, stderr: "inherit" }));
+  try {
+    const out = await client.callTool({ name: "ask", arguments: { do: script, params } }, undefined, { timeout: 900_000 });
+    console.log(out.content.map((c) => c.text).join("\n"));
+    if (out.isError) process.exitCode = 1;
+  } finally {
+    await client.close();
+  }
 }
 
 // An answer's Markdown, for a terminal: headings and **bold** in bold, `code` in colour, bullets

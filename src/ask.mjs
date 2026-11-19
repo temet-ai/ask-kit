@@ -22,6 +22,7 @@ import { ROOT, resolveKey } from "./config.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { runCli } from "./platform.mjs";
 import { ollamaChat, OLLAMA_DEFAULT_CTX } from "./ollama.mjs";
+import { parseDo, runShot, shotFooter } from "./shots.mjs";
 
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
@@ -102,6 +103,9 @@ export function registerAsk(server, ctx) {
     }
   };
   const writeLast = (b, value) => fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
+  // Shots kept for this caller: the REPL they ran in (ask-<askId>) and the names a follow-up has not been told about.
+  const SHOTS_KEY = "__shots";
+  const readShots = () => readLast()[SHOTS_KEY] ?? null;
 
   const warmFile = (b) => path.join(WARM_DIR, `${b}.json`);
   const readWarm = (b, fp) => {
@@ -247,9 +251,10 @@ export function registerAsk(server, ctx) {
 
   async function askCopilot(b, question, timeoutMs, cont, signal) {
     const be = BACKENDS[b];
-    const prev = cont ? readLast()[b] : null;
-    if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
-    const askId = prev?.askId ?? crypto.randomUUID();
+    const held = cont ? readShots() : null;
+    const prev = cont ? readLast()[b] ?? null : null;
+    if (cont && !prev && !held) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const askId = prev?.askId ?? held?.askId ?? crypto.randomUUID();
     const cfg = path.join(WARM_DIR, `copilot-mcp-${process.pid}-${crypto.randomUUID()}.json`);
     fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { repl: { type: "local", command: process.execPath, args: [SERVER], env: replEnv(null, `ask-${askId}`), tools: ["*"] } } }), { mode: 0o600 });
     const prompt = prev
@@ -329,16 +334,29 @@ export function registerAsk(server, ctx) {
     },
   };
 
-  async function askApi(b, question, timeoutMs, cont, signal, onStep) {
+  // An early answer: the investigator hands the caller the main fact while it goes on checking.
+  const EARLY_TOOL = {
+    type: "function",
+    function: {
+      name: "early_answer",
+      description: "Send the caller the main fact now, while you carry on checking. Your final answer still follows and replaces it.",
+      parameters: { type: "object", properties: { answer: { type: "string", description: "The main fact with its evidence" } }, required: ["answer"], additionalProperties: false },
+    },
+  };
+  const EARLY_BLOCK = /```early\s*\n([\s\S]*?)```/;
+
+  async function askApi(b, question, timeoutMs, cont, signal, onStep, onEarly) {
     const be = BACKENDS[b];
     const native = be.nativeTools !== false;
     const ep = endpoint(be);
     const fp = fingerprint(b);
-    const prev = cont ? readLast()[b] : null;
-    if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const prev = cont ? readLast()[b] ?? null : null;
+    // A follow-up after shots alone (no earlier question) starts a new conversation in the shots' REPL.
+    const held = cont ? readShots() : null;
+    if (cont && !prev && !held) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
     let messages;
     let askId;
-    if (prev) {
+    if (prev?.messages) {
       askId = prev.askId;
       messages = [...prev.messages, { role: "user", content: question + rulesFor() }];
     } else {
@@ -351,8 +369,13 @@ export function registerAsk(server, ctx) {
           "REPL (top-level await, variables persist between cells) and the result comes back in the next message. Only that " +
           "message is real: never write a result yourself. You have a limited number of steps; each result says how many are left. " +
           "When you have the answer, reply with the answer only and no code block.\n\n";
-      const system = fs.readFileSync(INSTRUCTIONS, "utf8") + how + D.openWith + (await ctx.helpText());
-      askId = crypto.randomUUID();
+      const early = !onEarly
+        ? ""
+        : native
+          ? "When a tool result already holds the main fact and you still want to check the rest, call `early_answer` with it once: the caller gets it at once while you carry on.\n\n"
+          : "When a result already holds the main fact and you still want to check the rest, put it once in an ```early fenced block: the caller gets it at once while you carry on.\n\n";
+      const system = fs.readFileSync(INSTRUCTIONS, "utf8") + how + early + D.openWith + (await ctx.helpText());
+      askId = (cont && !prev && held?.askId) || crypto.randomUUID();
       messages = [
         be.explicitCache ? { role: "system", content: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] } : { role: "system", content: system },
         { role: "user", content: question + rulesFor() },
@@ -364,6 +387,9 @@ export function registerAsk(server, ctx) {
     const leftMs = () => timeoutMs - (Date.now() - started);
     let answer = null;
     let cells = 0;
+    let earlySent = false;
+    // A history that holds an early_answer call keeps the tool declared, or a provider may refuse it.
+    const earlyTool = !!onEarly || messages.some((m) => m.tool_calls?.some((c) => c.function?.name === "early_answer"));
     let outOfTime = false;
     let cutAtLength = false;
     let atLimit = false;
@@ -402,7 +428,7 @@ export function registerAsk(server, ctx) {
               messages,
               temperature: 0,
               max_tokens: 4000,
-              ...(native ? { tools: [REPL_TOOL], tool_choice: "auto", parallel_tool_calls: false } : {}),
+              ...(native ? { tools: earlyTool ? [REPL_TOOL, EARLY_TOOL] : [REPL_TOOL], tool_choice: "auto", parallel_tool_calls: false } : {}),
               ...ep.extra,
               // One session_id per backend and prefix: OpenRouter then keeps every question on one
               // provider, so the shared prefix stays in its cache.
@@ -436,9 +462,19 @@ export function registerAsk(server, ctx) {
             return `Error: the cell did not finish in ${timeoutSeconds}s (${e.message}). Narrow it: a shorter window, a sample, or a script.`;
           }
         };
+        // At most one early answer; a second is told it was already sent.
+        const sendEarly = (text) => {
+          const t = String(text ?? "").trim();
+          if (!t) return "Error: early_answer needs the answer text.";
+          if (earlySent) return "An early answer was already sent; finish with your final answer.";
+          earlySent = true;
+          onEarly(t);
+          return "Sent to the caller. Carry on checking; your final answer replaces it.";
+        };
         if (native) {
+          const isEarly = (c) => !!onEarly && c.function?.name === "early_answer";
           // Small models misname the one tool ("scripts.run", "javascript"); a call with `code` is a repl call.
-          const calls = (msg.tool_calls ?? []).filter((c) => c.function?.name === "repl" || /"code"\s*:/.test(c.function?.arguments ?? ""));
+          const calls = (msg.tool_calls ?? []).filter((c) => isEarly(c) || c.function?.name === "repl" || /"code"\s*:/.test(c.function?.arguments ?? ""));
           if (!calls.length) {
             // Tool-call markup in the text is a call the provider did not parse, not an answer.
             if (!content.trim() || /DSML|<\s*\/?\s*(tool_call|invoke|function_calls)/i.test(content)) {
@@ -454,20 +490,37 @@ export function registerAsk(server, ctx) {
           }
           messages.push({ role: "assistant", content: content || null, tool_calls: calls });
           for (const [k, c] of calls.entries()) {
-            let code;
+            let args;
             try {
-              code = JSON.parse(c.function.arguments || "{}").code;
+              args = JSON.parse(c.function.arguments || "{}");
             } catch {
-              code = null;
+              args = {};
             }
-            const text = typeof code === "string" ? await runCode(code) : "Error: the call's arguments were not JSON with a `code` string.";
+            const code = args?.code;
+            const text = isEarly(c)
+              ? sendEarly(args?.answer)
+              : typeof code === "string"
+                ? await runCode(code)
+                : "Error: the call's arguments were not JSON with a `code` string.";
             messages.push({ role: "tool", tool_call_id: c.id, content: text + (k === calls.length - 1 ? nudge : "") });
           }
           continue;
         }
         // Code-block mode: run only the first block and keep only the text up to its end, so an
-        // invented result written after it never enters the history.
-        const first = CELL.exec(content);
+        // invented result written after it never enters the history. An ```early block goes to the caller first.
+        const earlyBlock = onEarly ? content.match(EARLY_BLOCK) : null;
+        if (earlyBlock) {
+          const note = sendEarly(earlyBlock[1]);
+          if (!CELL.test(content.replace(EARLY_BLOCK, ""))) {
+            CELL.lastIndex = 0;
+            messages.push({ role: "assistant", content });
+            messages.push({ role: "user", content: `${note}${nudge}` });
+            continue;
+          }
+          CELL.lastIndex = 0;
+        }
+        const cellText = earlyBlock ? content.replace(EARLY_BLOCK, "") : content;
+        const first = CELL.exec(cellText);
         CELL.lastIndex = 0;
         if (!first) {
           messages.push({ role: "assistant", content });
@@ -475,7 +528,7 @@ export function registerAsk(server, ctx) {
           atLimit = left <= 2;
           break;
         }
-        messages.push({ role: "assistant", content: content.slice(0, first.index + first[0].length) });
+        messages.push({ role: "assistant", content: cellText.slice(0, first.index + first[0].length) });
         messages.push({ role: "user", content: `Cell result:\n\`\`\`\n${await runCode(first[1])}\n\`\`\`${nudge}` });
       }
     } finally {
@@ -534,51 +587,140 @@ export function registerAsk(server, ctx) {
     return t.length > 100 ? `${t.slice(0, 99)}…` : t;
   };
 
+  // ---- shots: a kit script with no model ----
+
+  // Kinds whose investigator works in the REPL ask-<askId>, so a shot can land in the REPL its follow-up uses.
+  const ASKID_KINDS = new Set(["api", "copilot-cli"]);
+  async function shoot(backend, script, params, timeoutSeconds) {
+    const last = readLast();
+    const held = last[SHOTS_KEY] ?? null;
+    const askId = (ASKID_KINDS.has(BACKENDS[backend].kind) && last[backend]?.askId) || held?.askId || crypto.randomUUID();
+    const repl = await openInnerRepl(askId);
+    let r;
+    try {
+      r = await runShot(repl, { script, params, timeoutSeconds: Math.min(timeoutSeconds, 600) });
+    } finally {
+      await repl.close().catch(() => {});
+    }
+    if (r.ok) {
+      const names = held?.askId === askId ? (held.names ?? []).filter((n) => n !== script) : [];
+      writeLast(SHOTS_KEY, { askId, names: [...names, script], at: new Date().toISOString() });
+    }
+    return r;
+  }
+
+  // One line for a follow-up: the shots it can use, and where they are when its REPL is another one.
+  function heldShotsLine(backend) {
+    const held = readShots();
+    if (!held?.names?.length) return "";
+    writeLast(SHOTS_KEY, { ...held, names: [] });
+    const names = held.names.map((n) => `shots.${n}`).join(", ");
+    const same = ASKID_KINDS.has(BACKENDS[backend].kind) && (readLast()[backend]?.askId ?? held.askId) === held.askId;
+    return same
+      ? `\n\n(Already in your REPL from shots the caller ran: ${names}.)`
+      : `\n\n(Shots the caller ran are saved in the REPL of session ask-${held.askId}: ${names}. The \`load\` tool with that sessionId brings them into yours.)`;
+  }
+
+  // ---- early answers: runs that go on after the caller got the main fact ----
+
+  const pending = new Map(); // backend -> Promise of the tool result the run ends with
+  const PARTIAL_NOTE = "\n\n[partial: more is coming: ask again with continue: true]";
+
   // ---- the tool ----
 
   server.registerTool(
     "ask",
     {
-      description: `${D.askDescription} For a follow-up, pass continue: true: the same investigator answers, keeping what it found. backend: ${NAMES.join(", ")} (default ${DEFAULT}).`,
+      description:
+        `${D.askDescription} For a follow-up, pass continue: true: the same investigator answers, keeping what it found. ` +
+        `To run one of this kit's scripts with no model, pass do: "<script>" and params: the result comes back at once and stays in the REPL as shots.<script> for a follow-up. ` +
+        `backend: ${NAMES.join(", ")} (default ${DEFAULT}).`,
       inputSchema: {
         question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
         request: z.string().optional().describe("Same as question"),
         prompt: z.string().optional().describe("Same as question"),
+        do: z.string().optional().describe(`A shot: "<script>" or "${domainName}.<script>" runs that script with no model and returns its result`),
+        params: z.record(z.string(), z.any()).optional().describe("The shot script's parameters"),
         backend: z.enum(NAMES).optional(),
         continue: z.boolean().optional().describe("Ask the same investigator as your last question on this backend, so it keeps what it found"),
+        early: z.boolean().optional().describe("Let the investigator send the main fact before it finishes (default true); continue: true then collects the rest"),
         timeoutSeconds: z.number().int().min(30).max(900).optional().describe("Default 300"),
       },
     },
-    async ({ question: q, request, prompt, backend = DEFAULT, continue: cont = false, timeoutSeconds = 300 }, extra) => {
+    async ({ question: q, request, prompt, do: doWhat, params = {}, backend = DEFAULT, continue: cont = false, early = true, timeoutSeconds = 300 }, extra) => {
       const question = [q, request, prompt].find((v) => typeof v === "string" && v.trim());
-      if (!question) return { content: [{ type: "text", text: "ask needs `question`: the question or request, in plain words." }], isError: true };
+      const started = Date.now();
+      if (doWhat) {
+        let target;
+        try {
+          target = parseDo(doWhat);
+          if (target.kit && target.kit !== domainName) throw new Error(`this is the ${domainName} kit; ${target.kit}.${target.script} belongs to another (send it through the router's ask)`);
+          const r = await shoot(backend, target.script, params, timeoutSeconds);
+          ctx.keep({ question: question ?? `do ${domainName}.${target.script}`, shot: true, do: target.script, params, ok: r.ok, ms: r.ms, cells: 1, answer: r.text, ...(r.ok ? {} : { error: r.text.slice(0, 300) }) });
+          return { content: [{ type: "text", text: r.text + shotFooter(domainName, target.script, Date.now() - started) }], isError: !r.ok };
+        } catch (e) {
+          const message = String(e?.message ?? e);
+          ctx.keep({ question: question ?? `do ${doWhat}`, shot: true, do: target?.script ?? String(doWhat), ok: false, error: message.slice(0, 300), ms: Date.now() - started });
+          return { content: [{ type: "text", text: `shot failed (${domainName}): ${message}` }], isError: true };
+        }
+      }
+      if (!question) return { content: [{ type: "text", text: "ask needs `question`: the question or request, in plain words (or `do` to run a script)." }], isError: true };
+      // A follow-up to an ask that answered early collects the rest of that run first.
+      if (cont && pending.has(backend)) {
+        const out = await pending.get(backend);
+        pending.delete(backend);
+        const text = (out.content ?? []).map((c) => c.text).join("\n");
+        return { ...out, content: [{ type: "text", text: `${text}\n\n[the rest of your earlier question; to ask something new of it, send that with continue: true]` }] };
+      }
       // A client drops a call at its own tool timeout and the answer is lost; finish before it.
       const clientMs = Number(process.env.MCP_TOOL_TIMEOUT) || 0;
       const timeoutMs = Math.max(20_000, Math.min(timeoutSeconds * 1000, clientMs ? clientMs - RESERVE_MS : Infinity));
       const kind = BACKENDS[backend].kind;
-      const started = Date.now();
+      const asked = cont ? question + heldShotsLine(backend) : question;
+      // After an early answer the request is over: progress stops and the run no longer follows the caller's cancel.
+      let detached = false;
+      const ac = new AbortController();
+      const onAbort = () => ac.abort();
+      extra?.signal?.addEventListener("abort", onAbort, { once: true });
       // A caller that asked for progress gets one note per cell, so a person watching sees the digging.
       const token = extra?._meta?.progressToken;
       const onStep =
         token === undefined
           ? null
           : (n, code) =>
+              detached ||
               extra
                 .sendNotification({ method: "notifications/progress", params: { progressToken: token, progress: n, message: `cell ${n}: ${cellLine(code)}` } })
                 .catch(() => {});
-      let r;
-      try {
-        if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
-        r = await KINDS[kind](backend, question, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, extra?.signal, onStep);
-      } catch (e) {
-        const cancelled = !!extra?.signal?.aborted;
-        const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");
-        ctx.keep({ question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started });
-        return { content: [{ type: "text", text: `ask failed (${backend}): ${message}` }], isError: true };
-      }
-      ctx.keep({ question, backend, kind, ...r });
-      const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s${r.costUsd ? ` · $${r.costUsd.toFixed(4)}` : ""}]`;
-      return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok };
+      let earlyHit;
+      let detachedMs;
+      const earlyP = new Promise((resolve) => (earlyHit = resolve));
+      const onEarly = kind === "api" && early ? (text) => earlyHit({ text, ms: Date.now() - started }) : undefined;
+      const run = (async () => {
+        try {
+          if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
+          const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, ac.signal, onStep, onEarly);
+          ctx.keep({ question, backend, kind, ...r, ...(detached ? { earlyMs: detachedMs } : {}) });
+          const footer = `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s${r.costUsd ? ` · $${r.costUsd.toFixed(4)}` : ""}]`;
+          return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok };
+        } catch (e) {
+          const cancelled = ac.signal.aborted;
+          const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");
+          ctx.keep({ question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started });
+          return { content: [{ type: "text", text: `ask failed (${backend}): ${message}` }], isError: true };
+        } finally {
+          extra?.signal?.removeEventListener("abort", onAbort);
+        }
+      })();
+      const first = await Promise.race([run.then((out) => ({ out })), earlyP.then((e) => ({ early: e }))]);
+      if (first.out) return first.out;
+      detached = true;
+      detachedMs = first.early.ms;
+      extra?.signal?.removeEventListener("abort", onAbort);
+      pending.set(backend, run);
+      ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text });
+      return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` }] };
     },
   );
 }
+

@@ -1,0 +1,8 @@
+# A fixture kit for tests of shots and early answers (synthetic; tests copy it into a temp config).
+name = "watch"
+says = "the Night Watch duty roster"
+
+[[sources]]
+kind = "module"
+name = "watch"
+module = "watch.mjs"

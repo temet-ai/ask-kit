@@ -16,6 +16,7 @@ import path from "node:path";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
 import { loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
+import { parseDo } from "./shots.mjs";
 
 const SERVER = path.join(ROOT, "src", "server.mjs");
 
@@ -129,20 +130,39 @@ export async function serveRouter() {
         "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
         "so you pay for one call and the answer. It goes to one of: " +
         enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
-        ". Pass `about` to choose yourself. For a follow-up, pass continue: true.",
+        ". Pass `about` to choose yourself. For a follow-up, pass continue: true. " +
+        'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
       inputSchema: {
-        question: z.string().describe("The question or request, with any ids, names or dates you already know"),
+        question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
         about: z.enum(enabled).optional().describe("Which investigator; left out, the router chooses"),
+        do: z.string().optional().describe('A shot: "<kit>.<script>" runs that kit script with no model and returns its result'),
+        params: z.record(z.string(), z.any()).optional().describe("The shot script's parameters"),
         continue: z.boolean().optional().describe("Send this to the investigator that answered your last question"),
+        early: z.boolean().optional().describe("Let the investigator send the main fact before it finishes (default true); continue: true collects the rest"),
         backend: z.string().optional().describe("The investigator's model: a backend name from ask-kit's config"),
         timeoutSeconds: z.number().int().min(30).max(900).optional(),
       },
     },
-    async ({ question, about, continue: cont = false, backend, timeoutSeconds }, extra) => {
+    async ({ question = "", about, do: doWhat, params, continue: cont = false, early, backend, timeoutSeconds }, extra) => {
       const t0 = Date.now();
       let name = about;
       let how = "caller";
       let err;
+      let shot = null;
+      if (doWhat) {
+        // A shot goes to its kit with no model call: "<kit>.<script>", or "<script>" with `about`,
+        // the only kit, or the one kit that has that script.
+        try {
+          shot = parseDo(doWhat);
+        } catch (e) {
+          return { content: [{ type: "text", text: `ask failed: ${e.message}` }], isError: true };
+        }
+        const has = (n) => (DOMAINS[n].scriptsDirs ?? [DOMAINS[n].scriptsDir]).some((d) => d && fs.existsSync(path.join(d, `${shot.script}.mjs`)));
+        const owners = shot.kit ? [shot.kit] : about ? [about] : enabled.length === 1 ? enabled : enabled.filter(has);
+        if (owners.length !== 1 || !enabled.includes(owners[0]))
+          return { content: [{ type: "text", text: `ask failed: no single kit for do "${doWhat}"${shot.kit && !enabled.includes(shot.kit) ? ` (${shot.kit} is not a kit that can run here)` : ""}; kits: ${enabled.join(", ")}. Write it as "<kit>.<script>".` }], isError: true };
+        (name = owners[0]), (how = "shot");
+      } else if (!question.trim()) return { content: [{ type: "text", text: "ask needs `question` (or `do` to run a kit script)." }], isError: true };
       if (!name && cont && last) (name = last), (how = "follow-up");
       if (!name && enabled.length === 1) (name = enabled[0]), (how = "only");
       if (!name) {
@@ -159,8 +179,10 @@ export async function serveRouter() {
           err = String(e.message ?? e).slice(0, 160);
         }
       }
-      const args = { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(cont && name === last ? { continue: true } : {}) };
-      journal({ question: question.slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(err ? { routeError: err } : {}) });
+      const args = shot
+        ? { ...(question.trim() ? { question } : {}), do: shot.script, ...(params ? { params } : {}), ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}) }
+        : { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(early === false ? { early: false } : {}), ...(cont && name === last ? { continue: true } : {}) };
+      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}) });
       remember(name);
       try {
         const c = await child(name);
@@ -169,7 +191,7 @@ export async function serveRouter() {
         const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
         const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
-        return { ...out, content: [{ type: "text", text: `${text}${how === "caller" || how === "only" ? "" : `\n[routed to ${name} by ${how}]`}` }] };
+        return { ...out, content: [{ type: "text", text: `${text}${["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {
         return { content: [{ type: "text", text: `ask failed (${name}): ${e.message ?? e}` }], isError: true };
       }
