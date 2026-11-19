@@ -80,8 +80,8 @@ The plugin brings the `ask` tool, the skills and the tuner agent. Then ask Claud
 ask-kit, and the ask-kit-setup skill asks you the same questions. The plugin covers Claude Code
 only; `ask-kit init` and `ask-kit setup` leave Claude Code alone while it is installed.
 
-Without an agent: `npm install -g --allow-git=root github:temet-ai/ask-kit`, then `ask-kit init`
-and `ask-kit setup`. It needs Node.js 22.13 or newer and git. If npm answers `EACCES`, add
+Without an agent: `npm install -g @temet-ai/ask-kit`, then `ask-kit init` and `ask-kit setup`.
+It needs Node.js 22.13 or newer, and git for the code domain's history and for shared kits. If npm answers `EACCES`, add
 `--prefix ~/.local` to the install command.
 [Set it up](docs/user-guide/setup.md) has the details.
 
@@ -117,8 +117,8 @@ ask-kit itself, on 18 Nov 2026, on one machine with about 1,500 sessions on disk
 
 Early. Tested on Linux with real transcripts. Fixtures for all five transcript formats run in CI
 on Linux, macOS and Windows. The Gemini CLI reader and the opencode and Gemini install formats
-follow their docs and haven't yet been tried on a real install. There are no releases yet, so
-you install from `main`.
+follow their docs and haven't yet been tried on a real install. Releases are on npm as
+[`@temet-ai/ask-kit`](https://www.npmjs.com/package/@temet-ai/ask-kit).
 
 ask-kit started as mike-ask, a proof of concept that answers from what
 [mike](https://github.com/temet-ai/mike) records of every Claude Code session. ask-kit is the

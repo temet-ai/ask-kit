@@ -23,17 +23,15 @@ opencode already write; it needs no server and no account of its own.
 One command, the same on every system:
 
 ```sh
-npm install -g --allow-git=root github:temet-ai/ask-kit
+npm install -g @temet-ai/ask-kit
 ```
-
-npm 12 refuses packages from git unless `--allow-git` is given; older npm ignores the flag.
 
 If it fails with `EACCES` or "permission denied", npm's global folder belongs to root. This is
 usual on Linux when Node came from the system package manager (`npm prefix -g` prints `/usr`).
 Don't use sudo; install into the person's home instead:
 
 ```sh
-npm install -g --prefix ~/.local --allow-git=root github:temet-ai/ask-kit
+npm install -g --prefix ~/.local @temet-ai/ask-kit
 ```
 
 `ask-kit` is then `~/.local/bin/ask-kit`. If `command -v ask-kit` finds nothing, `~/.local/bin`

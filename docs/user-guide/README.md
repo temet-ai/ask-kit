@@ -128,8 +128,8 @@ Internals, for changing ask-kit itself:
 
 ## Status
 
-Early. It has been used on one Linux machine. CI runs on Linux, macOS and Windows. There are no
-releases yet, so you install from `main`.
+Early. It has been used on one Linux machine. CI runs on Linux, macOS and Windows. Releases are on
+npm as [`@temet-ai/ask-kit`](https://www.npmjs.com/package/@temet-ai/ask-kit).
 
 ask-kit started as mike-ask, a proof of concept that answers from what
 [mike](https://github.com/temet-ai/mike) records of every Claude Code session. ask-kit is the

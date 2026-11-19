@@ -42,7 +42,7 @@ Read ~/.config/ask-kit/AGENTS.md, then add this domain: github.com/<owner>/<repo
 ## Set it up without an agent
 
 ```sh
-npm install -g --allow-git=root github:temet-ai/ask-kit
+npm install -g @temet-ai/ask-kit
 ask-kit init
 ask-kit setup     # the same questions, in the terminal
 ```
@@ -52,7 +52,7 @@ system's Node, where `npm prefix -g` prints `/usr`). Install into your home inst
 `~/.local/bin` is on your PATH:
 
 ```sh
-npm install -g --prefix ~/.local --allow-git=root github:temet-ai/ask-kit
+npm install -g --prefix ~/.local @temet-ai/ask-kit
 ```
 
 If npm can't install at all, clone the repository, run `npm install` in it, and run
