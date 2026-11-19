@@ -13,7 +13,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
+import { CONFIG_FILE, ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
 import { indexDomain, loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
@@ -192,8 +192,29 @@ export function recordMisroute(session, row) {
   } catch {}
 }
 
+// Before setup there is no config. The server still starts and lists `ask`, so a client that
+// installed ask-kit from a registry or an extension connects, and an ask says how to set it up.
+export const NOT_SET_UP =
+  "ask-kit is installed but not set up yet, so it can't answer. Set it up by running `npx @temet-ai/ask-kit setup` " +
+  "(or `ask-kit setup` when it is installed globally) in a terminal, or by following the ask-kit-setup skill, then restart this agent. " +
+  `The config goes in ${CONFIG_FILE}.`;
+
+async function serveNotSetUp() {
+  const server = new McpServer({ name: "ask", version: "0.1.0" });
+  server.registerTool(
+    "ask",
+    {
+      description: "Ask a question in plain words and get a short answer with its evidence, from a cheap investigator working outside your context. ask-kit is not set up on this machine yet; calling this says how to set it up.",
+      inputSchema: { question: z.string().optional().describe("The question or request") },
+    },
+    async () => ({ content: [{ type: "text", text: NOT_SET_UP }], isError: true }),
+  );
+  await server.connect(new StdioServerTransport());
+}
+
 export async function serveRouter() {
-  const config = loadConfig();
+  const config = loadConfig({ required: false });
+  if (!config) return serveNotSetUp();
   const { enabled, aliases, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
   const aliasLine = Object.entries(aliases).map(([a, d]) => `"${a}" for ${d}`).join(", ");
   const SESSION = callerSession();
