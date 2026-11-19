@@ -44,9 +44,9 @@ never offers `sessions`. Claude Code is given both rule files, so the calling ag
 only about 1.5% of asks are answered with no model at all. Real use shows no repeating questions
 yet in ask-kit, only benchmark reruns.
 
-**Native code pays in one place today.** ask-kit's `history.grep` takes 15 to 40 s a call. It
-reads and lower-cases 5.9 GB of transcripts in one thread; `rg -l` over the same files takes
-0.45 s. Nothing else measured is worth rewriting. ripgrep over code is already 40 ms, and CLI
+**A faster program pays in one place today.** ask-kit's `history.grep` takes 15 to 40 s a call.
+It reads and lower-cases 5.9 GB of transcripts in one thread; `rg -l` over the same files takes
+0.45 s. Nothing else measured would gain from one. ripgrep over code is already 40 ms, and CLI
 waits (gh, docker) and mike's API latency aren't CPU.
 
 ## How other plugin systems settle the same problems
