@@ -44,12 +44,11 @@ The unscoped npm name `ask-kit` belongs to another package, so ask-kit is publis
 `temet-ai` npm organisation. Before the first tag, once:
 
 1. Create the `temet-ai` organisation on npmjs.com.
-2. In `package.json`, set `name` to `@temet-ai/ask-kit` and remove `"private": true`.
-3. Publish the first version by hand (`npm publish --access public`), since npm trusted
-   publishing is set up on a package that exists.
-4. On npmjs.com, under the package's settings, add a trusted publisher: GitHub Actions,
+2. Publish the first version by hand (`npm publish`), since npm trusted publishing is set up on
+   a package that exists.
+3. On npmjs.com, under the package's settings, add a trusted publisher: GitHub Actions,
    repository `temet-ai/ask-kit`, workflow `release.yml`. Later tags publish with no token.
-5. Tag the next version. The MCP Registry step signs in with the workflow's GitHub identity,
+4. Tag the next version. The MCP Registry step signs in with the workflow's GitHub identity,
    which may publish under `io.github.temet-ai/`.
 
 `.github/workflows/traffic.yml` saves the repository's traffic to the `stats` branch each day.
