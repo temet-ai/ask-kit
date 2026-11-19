@@ -66,6 +66,7 @@ for (const r of await listGallery()) {
     acts: m?.acts ?? [],
     sources: (m?.sources ?? []).map((s) => s.kind),
     uses: m?.uses ?? [],
+    settings: (m?.settings ?? []).map((s) => ({ key: s.key, about: s.about ?? "", default: s.default ?? "", detect: s.detect ? [].concat(s.detect).join(" ") : "", required: !!s.required, secret: !!s.secret })),
     questions,
     install: `ask-kit kit install ${r.repo}`,
   });

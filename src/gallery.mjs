@@ -90,7 +90,7 @@ function addKits(r, dir, commit, kitDirsFound, { yes }) {
       says: m.says,
       sources: m.sources.map((s) => ({ kind: s.kind, name: s.name, ...(s.path ? { path: s.path } : {}), ...(s.command ? { command: [].concat(s.command).join(" ") } : {}), ...(s.module ? { module: s.module } : {}) })),
       acts: m.acts ?? [],
-      settings: (m.settings ?? []).map((s) => s.key),
+      settings: (m.settings ?? []).map((s) => ({ key: s.key, ...(s.about ? { about: s.about } : {}), ...(s.required ? { required: true } : {}), ...(s.secret ? { secret: true } : {}), ...(s.default != null ? { default: s.default } : {}), ...(s.detect ? { detect: [].concat(s.detect).join(" ") } : {}) })),
       build: (m.build ?? []).map((b) => [].concat(b.command).join(" ")),
       files: listFiles(d),
       modules: Object.fromEntries(m.sources.filter((s) => s.kind === "module").map((s) => [s.module, fs.readFileSync(path.join(d, s.module), "utf8").slice(0, 4000)])),

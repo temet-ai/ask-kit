@@ -82,8 +82,9 @@ export function readManifest(dir) {
 
 // ---- settings: values a kit needs (a repository, a URL, a folder) ----
 //
-// [[settings]] key, default, detect (a command run in the caller's directory whose stdout is the
-// value), secret (never shown to the model). Resolved: the environment, then config.domains.<kit>.settings,
+// [[settings]] key, about (what the value is, shown in kit list, the install preview and the kits
+// page), default, detect (a command run in the caller's directory whose stdout is the value),
+// secret (never shown to the model). Resolved: the environment, then config.domains.<kit>.settings,
 // then detect, then default. The investigator's server starts in another directory, so resolved
 // values travel to it in its environment.
 function resolveSettings(m, config, cwd = process.cwd()) {
@@ -487,8 +488,8 @@ export function unavailable(m, settings) {
   if (m.platforms && ![].concat(m.platforms).includes(here)) return `runs on ${[].concat(m.platforms).join(", ")}, not ${here}`;
   const missing = [].concat(m.requires ?? []).filter((p) => !which(p));
   if (missing.length) return `needs ${missing.join(", ")} on PATH`;
-  const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key]).map((s) => s.key);
-  if (unset.length) return `needs ${unset.join(", ")} (environment, or domains.${m.name}.settings in ask-kit's config)`;
+  const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key]).map((s) => (s.about ? `${s.key} (${s.about})` : s.key));
+  if (unset.length) return `needs ${unset.join(", ")}: set it in the environment or in domains.${m.name}.settings in ask-kit's config`;
   for (const s of m.sources) if (s.kind === "folder" && !fs.existsSync(expand(fill(s.path, settings)))) return `its folder ${fill(s.path, settings)} does not exist`;
   return null;
 }

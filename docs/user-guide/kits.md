@@ -58,7 +58,7 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `cite` | How answers cite evidence |
 | `requires`, `platforms` | Programs that must be on PATH, and the systems it runs on (`linux`, `macos`, `windows`). A kit whose programs, `required` settings or folders are missing is not offered on that machine; `kit list` says why. |
 | `acts` | What the kit can change; shown at install |
-| `[[settings]]` `key`, `default`, `detect`, `secret`, `required` | A value the kit needs: from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
+| `[[settings]]` `key`, `about`, `default`, `detect`, `secret`, `required` | A value the kit needs, with `about` saying what it is (shown by `kit list` when it is missing, in the install preview and on the kits page): from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
 | `state_key` | One state folder per value (the github kit keeps one per repository) |
 | `[[sources]]` `kind = "folder"` | `path`, `exclude` (globs never searched or read: what the investigator reads goes to a model) |
 | `[[sources]]` `kind = "cli"` | `command`, `refuse` (argument strings refused, with why), `env`, `timeout_seconds` |

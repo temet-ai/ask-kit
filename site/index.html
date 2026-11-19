@@ -111,6 +111,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; padding-top: 18px;
 .detail section { margin-top: 30px; }
 .detail .lines { display: grid; gap: 8px; }
 .detail .lines small { color: var(--muted); font-size: 12.5px; }
+dl.settings { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+dl.settings dt, dl.settings dd { margin: 0; padding: 10px 14px; border-top: 1px solid var(--line); }
+dl.settings dt:first-of-type, dl.settings dt:first-of-type + dd { border-top: 0; }
+dl.settings dt { font-size: 13.5px; font-weight: 500; color: var(--cocoa); }
+dl.settings dd { font-size: 14.5px; }
+@media (max-width: 820px) { dl.settings { grid-template-columns: minmax(0, 1fr); } dl.settings dd { border-top: 0; padding-top: 0; } }
 ol.qs { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
 ol.qs li::marker { color: var(--muted); font-size: 13px; }
 ul.actlist { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -180,6 +186,10 @@ const line = (text) => `<div class="line"><code>${text.split(" ").map((w) => `<s
 const kind = (k) => (k.form !== "kit" ? "unknown" : k.acts.length ? "acts" : "reads");
 function changes(k) {
   return { acts: `<span class="acts">${plural(k.acts.length, "call")} that change things</span>`, reads: `<span class="reads">Reads only</span>`, unknown: `<span class="reads">No manifest</span>` }[kind(k)];
+}
+function setting(s) {
+  const otherwise = s.detect ? `Otherwise detected with <code>${esc(s.detect)}</code>, run in your agent's folder.` : s.default ? `Otherwise <code>${esc(s.default.replace("${KIT_DIR}/", "<kit folder>/"))}</code>.` : s.required ? "Required: without it the kit isn't offered on that machine." : "Optional.";
+  return `<dt class="mono">${esc(s.key)}</dt><dd>${s.about ? `${esc(cap(s.about))}. ` : ""}${otherwise}${s.secret ? " Kept out of what the model sees." : ""}</dd>`;
 }
 /** The README intro, without its first sentence when that is the stock "An ask-kit kit that lets..." line. */
 function intro(k) {
@@ -310,6 +320,7 @@ function renderKit(repo) {
           ${line(`Read ${AGENTS}, then add this kit: github.com/${k.repo}`)}
         </div>
       </section>
+      ${(k.settings ?? []).length ? `<section><h2 class="serif">Settings</h2><p style="margin-top:0">Each one is read from the environment, then from <code>domains.${esc(k.name)}.settings</code> in ask-kit's config, and otherwise as shown.</p><dl class="settings">${k.settings.map(setting).join("")}</dl></section>` : ""}
       ${k.questions.length ? `<section><h2 class="serif">Questions from its tests</h2><p style="margin-top:0;color:var(--muted)">The kit's own bench, run with <code>ask-kit kit test ${esc(k.name)}</code>. They show the kind of thing to ask it.</p><ol class="qs">${k.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ol></section>` : ""}
       <section>
         <h2 class="serif">What it can change</h2>
