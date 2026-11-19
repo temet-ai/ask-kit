@@ -36,6 +36,9 @@ assert.equal(manifest.version, pkg.version, "plugin.json version matches package
 assert.equal(server.version, pkg.version, "server.json version matches package.json");
 assert.equal(server.packages[0].version, pkg.version, "server.json package version matches package.json");
 assert.equal(server.name, pkg.mcpName, "server.json name matches package.json mcpName");
+const gemini = JSON.parse(fs.readFileSync(path.join(ROOT, "gemini-extension.json"), "utf8"));
+assert.equal(gemini.version, pkg.version, "gemini-extension.json version matches package.json");
+assert.ok(gemini.mcpServers.ask.args.includes(`${pkg.name}@${pkg.version}`), "gemini-extension.json runs this version of the package");
 
 // Without the plugin, Claude Code gets the bundle as before.
 assert.equal(claudePlugin(), null);

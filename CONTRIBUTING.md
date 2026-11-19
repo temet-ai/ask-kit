@@ -36,8 +36,8 @@ regenerate the notices with `node scripts/notices.mjs > THIRD-PARTY-NOTICES.md`.
 
 A tag `vX.Y.Z` runs `.github/workflows/release.yml`: it tests, publishes `@temet-ai/ask-kit` to
 npm with provenance, lists the version in the MCP Registry as `io.github.temet-ai/ask-kit` and
-makes a GitHub release. The version must be the same in `package.json`, `server.json` (twice)
-and `.claude-plugin/plugin.json`; `test/plugin.mjs` checks this, and the workflow checks the tag
+makes a GitHub release. The version must be the same in `package.json`, `server.json` (twice),
+`.claude-plugin/plugin.json` and `gemini-extension.json` (twice); `test/plugin.mjs` checks this, and the workflow checks the tag
 against them.
 
 The unscoped npm name `ask-kit` belongs to another package, so ask-kit is published under the

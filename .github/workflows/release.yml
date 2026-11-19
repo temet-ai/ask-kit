@@ -32,11 +32,11 @@ jobs:
         run: |
           node -e '
             const tag = process.env.GITHUB_REF_NAME.replace(/^v/, "");
-            const pkg = require("./package.json"), server = require("./server.json"), plugin = require("./.claude-plugin/plugin.json");
+            const pkg = require("./package.json"), server = require("./server.json"), plugin = require("./.claude-plugin/plugin.json"), gemini = require("./gemini-extension.json");
             const bad = [];
             if (pkg.private) bad.push("package.json has private: true");
             if (pkg.name !== server.packages[0].identifier) bad.push(`package.json name ${pkg.name} is not server.json identifier ${server.packages[0].identifier}`);
-            for (const [what, v] of [["package.json", pkg.version], ["server.json", server.version], ["server.json package", server.packages[0].version], ["plugin.json", plugin.version]])
+            for (const [what, v] of [["package.json", pkg.version], ["server.json", server.version], ["server.json package", server.packages[0].version], ["plugin.json", plugin.version], ["gemini-extension.json", gemini.version]])
               if (v !== tag) bad.push(`${what} version ${v} is not the tag ${tag}`);
             if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
           '
