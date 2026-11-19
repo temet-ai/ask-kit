@@ -274,7 +274,7 @@ async function wizard() {
 // ---- init: everything an agent needs to run the setup conversation, in every agent found ----
 
 async function init() {
-  const { installBundle, TARGETS } = await import("../src/setup/bundle.mjs");
+  const { installBundle, whyNotFound, TARGETS } = await import("../src/setup/bundle.mjs");
   const { writeAgentsMd } = await import("../src/agentsmd.mjs");
   const { detect } = await import("../src/setup/detect.mjs");
   const guide = writeAgentsMd();
@@ -295,7 +295,7 @@ async function init() {
     for (const k of kept) console.log(`    left alone (${k.action === "skip-edited" ? "you edited it" : "not ask-kit's"}): ${k.path}  — --force replaces it`);
   }
   const none = Object.keys(TARGETS).filter((a) => !present.includes(a) || by[a]?.[0]?.action === "skip-no-agent");
-  if (none.length) console.log(`  not found here: ${none.map((a) => TARGETS[a].label).join(", ")}`);
+  if (none.length) console.log(`  not found here:\n${none.map((a) => `    ${TARGETS[a].label}: ${whyNotFound(a, d.agents[a])}`).join("\n")}`);
   if (!d.tools.nodeOk) console.log(`! Node ${d.tools.node}: ask-kit needs 22.13 or newer (opencode transcripts use node:sqlite).`);
   if (!d.tools.ripgrep) console.log("! ripgrep not found and the bundled copy is missing: run npm install in ask-kit, or install rg. The code domain needs it.");
   if (!d.tools.git) console.log("· git not found: the code domain answers without history, and `ask-kit add` cannot fetch shared domains.");

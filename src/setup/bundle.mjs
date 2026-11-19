@@ -238,10 +238,7 @@ export function uninstallBundle({ dry = false } = {}) {
     rows.push({ path: file, action });
     if (!dry && action === "remove") {
       fs.rmSync(file);
-      // A skill's folder goes with its SKILL.md when nothing else is in it.
-      try {
-        if (path.basename(file) === "SKILL.md" && !fs.readdirSync(path.dirname(file)).length) fs.rmdirSync(path.dirname(file));
-      } catch {}
+      pruneEmpty(path.dirname(file));
     }
     if (!dry && action !== "skip-edited") delete m.files[file];
   }
@@ -254,6 +251,45 @@ export function uninstallBundle({ dry = false } = {}) {
     } catch {}
     delete m.blocks[file];
   }
-  if (!dry) fs.writeFileSync(MANIFEST, JSON.stringify(m, null, 2) + "\n");
+  // The guide init wrote is ask-kit's own and rewritten on every run: it goes with the rest.
+  let guide = null;
+  try {
+    guide = fs.readFileSync(AGENTS_MD, "utf8");
+  } catch {}
+  if (guide != null && guide.includes("<!-- Written by ask-kit on every run.")) {
+    rows.push({ path: AGENTS_MD, action: "remove" });
+    if (!dry) fs.rmSync(AGENTS_MD);
+  }
+  if (!dry) {
+    // The record goes once nothing is left to record (an edited file keeps its entry).
+    if (Object.keys(m.files).length || Object.keys(m.blocks).length) fs.writeFileSync(MANIFEST, JSON.stringify(m, null, 2) + "\n");
+    else fs.rmSync(MANIFEST, { force: true });
+  }
   return rows;
+}
+
+/** Remove dir and its parents while they are empty, stopping at an agent's own folder (and never above it). */
+function pruneEmpty(dir) {
+  const stops = new Set([H(), CONFIG_DIR, ...Object.values(TARGETS).map((t) => path.resolve(t.base()))]);
+  for (let d = path.resolve(dir); !stops.has(d); d = path.dirname(d)) {
+    try {
+      if (fs.readdirSync(d).length) return;
+      fs.rmdirSync(d);
+    } catch {
+      return;
+    }
+  }
+}
+
+/**
+ * Why init found nothing to do for an agent, as one phrase: `info` is detect()'s entry for it,
+ * `base` the folder ask-kit writes into. Not on PATH, broken on PATH, or on PATH with no home folder.
+ */
+export function whyNotFound(agent, info) {
+  const base = TARGETS[agent].base();
+  const home = fs.existsSync(base);
+  if (info?.onPath && !home) return `on PATH, but it has no home folder yet (${base}); run it once to create it`;
+  if (info?.broken) return `on PATH, but it does not run (${String(info.broken).split("\n")[0].slice(0, 80)})`;
+  if (!info?.onPath) return home ? `not on PATH (its folder ${base} exists)` : "not on PATH";
+  return `nothing to install into ${base}`;
 }

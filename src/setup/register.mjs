@@ -4,7 +4,7 @@
 //   Claude Code   `claude mcp add -s user ask -- node <ask-kit> serve`
 //   Codex         a marked [mcp_servers.ask] block in config.toml, with a 600 s tool timeout
 //   Copilot CLI   mcpServers.ask in ~/.copilot/mcp-config.json
-//   Gemini CLI    mcpServers.ask in ~/.gemini/settings.json
+//   Gemini CLI    mcpServers.ask in ~/.gemini/settings.json ($GEMINI_CLI_HOME replaces ~/.gemini)
 //   opencode      mcp.ask in ~/.config/opencode/opencode.json
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -146,7 +146,7 @@ export const REGISTER = {
   codex,
   "copilot-cli": () =>
     jsonServer("copilot-cli", path.join(process.env.COPILOT_HOME || home(".copilot"), "mcp-config.json"), "mcpServers", { type: "local", ...SERVE, tools: ["*"] }),
-  "gemini-cli": () => jsonServer("gemini-cli", home(".gemini", "settings.json"), "mcpServers", { ...SERVE, timeout: 600_000 }),
+  "gemini-cli": () => jsonServer("gemini-cli", path.join(process.env.GEMINI_CLI_HOME || home(".gemini"), "settings.json"), "mcpServers", { ...SERVE, timeout: 600_000 }),
   // opencode 2 reads servers from mcp.servers; opencode 1 read them from mcp itself.
   opencode: () =>
     jsonServer("opencode", path.join(process.env.XDG_CONFIG_HOME || home(".config"), "opencode", "opencode.json"), opencodeMajor() >= 2 ? "mcp.servers" : "mcp", {
