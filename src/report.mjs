@@ -82,7 +82,7 @@ export function report({ since = "7d" } = {}) {
     // The same caller asking again within three minutes, not as a follow-up: the answer fell short.
     const next = asks.slice(i + 1).find((b) => b.session === a.session);
     if (next && !next.continued && Date.parse(next.ts) - Date.parse(a.ts) < 180_000) signals.push(next.backend !== a.backend ? "re-asked on another backend" : "re-asked");
-    return { ts: a.ts, domain: a.domain, backend: a.backend, session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, signals, journal: a.file };
+    return { ts: a.ts, domain: a.domain, backend: a.backend, session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, shot: !!a.shot, signals, journal: a.file };
   });
   const flagged = rows.filter((r) => r.signals.length);
   const total = rows.reduce((s, r) => s + (r.costUsd ?? 0), 0);
@@ -90,6 +90,8 @@ export function report({ since = "7d" } = {}) {
     since: new Date(from).toISOString(),
     asks: rows.length,
     flagged: flagged.length,
+    shots: rows.filter((r) => r.shot).length,
+    noModelShare: rows.length ? Math.round((rows.filter((r) => r.shot).length / rows.length) * 100) / 100 : null,
     costUsd: Math.round(total * 1e4) / 1e4,
     medianSeconds: rows.length ? Math.round([...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)].ms / 1000) : null,
     flaggedAsks: flagged,

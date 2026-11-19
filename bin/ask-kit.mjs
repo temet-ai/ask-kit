@@ -80,7 +80,7 @@ async function main() {
       const { report } = await import("../src/report.mjs");
       const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d" });
       if (flag("json")) return print(r);
-      console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
+      console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, ${r.shots} shots (${Math.round((r.noModelShare ?? 0) * 100)}% with no model), $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);
       if (r.scripts.length) console.log(`\nScripts: ${r.scripts.map((s) => `${s.name} ${s.runs}${s.failed ? ` (${s.failed} failed)` : ""}`).join(", ")}`);
       if (r.worthAScript.length) console.log(`\nWritten by hand 3+ times (worth a script):\n${r.worthAScript.map((w) => `  ${w.n}×  ${w.shape}`).join("\n")}`);
@@ -362,7 +362,7 @@ async function kitCommand() {
       const only = typeof flag("only") === "string" ? flag("only").split(",") : undefined;
       const r = await kitTest(name, { backends, only, log: (l) => console.error(l) });
       if (typeof flag("out") === "string") fs.writeFileSync(flag("out"), JSON.stringify(r, null, 2));
-      for (const s of r.summary) console.log(`${r.kit} · ${s.backend}: ${s.passed}/${s.of}, median ${s.medianSeconds}s, $${s.costUsd}`);
+      for (const s of r.summary) console.log(`${r.kit} · ${s.backend}: ${s.passed}/${s.of}, median ${s.medianSeconds}s, $${s.costUsd}, ${s.cells} cells (median ${s.medianCells ?? "-"}), ${s.noModel}/${s.of} answered with no model`);
       if (r.summary.some((s) => s.passed < s.of)) process.exitCode = 1;
       return;
     }

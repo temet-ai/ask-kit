@@ -1,0 +1,6 @@
+{
+  "questions": [
+    { "id": "duty-shot", "q": "who is on duty at Pseudopolis Yard?", "do": "duty", "params": { "post": "Pseudopolis Yard" }, "expect": ["Sam Vimes", "Carrot Ironfoundersson"] },
+    { "id": "duty-ask", "q": "who is on duty at Cable Street?", "expect": ["Angua"] }
+  ]
+}
