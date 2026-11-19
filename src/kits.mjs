@@ -15,6 +15,7 @@ import { CONFIG_DIR, ROOT, STATE_ROOT, expand, slug } from "./config.mjs";
 import { makeRepo } from "../domains/code/repo.mjs";
 import { which } from "./platform.mjs";
 import { checkProvides } from "./capabilities.mjs";
+import { checkActions, compileActions } from "./actions.mjs";
 
 export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
@@ -66,6 +67,7 @@ export function readManifest(dir) {
   if (m.uses?.includes?.(m.name)) problems.push("uses: a kit cannot use itself");
   if (m.skills != null && typeof m.skills !== "string") problems.push("skills: the folder of playbooks in the kit (default skills/)");
   problems.push(...checkProvides(m.provides));
+  problems.push(...checkActions(m.actions));
   for (const [i, r] of (m.roles ?? []).entries()) {
     if (!NAME.test(r.name ?? "")) problems.push(`roles[${i}].name: lowercase letters, digits and dashes, starting with a letter`);
     if (!r.when) problems.push(`roles[${i}].when: plain words saying when to use the role`);
@@ -541,6 +543,7 @@ export function kitIndex(dir, { config, stack = [] } = {}) {
     patterns: why ? [] : (m.patterns ?? []).map((p) => new RegExp(p, "i")),
     routeHint: m.route_hint ?? null,
     provides: m.provides ?? [],
+    actions: why ? [] : compileActions(m),
     scriptsDir: own,
     scriptsDirs: [...new Set([...hostScripts, ...usedDirs, own])],
   };
@@ -601,6 +604,7 @@ export async function kitDomain(dir, { config, stack = [] } = {}) {
     patterns: (m.patterns ?? []).map((p) => new RegExp(p, "i")),
     provides: m.provides ?? [],
     acts: m.acts ?? [],
+    actions: compileActions(m),
     bench: m.bench ? path.join(dir, m.bench) : fs.existsSync(path.join(dir, "bench", "questions.json")) ? path.join(dir, "bench", "questions.json") : null,
     stateKey: m.state_key ? fill(m.state_key, settings) : undefined,
     uses: used.map((d) => d.name),

@@ -18,6 +18,7 @@ import { indexDomain, loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
 import { NO_DATA_META, capabilityLines, providersOf, ranked, scopeOf, tiesOf, winnersOf } from "./capabilities.mjs";
+import { ACTION_META, markReaskOf, matchAction, statusOf } from "./actions.mjs";
 
 const SERVER = path.join(ROOT, "src", "server.mjs");
 
@@ -28,7 +29,8 @@ export const PAST_WORK = /\b(sessions?|we (did|tried|built|said|decided)|discuss
 // goes to session history, not to docker.
 const CODE_WORDS = /`[^`]+`|\b[\w-]+\/[\w./-]+\.\w+\b|\b(where is|defined|definition|function|struct|module|class|env var|flag|toggle|constant|calls?|implement\w*|in (this|the) (repo|code))\b/i;
 // Routes the router decided itself; a caller who corrects one of these within MISROUTE_MS made it a misroute.
-export const DECIDED = ["model", "rules", "pattern", "timeout"];
+// "action": a kit's [[actions]] pattern matched the whole question, so that kit answers it with no model.
+export const DECIDED = ["model", "rules", "pattern", "timeout", "action"];
 export const MISROUTE_MS = 120_000;
 // Past this many domains the router model sees only those the question's words point at.
 export const SHORTLIST_AT = 15;
@@ -104,6 +106,9 @@ export async function makeRouter(config) {
     .map((n) => [n, new RegExp(`\\b(${DOMAINS[n].keywords.join("|")})\\b`, "i")]);
   const patternOf = (q) => enabled.find((n) => DOMAINS[n].patterns?.some((re) => re.test(q))) ?? null;
   const byPattern = (q) => (PAST_WORK.test(q) ? null : patternOf(q));
+  // An enabled action of a kit whose pattern matches the whole question claims it, ahead of the
+  // kits' patterns and the router model: the kit's server then answers it with the action's script.
+  const byAction = (q, cfg = config) => enabled.find((n) => DOMAINS[n].actions?.length && matchAction(DOMAINS[n].actions.filter((a) => statusOf(n, a, cfg).on), q)) ?? null;
   const rules = [...(pastWork ? [[pastWork, PAST_WORK]] : []), ...kitRules, ...(DOMAINS.code ? [["code", CODE_WORDS]] : [])];
   const byRules = (q) => rules.find(([, re]) => re.test(q))?.[0] ?? enabled[0];
   const hintOf = Object.fromEntries(enabled.map((n) => [n, DOMAINS[n].routeHint ? rewriteHint(DOMAINS[n].routeHint, enabled, pastWork) : null]));
@@ -165,7 +170,7 @@ export async function makeRouter(config) {
   // When the model fails: a timeout goes to session history (a slow router is no sign the question
   // is about anything else), any other failure to the keyword rules.
   const fallback = (q, e) => (e?.timeout && pastWork ? pastWork : byRules(q));
-  return { enabled, DOMAINS, byRules, byModel, byPattern, fallback, hints, systemPrompt, offered, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter, loadMs, promptTokens };
+  return { enabled, DOMAINS, byRules, byModel, byPattern, byAction, fallback, hints, systemPrompt, offered, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter, loadMs, promptTokens };
 }
 
 // Misroutes: the router's choice that the caller corrected, or (with capabilities) that answered
@@ -183,7 +188,7 @@ export function recordMisroute(session, row) {
 
 export async function serveRouter() {
   const config = loadConfig();
-  const { enabled, DOMAINS, byModel, byPattern, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
+  const { enabled, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
   const SESSION = callerSession();
   const children = new Map();
   const child = (name) => {
@@ -275,6 +280,10 @@ export async function serveRouter() {
       if (!name && cont && last) (name = last), (how = "follow-up");
       if (!name && enabled.length === 1) (name = enabled[0]), (how = "only");
       if (!name) {
+        const claimed = byAction(question, loadConfig({ required: false }) ?? config);
+        if (claimed) (name = claimed), (how = "action");
+      }
+      if (!name) {
         const claimed = byPattern(question);
         if (claimed) (name = claimed), (how = "pattern");
       }
@@ -296,13 +305,16 @@ export async function serveRouter() {
         const gap = prev?.at ? Date.now() - Date.parse(prev.at) : Infinity;
         if (prev && DECIDED.includes(prev.how) && prev.domain !== name && gap < MISROUTE_MS) {
           correcting = true;
-          recordMisroute(SESSION, { question: prev.question, routed: prev.domain, how: prev.how, correct: name, why: "re-asked", afterMs: gap });
+          recordMisroute(SESSION, { question: prev.question, routed: prev.domain, how: prev.how, correct: name, why: "re-asked" + (prev.action ? ` after action ${prev.action.action}` : ""), afterMs: gap });
+          // An action's answer the caller took elsewhere counts against the action (src/actions.mjs).
+          if (prev.action) markReaskOf(prev.action.kit, prev.action.run, `re-asked of ${name}`);
         }
       }
       // Capabilities: a question routed (or sent with `about`) to one provider goes to the best
       // provider for its scope: Claude Code history to mike when mike is here, Codex to sessions.
+      // A question an action claimed stays with the action's kit.
       let resolvedFrom;
-      if (!correcting && (how === "caller" || DECIDED.includes(how))) {
+      if (!correcting && (how === "caller" || (DECIDED.includes(how) && how !== "action"))) {
         const best = resolve(name, question);
         if (best !== name) (resolvedFrom = name), (name = best);
       }
@@ -330,6 +342,8 @@ export async function serveRouter() {
           const { continue: _, ...fresh } = args;
           out = await call(next, fresh);
         }
+        // The action that answered, kept with the route, so a correction can count against it.
+        if (out._meta?.[ACTION_META]) remember({ domain: name, how, question: question.slice(0, 500), action: out._meta[ACTION_META] });
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
         return { ...out, content: [{ type: "text", text: `${text}${!config.footer || ["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {

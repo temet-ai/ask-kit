@@ -1,0 +1,52 @@
+# A fixture kit for tests of [[actions]] (synthetic; test/actions.mjs copies it into a temp config).
+name = "watch"
+says = "the Night Watch duty roster"
+acts = ["dismiss"]
+
+[[sources]]
+kind = "module"
+name = "watch"
+module = "watch.mjs"
+
+# A named capture fills the script's param; at most two words, so a longer question goes to the model.
+[[actions]]
+name = "duty"
+title = "Who is on duty at a post"
+script = "duty"
+match = ['who is on duty at (?<post>\w+(?: \w+)?)']
+expect = 'officers'
+
+# No capture: the default param is used.
+[[actions]]
+name = "duty-here"
+title = "Who is on duty at the Yard"
+script = "duty"
+match = ['who is on duty( now)?']
+params = { post = "Pseudopolis Yard" }
+
+[[actions]]
+name = "roster"
+title = "A post's full roster"
+script = "broken"
+match = ['roster of (?<post>\w+(?: \w+)?)']
+
+[[actions]]
+name = "asleep"
+title = "Who is asleep on duty"
+script = "nobody"
+match = ['who is asleep']
+
+# Output that does not match `expect` falls through.
+[[actions]]
+name = "nobby"
+title = "Is Nobby on duty"
+script = "duty"
+match = ['is nobby on duty at (?<post>\w+(?: \w+)?)']
+expect = 'Nobby'
+
+# Its script is in `acts`: off until the config says yes.
+[[actions]]
+name = "dismiss"
+title = "Dismiss an officer"
+script = "dismiss"
+match = ['dismiss (?<officer>\w+)']

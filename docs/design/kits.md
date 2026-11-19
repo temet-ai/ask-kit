@@ -148,8 +148,9 @@ same path as draft, then script, then action, that turns repeated digging into a
 **Built (commit a3202dc, 2026-11-19):** `do` and `params` on `ask` and the router,
 `ask-kit run <kit> <script> [key=value]`, the shot held as `shots.<script>` for a `continue: true`
 ask, and early answers (`early_answer`, the partial note, `continue: true` collects the rest). A
-shot runs any script the kit's REPL lists (its own, the host's folder scripts, a used kit's); the `[[actions]]` table that names and titles
-them is not built.
+shot runs any script the kit's REPL lists (its own, the host's folder scripts, a used kit's). The
+`[[actions]]` table that names and titles them, and picks one from the question, was built on
+2026-11-19 (src/actions.mjs).
 
 ## Composition
 
@@ -195,7 +196,8 @@ and `--ref` pins a version. The manifest also names every call that changes some
 |---|---|
 | Manifest, `folder`, `cli`, `module`, `mcp` sources, `kit new --from folder\|cli`, `link`, `list`, `test`, `install`, `enable`, `disable`, `patterns` routing, `requires`, `platforms` | Built (see the user guide) |
 | Shots, early answers, skills, roles, `uses`, `ask.kit` | Built, with offline tests: `test/shots.mjs`, `test/early.mjs`, `test/kits.mjs`, `test/kitcall.mjs` |
-| `[[actions]]` (named, titled scripts), `roleFor` called by the `ask` tool | Not built |
+| `[[actions]]` (named, titled scripts matched from the question, guarded and shadowed) | Built, with an offline test: `test/actions.mjs`. The user guide's [Actions](../user-guide/kits.md#actions) |
+| `roleFor` called by the `ask` tool | Not built |
 | `http` source, `kit new --from mcp\|openapi`, `kit update`, `log`, `config-dir`, `id`, `min_ask_kit` | Not built |
 | `code` and `sessions` as kits | Not built: both still load as `domain.mjs` domains |
 | Fleet kit | Built, in the private repository `temet-ai/ask-kit-fleet`, on mike's MCP tools directly (no mike pack under it) |

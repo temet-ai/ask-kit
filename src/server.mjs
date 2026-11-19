@@ -87,6 +87,18 @@ async function refreshScripts() {
   return { loaded, errors };
 }
 
+// A script run's params in the cell record, cut at 300 characters: `report` shows the values a
+// question template was asked with, for writing an [[actions]] entry.
+const paramsOf = (params) => {
+  if (!params || typeof params !== "object" || !Object.keys(params).length) return {};
+  try {
+    const s = JSON.stringify(params);
+    return { params: s.length > 300 ? `${s.slice(0, 299)}…` : params };
+  } catch {
+    return {};
+  }
+};
+
 const scripts = {
   list: () =>
     [...registry.entries()].map(([name, s]) => ({ name, purpose: s.meta.purpose ?? "", params: s.meta.params ?? {}, returns: s.meta.returns ?? "", draft: s.draft })),
@@ -101,10 +113,10 @@ const scripts = {
     const started = Date.now();
     try {
       const value = await s.fn({ ...GLOBALS, tk: toolkit }, params ?? {});
-      cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started });
+      cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started, ...paramsOf(params) });
       return value;
     } catch (e) {
-      cellScripts.push({ name, draft: s.draft, ok: false, ms: Date.now() - started, error: e.message });
+      cellScripts.push({ name, draft: s.draft, ok: false, ms: Date.now() - started, error: e.message, ...paramsOf(params) });
       throw e;
     }
   },

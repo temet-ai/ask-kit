@@ -8,7 +8,10 @@ ask-kit apply <answers.json> [--dry-run]
 ask-kit detect [--json]          what this machine has (agents, transcripts, logins, keys, local models, tools)
 ask-kit doctor                   check sources, backends and tools
 ask-kit ask "<question>" [--domain sessions|code] [--backend name] [--continue]
-ask-kit report [--since 7d]      flagged asks, scripts used, routes worth a script
+ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
+ask-kit report [--since 7d] [--json]   flagged asks, scripts used, routes worth a script, misroutes,
+                                 actions (runs, fall-throughs, turned off: why), shadow runs, worth an action
+ask-kit kit actions <kit> [--enable|--disable <action>] [--json]   a kit's [[actions]]: status and last 20 runs
 ask-kit gaps [--since 30d] [--json]   lookups agents did by hand instead of asking, by kit
 ask-kit gallery                  shared domains
 ask-kit add <repo> [--yes]       show a shared domain's files; --yes installs and enables it
@@ -16,6 +19,30 @@ ask-kit lines                    the one-line prompts for any agent
 ask-kit uninstall [--dry-run]    remove what ask-kit installed (not your edits)
 ask-kit serve [--domain d]       the MCP server your agents start
 ```
+
+## ask-kit kit actions
+
+```sh
+ask-kit kit actions watch
+```
+
+```
+● duty                 Who is on duty at a post  (script duty)
+    on
+    last 2 runs: 2 answered, 0 fell through on an error or the shape, 0 asked again
+    match: who is on duty at (?<post>\w+(?: \w+)?)
+○ roster               A post's full roster  (script broken)
+    turned off: 4 of its last 4 runs went wrong (4 fell through on an error or the output's shape, 0 asked again within 120 s)
+    last 4 runs: 0 answered, 4 fell through on an error or the shape, 0 asked again
+    match: roster of (?<post>\w+(?: \w+)?)
+```
+
+`●` is on, `○` off with the reason: turned off in the config, an action that changes something
+and has not been turned on, or turned off after its runs went wrong. `--enable <action>` turns it
+on: it clears a turn-off (the window of 20 runs starts again) and, for an action that changes
+something, writes `domains.<kit>.actions.<action> = true` to the config. `--disable <action>`
+writes `false`. The rules for matching, falling through and turning off are in
+[Actions](kits.md#actions).
 
 ## ask-kit gaps
 

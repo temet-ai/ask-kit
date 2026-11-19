@@ -48,6 +48,9 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `error` | string | On failure: the message, cut at 300 characters. |
 | `cancelled` | boolean | On failure: the calling client cancelled the ask. |
 | `noData` | boolean | The domain provides a capability and its answer ended with the line `[no data]`: it held nothing for the question. The line is cut from the answer, and the router asks the next provider. |
+| `action` | string | The kit's action that answered with no model. The row has `do` (the script), `params`, `ms` and `cells: 1`, and no backend, model or cost. See [Actions](../kits.md#actions). |
+| `actionFellThrough` | object | On a model ask: `{ action, why }` for the action that matched first and fell through (`why` is `error`, `empty` or `expect`), with `turnedOff` when that run turned the action off. |
+| `askId` | string | `api` asks: the investigator's REPL session is `ask-<askId>`, so `report` finds the ask's cells. |
 
 The rest depend on the kind. A field that a kind does not produce is absent.
 
@@ -81,7 +84,7 @@ Written after every REPL cell. It has `code` and no `type`.
 | `resultChars` | number | Length of the text returned, after clipping. |
 | `repeat` | number | Present when this cell, with its variable names blanked, has run before in this REPL: how many times now. |
 | `error` | string or `null` | The error's first lines. |
-| `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `error` on failure. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. |
+| `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `params` when the run had any (as a string cut at 300 characters when longer) and `error` on failure. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. |
 | `calls` | object[] | Calls the domain's globals made: `{ kind, detail, ms, size }`. For `repo`: `rg`, `files`, `read`, `git`. For `history`: `sessions`, `events`, `grep`. `size` is the number of results or lines. |
 | `snapshot` | object | `{ vars, fns, bytes, dropped }` after the cell, or `{ error }`. `dropped` names variables that could not be saved. |
 | `restored` | object or `null` | On the first cell after a start: `{ from, savedAt, names }`, the variables brought back. |
@@ -142,8 +145,8 @@ ask-kit report [--since 7d] [--json]
 
 `--since` takes `<n>h`, `<n>d` or a date. The default is `7d`. Any other value stops with
 `--since <value>: use 24h, 7d or a date`. The command reads every journal in the state folder
-(folders `warm`, `drafts`, `gallery` and `index` are skipped), keeps records whose `ts` is in
-range, and builds three things.
+(folders `warm`, `drafts`, `gallery`, `index` and `actions` are skipped), keeps records whose `ts` is in
+range, and builds the sections below. The action sections read `<state>/actions/` separately.
 
 ### Flagged asks
 
@@ -162,6 +165,7 @@ Each `ask` record gets zero or more signals. An ask with any signal is listed.
 | `empty answer` | `ok` is true and `answerChars` is 0. |
 | `re-asked` | The same calling session asked again within three minutes, and not as a follow-up. A sign the first answer fell short. |
 | `re-asked on another backend` | Same, and the second ask used a different backend. |
+| `action <name> fell through (<why>)` | The ask has `actionFellThrough`. |
 
 ### Scripts
 
@@ -176,6 +180,24 @@ replaced by `"…"`, numbers by `N`, `const x =` removed, whitespace collapsed, 
 characters. The key is `<domain>: <shape>`. A shape written three or more times is listed,
 largest first, at most ten. Each is a search the investigator keeps writing by hand and could be a
 [script](../guides/add-a-script.md).
+
+### Action runs
+
+From `<state>/actions/<kit>.jsonl` and `<kit>.json`: per action with runs in range, its runs,
+answers, fall-throughs by why, re-asks, its last 20 runs, and `off` with the reason when it was
+turned off. Shadow runs are listed with both answers.
+
+### Worth an action
+
+Real asks only: sessions whose id starts with `kittest-` or `bench` are left out, and so are
+shots, action answers, follow-ups and failed asks. Each ask's question becomes a template:
+lowercased, quoted text as `<text>`, paths as `<path>`, ids (uuids, hex of 7 or more with a
+letter, words with a digit) as `<id>`, numbers as `N`, closing punctuation removed. Its cells are
+those of `ask-<askId>` that ended during the ask (for older records with no `askId`, every
+`ask-*` cell that ended during it). The asks are grouped by kit, template and each library script
+those cells ran. A group with 2 or more asks is listed, at most ten, by summed `costUsd`, then
+count times median seconds. Each shows the script and up to six param values it ran with, from
+the cell record's `params` or, for older records, from the `scripts.run` call in the code.
 
 ### Output
 
@@ -206,8 +228,13 @@ Misroutes: 1 of 9 routed by the router (router bench rows: <state>/router/bench.
 | `flaggedAsks` | `[{ ts, domain, backend, session, question, ms, costUsd, cells, signals, journal }]`. `cells` is `cells` or else `turns`. |
 | `scripts` | `[{ name, runs, failed }]`, most used first. |
 | `worthAScript` | `[{ shape, n }]`. |
-| `routed` | Routes the router decided itself (`pattern`, `model`, `timeout`, `rules`) in range. |
+| `routed` | Routes the router decided itself (`action`, `pattern`, `model`, `timeout`, `rules`) in range. |
 | `misroutes` | `[{ at, question, routed, how, correct, why, journal }]`, oldest first. |
+| `actionAnswers` | Asks an action answered. `noModelShare` counts them with shots; `realNoModelShare` is the same share with kit-test and benchmark sessions left out. |
+| `actions` | `[{ kit, action, runs, answered, fellThrough, reasked, window, off, offAt }]`. |
+| `turnedOff` | `[{ kit, action, why, at }]`. |
+| `shadows` | `[{ kit, at, action, run, question, actionAnswer, modelAnswer, backend, ms, costUsd, cells }]`, oldest first. |
+| `worthAnAction` | `[{ kit, template, script, n, sessions, costUsd, medianSeconds, questions, params }]`. |
 
 The domain in the report is the first path part under the state folder. For the `code` domain it
 is `code` for every repository.
