@@ -48,14 +48,28 @@ function meta(file) {
   return { id, cwd, project: cwd ? path.basename(cwd) : null, startedAt, title, originator };
 }
 
-function events(s) {
+// o.usage: also a "usage" event per model call, from the token_count that follows it. Tool calls
+// carry `req`, the number of the token_count that will cover them.
+function events(s, o = {}) {
   const out = [];
-  const push = (e) => out.push({ i: out.length, ...e });
+  const raw = (e) => out.push({ i: out.length, ...e });
   let model = null;
+  let req = 0;
+  let lastTotal = null;
+  const push = (e) => raw(o.usage && e.role === "tool_call" ? { ...e, req: String(req) } : e);
   for (const r of parseLines(s.file)) {
     const ts = r.timestamp;
     const p = r.payload ?? {};
     if (r.type === "turn_context") model = p.model ?? model;
+    if (o.usage && r.type === "event_msg" && p.type === "token_count" && p.info?.last_token_usage) {
+      // Codex repeats a token_count without a new call; the running total tells them apart.
+      const total = p.info.total_token_usage?.total_tokens;
+      if (total != null && total === lastTotal) continue;
+      lastTotal = total;
+      const u = p.info.last_token_usage;
+      raw({ ts, role: "usage", req: String(req++), model, text: "", tokens: { input: (u.input_tokens ?? 0) - (u.cached_input_tokens ?? 0), cacheWrite: u.cache_write_input_tokens ?? 0, cacheRead: u.cached_input_tokens ?? 0, output: u.output_tokens ?? 0 } });
+      continue;
+    }
     if (r.type !== "response_item") continue;
     switch (p.type) {
       case "message": {

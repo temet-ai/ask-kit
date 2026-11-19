@@ -19,7 +19,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "test": "node test/fixtures.mjs && node test/setup.mjs && node test/repl.mjs && node test/kitcall.mjs && node test/kits.mjs && node test/router.mjs && node test/index.mjs && node test/shots.mjs && node test/early.mjs && node test/kittest.mjs && node test/bundle.mjs && node test/plugin.mjs && node test/grep-prefilter.mjs",
+    "test": "node test/fixtures.mjs && node test/setup.mjs && node test/repl.mjs && node test/kitcall.mjs && node test/kits.mjs && node test/router.mjs && node test/index.mjs && node test/shots.mjs && node test/early.mjs && node test/kittest.mjs && node test/bundle.mjs && node test/plugin.mjs && node test/grep-prefilter.mjs && node test/gaps.mjs",
     "test:machine": "node test/adapters.mjs"
   },
   "files": [

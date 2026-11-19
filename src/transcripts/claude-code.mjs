@@ -56,9 +56,11 @@ function meta(file) {
   return { id: path.basename(file, ".jsonl"), cwd, project: cwd ? path.basename(cwd) : null, startedAt, title: summary ?? title };
 }
 
-function events(s) {
+// o.usage: also a "usage" event per model call (its message.id as `req`) and `req` on tool calls.
+function events(s, o = {}) {
   const out = [];
   const push = (e) => out.push({ i: out.length, ...e });
+  const seen = new Set();
   for (const r of parseLines(s.file)) {
     const ts = r.timestamp;
     if (r.type === "user") {
@@ -73,9 +75,15 @@ function events(s) {
       }
     } else if (r.type === "assistant") {
       const m = r.message ?? {};
+      const req = o.usage ? (m.id ?? r.uuid) : undefined;
+      if (o.usage && m.usage && !seen.has(req)) {
+        seen.add(req);
+        const u = m.usage;
+        push({ ts, role: "usage", req, model: m.model, text: "", tokens: { input: u.input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, output: u.output_tokens ?? 0 } });
+      }
       for (const b of m.content ?? []) {
         if (b.type === "text") push({ ts, role: "assistant", text: b.text, model: m.model });
-        else if (b.type === "tool_use") push({ ts, role: "tool_call", tool: b.name, toolId: b.id, input: b.input, text: JSON.stringify(b.input ?? {}), model: m.model });
+        else if (b.type === "tool_use") push({ ts, role: "tool_call", tool: b.name, toolId: b.id, input: b.input, text: JSON.stringify(b.input ?? {}), model: m.model, ...(req ? { req } : {}) });
       }
     }
   }

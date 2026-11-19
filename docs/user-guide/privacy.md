@@ -19,6 +19,9 @@ that CLI's service under its own terms, and the sessions appear in its history.
 - Under `~/.local/state/ask-kit/`: the journals of every ask and cell, REPL snapshots, warm
   investigator sessions and the transcript index. The router keeps each routed question, and in
   `router/bench.jsonl` every misrouted question with where it went and where it should have gone.
+- `ask-kit gaps` keeps the lookup chains and asks it found in each session in
+  `~/.local/state/ask-kit/index/gaps.json`: time, kit, area, token count and the first 200
+  characters of the prompt. It sends nothing.
 - The skills, agent and rule it installed into your agents, each listed with its hash in
   `installed.json`.
 

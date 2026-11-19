@@ -55,6 +55,7 @@ slashes removed and every other run of characters outside `A-Z a-z 0-9 . _ -` tu
 | `<STATE_ROOT>/router/<caller>.jsonl` | the router | One line per routed ask: `at`, `question` (500 characters), `domain`, `how`, `routeMs`, `routeError`. |
 | `<STATE_ROOT>/router/last-<caller>.json` | the router | `{ domain, at }`: the domain that answered last, for follow-ups. |
 | `<STATE_ROOT>/index/<source>.json` | the transcript adapters | A cache of each session file's metadata (modification time, size, id, title), so a listing does not re-read every transcript. Safe to delete. |
+| `<STATE_ROOT>/index/gaps.json` | `ask-kit gaps` | Per session (`<source>:<id>`, with its modification time and size): the lookup chains and asks found, each with time, kit, area, tokens and the first 200 characters of its prompt. Rebuilt when kits change. Safe to delete. |
 | `<STATE_ROOT>/gallery/<owner>-<repo>/` | `ask-kit add` | A shallow clone of a shared domain, replaced on each add. |
 
 `<session>` is the file-safe form of the session id the server runs under. A calling agent's own

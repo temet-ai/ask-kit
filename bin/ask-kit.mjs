@@ -10,6 +10,7 @@
 //   ask-kit ask "<question>" [--domain d] [--backend b] [--continue]   ask from the shell
 //   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
+//   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
 //   ask-kit kit new|link|list|test|profile|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
@@ -92,6 +93,11 @@ async function main() {
         for (const m of r.misroutes) console.log(`  ${m.at}  ${m.routed} (by ${m.how}) → ${m.correct}, ${m.why}\n    ${m.question}`);
       }
       return;
+    }
+    case "gaps": {
+      const { gaps, formatReport } = await import("../src/gaps.mjs");
+      const r = await gaps({ since: typeof flag("since") === "string" ? flag("since") : "30d" });
+      return flag("json") ? print(r) : console.log(formatReport(r));
     }
     case "gallery": {
       const { listGallery } = await import("../src/gallery.mjs");
