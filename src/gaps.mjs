@@ -19,7 +19,7 @@ import { HOME, STATE_ROOT, expand, loadConfig } from "./config.mjs";
 import { findKit, listKits, readManifest } from "./kits.mjs";
 
 // Part of the cache key: raise it when a rule changes what a cached session would hold.
-const VERSION = 3;
+const VERSION = 4;
 
 // $ per million tokens: input, cache write, cache read, output. Claude list prices as mike-ask's
 // corpus.mjs has them; other models get no price.
@@ -281,6 +281,7 @@ export function tidyPrompt(p) {
     .replace(/^\[Request interrupted.*/, "[interrupted]")
     .replace(/^This session is being continued from a previous conversation.*/, "[continued]")
     .replace(/^([\w-]+)\. Your brief is saved at \S+.*/, "[fleet seat $1: brief in a file]")
+    .replace(/^([\w-]+) of fleet [\w-]+\. Your brief is (?:saved )?at \S+.*/, "[fleet seat $1: brief in a file]")
     .slice(0, 200);
 }
 
