@@ -32,6 +32,30 @@ writes `site/kits.json` from GitHub, and any static server in `site/` shows it. 
 workflow rebuilds and deploys it on a push and every six hours. After changing a dependency,
 regenerate the notices with `node scripts/notices.mjs > THIRD-PARTY-NOTICES.md`.
 
+## Releasing
+
+A tag `vX.Y.Z` runs `.github/workflows/release.yml`: it tests, publishes `@temet-ai/ask-kit` to
+npm with provenance, lists the version in the MCP Registry as `io.github.temet-ai/ask-kit` and
+makes a GitHub release. The version must be the same in `package.json`, `server.json` (twice)
+and `.claude-plugin/plugin.json`; `test/plugin.mjs` checks this, and the workflow checks the tag
+against them.
+
+The unscoped npm name `ask-kit` belongs to another package, so ask-kit is published under the
+`temet-ai` npm organisation. Before the first tag, once:
+
+1. Create the `temet-ai` organisation on npmjs.com.
+2. In `package.json`, set `name` to `@temet-ai/ask-kit` and remove `"private": true`.
+3. Publish the first version by hand (`npm publish --access public`), since npm trusted
+   publishing is set up on a package that exists.
+4. On npmjs.com, under the package's settings, add a trusted publisher: GitHub Actions,
+   repository `temet-ai/ask-kit`, workflow `release.yml`. Later tags publish with no token.
+5. Tag the next version. The MCP Registry step signs in with the workflow's GitHub identity,
+   which may publish under `io.github.temet-ai/`.
+
+`.github/workflows/traffic.yml` saves the repository's traffic to the `stats` branch each day.
+It needs the `TRAFFIC_TOKEN` secret: a fine-grained token for this repository with
+"Administration: Read-only".
+
 ## Rules every change keeps
 
 - Test data uses made-up names, never a real organisation, person, project or ticket. New test

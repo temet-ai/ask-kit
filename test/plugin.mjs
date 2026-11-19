@@ -29,6 +29,14 @@ for (const p of [...manifest.skills, ...manifest.agents]) assert.ok(fs.existsSyn
 const market = JSON.parse(fs.readFileSync(path.join(ROOT, ".claude-plugin", "marketplace.json"), "utf8"));
 assert.equal(market.plugins[0].name, manifest.name);
 
+// One version everywhere a release names it: package.json, the plugin and the MCP Registry entry.
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+const server = JSON.parse(fs.readFileSync(path.join(ROOT, "server.json"), "utf8"));
+assert.equal(manifest.version, pkg.version, "plugin.json version matches package.json");
+assert.equal(server.version, pkg.version, "server.json version matches package.json");
+assert.equal(server.packages[0].version, pkg.version, "server.json package version matches package.json");
+assert.equal(server.name, pkg.mcpName, "server.json name matches package.json mcpName");
+
 // Without the plugin, Claude Code gets the bundle as before.
 assert.equal(claudePlugin(), null);
 assert.equal(installBundle(["claude-code"], { dry: true })[0].action, "write");
