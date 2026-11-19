@@ -10,6 +10,7 @@ ask-kit doctor                   check sources, backends and tools
 ask-kit ask "<question>" [--domain sessions|code] [--backend name] [--continue]
 ask-kit report [--since 7d]      flagged asks, scripts used, routes worth a script
 ask-kit gaps [--since 30d] [--json]   lookups agents did by hand instead of asking, by kit
+ask-kit mine <kit> [--since 30d] [--n 20] [--json]   those lookups' questions as draft bench rows
 ask-kit gallery                  shared domains
 ask-kit add <repo> [--yes]       show a shared domain's files; --yes installs and enables it
 ask-kit lines                    the one-line prompts for any agent
@@ -53,6 +54,30 @@ are not read.
 The first run over 30 days of a busy machine takes about half a minute. Results per session are
 kept in `<state>/index/gaps.json`, so a second run takes under a second. `--json` prints the
 whole report as JSON.
+
+## ask-kit mine
+
+`ask-kit mine <kit>` turns the questions behind a kit's hand lookups into draft bench rows, so a
+kit is tested on what agents actually needed from it. The name is any kit or source `ask-kit gaps`
+lists, including one with no kit yet (`mike`, `web`). It takes the same chains as gaps: to-answer,
+from a typed question, since `--since` (30 days by default). A question asked more than once
+becomes one row. The rows are ordered by the tokens the digging cost, and `--n` (20) caps them.
+Questions already in the kit's bench are left out.
+
+Each row is in `kit test`'s format (`id`, `q`, `expect`), with `expect` empty and these fields
+to help fill it:
+
+| Field | What it holds |
+|---|---|
+| `found` | What the agent answered after the lookups, clipped |
+| `suggest` | Identifiers and paths the answer named, as regexes for `expect` |
+| `touched` | What the lookups read |
+| `source` | The agent, session and time, to read the whole turn |
+
+The drafts are written to `<state>/drafts/bench/<kit>.json`. `found` is what was true when the
+question was asked. Code and services move on, so read each answer in the source as it is now
+before you write `expect`. Then copy the row into the kit's `bench/questions.json` without the
+helper fields.
 
 ## What init puts in each agent
 

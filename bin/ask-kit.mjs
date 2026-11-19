@@ -11,6 +11,7 @@
 //   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
+//   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
 //   ask-kit kit new|link|list|test|profile|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
@@ -98,6 +99,17 @@ async function main() {
       const { gaps, formatReport } = await import("../src/gaps.mjs");
       const r = await gaps({ since: typeof flag("since") === "string" ? flag("since") : "30d" });
       return flag("json") ? print(r) : console.log(formatReport(r));
+    }
+    case "mine": {
+      if (!positional[0]) throw new Error("mine needs a kit or source name, as `ask-kit gaps` lists them (code, github, mike, ...)");
+      const { mine, writeDrafts, formatMine } = await import("../src/mine.mjs");
+      const n = Number(flag("n"));
+      const r = await mine({ kit: positional[0], since: typeof flag("since") === "string" ? flag("since") : "30d", n: n > 0 ? n : 20 });
+      if (flag("json")) return print(r);
+      const file = writeDrafts(r);
+      console.log(formatMine(r));
+      console.log(`\nDrafts: ${file}\nCheck each answer in the source as it is now, fill expect, then copy the row into the kit's bench/questions.json.`);
+      return;
     }
     case "gallery": {
       const { listGallery } = await import("../src/gallery.mjs");
