@@ -22,7 +22,7 @@ export async function listGallery() {
     const res = await fetch(`https://api.github.com/search/repositories?q=topic:${t}&sort=stars&per_page=50`, { headers, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`GitHub search: HTTP ${res.status}`);
     const j = await res.json();
-    for (const r of j.items ?? []) if (r.full_name !== "temet-ai/ask-kit" && !seen.has(r.full_name)) seen.set(r.full_name, { repo: r.full_name, description: r.description ?? "", stars: r.stargazers_count, updated: r.pushed_at?.slice(0, 10), url: r.html_url });
+    for (const r of j.items ?? []) if (r.full_name !== "temet-ai/ask-kit" && !seen.has(r.full_name)) seen.set(r.full_name, { repo: r.full_name, description: r.description ?? "", stars: r.stargazers_count, updated: r.pushed_at?.slice(0, 10), url: r.html_url, private: !!r.private, owner: r.owner?.login, avatar: r.owner?.avatar_url, branch: r.default_branch });
   }
   return [...seen.values()].sort((a, b) => b.stars - a.stars);
 }
