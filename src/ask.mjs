@@ -23,6 +23,7 @@ import { API_PRESETS } from "./providers.mjs";
 import { runCli } from "./platform.mjs";
 import { ollamaChat, OLLAMA_DEFAULT_CTX } from "./ollama.mjs";
 import { parseDo, runShot, shotFooter } from "./shots.mjs";
+import { NO_DATA_META } from "./capabilities.mjs";
 
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
@@ -30,6 +31,11 @@ const CELL_MAX_S = 60;
 // No step limit: time is the budget. With this much left the investigator is told to answer.
 const WRAP_MS = 30_000;
 const SERVER = path.join(ROOT, "src", "server.mjs");
+// The no-data signal: an answer from a capability provider that ends with this line held nothing
+// for the question. The line is cut from the answer, journaled as noData, and returned to the
+// router in the result's _meta, which then asks the next provider once.
+const NO_DATA_RULE = "\nIf your sources hold nothing for this question (a session, agent, machine or time they do not cover), say what you searched and end the answer with the line [no data].";
+export const NO_DATA = /\n?[ \t]*\[no data\][ \t.]*$/i;
 // Claude Code's own tools, left out so the investigator works through the REPL, where every call is journaled.
 const CLAUDE_DENY = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "Task", "Skill", "TodoWrite"];
 
@@ -67,7 +73,9 @@ export function registerAsk(server, ctx) {
   if (!NAMES.length) throw new Error("no backends in config: run `ask-kit setup`");
   const domainCfg = config.domains?.[domainName] ?? {};
   const DEFAULT = [domainCfg.backend, D.defaultBackend, config.backends.default, NAMES[0]].find((b) => b && BACKENDS[b]);
-  const rulesFor = () => D.answerRules;
+  // A domain that provides a capability another may also provide says when it holds nothing for a
+  // question, so the router can hand the question to the next provider (src/capabilities.mjs).
+  const rulesFor = () => D.answerRules + (D.provides?.length ? NO_DATA_RULE : "");
   const WARM_DIR = path.join(STATE_DIR, "warm");
   const WARM_CWD = path.join(WARM_DIR, "cwd");
   fs.mkdirSync(WARM_CWD, { recursive: true, mode: 0o700 });
@@ -716,11 +724,13 @@ export function registerAsk(server, ctx) {
         try {
           if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
           const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, ac.signal, onStep, onEarly);
-          ctx.keep({ question, backend, kind, ...r, ...(detached ? { earlyMs: detachedMs } : {}) });
+          const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
+          if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
+          ctx.keep({ question, backend, kind, ...r, ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}) });
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.
           const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
-          return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok };
+          return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok, ...(noData ? { _meta: { [NO_DATA_META]: true } } : {}) };
         } catch (e) {
           const cancelled = ac.signal.aborted;
           const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");

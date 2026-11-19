@@ -17,6 +17,7 @@ import { ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from ".
 import { loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
+import { NO_DATA_META, capabilityLines, providersOf, ranked, scopeOf, tiesOf, winnersOf } from "./capabilities.mjs";
 
 const SERVER = path.join(ROOT, "src", "server.mjs");
 
@@ -58,10 +59,37 @@ export async function makeRouter(config) {
       skipped[n] = String(e.message ?? e).split("\n")[0];
     }
   }
-  const enabled = Object.keys(DOMAINS);
-  if (!enabled.length) throw new Error(`no domains can run: ${JSON.stringify(skipped)}`);
-  // The domain past-work questions fall back to: session history.
-  const pastWork = DOMAINS.sessions ? "sessions" : null;
+  if (!Object.keys(DOMAINS).length) throw new Error(`no domains can run: ${JSON.stringify(skipped)}`);
+  // Capabilities are resolved before routing: for each one, the providers that can run here are
+  // ranked by priority (a config pin wins). A domain that wins no capability for any scope is
+  // hidden: not offered, not in the prompt, kept only as a fallback for the one above it.
+  const providers = providersOf(Object.keys(DOMAINS), (n) => DOMAINS[n].provides, config);
+  const { caps, hidden } = winnersOf(providers);
+  const ties = tiesOf(providers);
+  for (const n of hidden) skipped[n] = `every capability it provides goes to another: ${[...new Set(providers.filter((p) => p.domain === n).map((p) => caps[p.capability].top))].join(", ")}`;
+  const enabled = Object.keys(DOMAINS).filter((n) => !hidden.includes(n));
+  // The domain past-work questions fall back to: the session-history winner.
+  const pastWork = caps["session-history"]?.top ?? (DOMAINS.sessions ? "sessions" : null);
+  const capLines = capabilityLines(caps, enabled);
+  // Where a question routed to `name` goes once capabilities are resolved for its scope (the
+  // agents it names): the best provider of the first capability `name` provides that holds it.
+  const resolve = (name, q) => {
+    const scope = scopeOf(q);
+    for (const p of providers.filter((x) => x.domain === name)) {
+      const order = ranked(providers, p.capability, scope);
+      if (order.length) return order[0];
+    }
+    return name;
+  };
+  // The providers to try after `name` when it has no data for the question.
+  const nextAfter = (name, q) => {
+    const scope = scopeOf(q);
+    for (const p of providers.filter((x) => x.domain === name)) {
+      const order = ranked(providers, p.capability, scope).filter((d) => d !== name);
+      if (order.length) return order;
+    }
+    return [];
+  };
   // Kits bring their own routing: `keywords` join the fallback rules, and `patterns` claim a
   // question outright (no model call) unless it has past-work words, when they are a hint instead.
   const kitRules = enabled
@@ -80,6 +108,7 @@ export async function makeRouter(config) {
     return (
       `Route a question from a coding agent (working in ${process.cwd()}) to the one investigator that can answer it. Reply with one word: ${enabled.join(", ")}.\n` +
       enabled.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
+      (capLines.length ? `\nWhat more than one of them holds goes to the first named, or to the one named for the agent the question is about:\n${capLines.join("\n")}` : "") +
       (pastWork && DOMAINS.code ? `\nPast work (what a session did or why) is ${pastWork} even when it is about code; the code as it is now is code.` : "") +
       (hints.length ? `\n${hints.join("\n")}` : "") +
       (hinted ? `\nThe question names something ${hinted} holds (it matches ${hinted}'s pattern): choose ${hinted} unless it asks what a past session did or said.` : "")
@@ -111,7 +140,7 @@ export async function makeRouter(config) {
   // When the model fails: a timeout goes to session history (a slow router is no sign the question
   // is about anything else), any other failure to the keyword rules.
   const fallback = (q, e) => (e?.timeout && pastWork ? pastWork : byRules(q));
-  return { enabled, DOMAINS, byRules, byModel, byPattern, fallback, hints, systemPrompt, pastWork, skipped };
+  return { enabled, DOMAINS, byRules, byModel, byPattern, fallback, hints, systemPrompt, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter };
 }
 
 // Misroutes: the router's choice that the caller corrected, or (with capabilities) that answered
@@ -129,7 +158,7 @@ export function recordMisroute(session, row) {
 
 export async function serveRouter() {
   const config = loadConfig();
-  const { enabled, DOMAINS, byModel, byPattern, fallback, pastWork } = await makeRouter(config);
+  const { enabled, DOMAINS, byModel, byPattern, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
   const SESSION = callerSession();
   const children = new Map();
   const child = (name) => {
@@ -183,6 +212,7 @@ export async function serveRouter() {
         "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
         "so you pay for one call and the answer. It goes to one of: " +
         enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
+        (capLines.length ? `. Held by more than one, so the router picks by the agent a question names (first named otherwise): ${capLines.join("; ")}` : "") +
         ". Pass `about` to choose yourself. For a follow-up, pass continue: true. " +
         'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
       inputSchema: {
@@ -233,24 +263,47 @@ export async function serveRouter() {
         }
       }
       // The caller naming another domain for its next question within two minutes corrects the
-      // router: the earlier route was a misroute.
+      // router: the earlier route was a misroute, and the caller's choice stands as given.
+      let correcting = false;
       if (how === "caller" && !shot) {
         const prev = readLast();
         const gap = prev?.at ? Date.now() - Date.parse(prev.at) : Infinity;
-        if (prev && DECIDED.includes(prev.how) && prev.domain !== name && gap < MISROUTE_MS)
+        if (prev && DECIDED.includes(prev.how) && prev.domain !== name && gap < MISROUTE_MS) {
+          correcting = true;
           recordMisroute(SESSION, { question: prev.question, routed: prev.domain, how: prev.how, correct: name, why: "re-asked", afterMs: gap });
+        }
+      }
+      // Capabilities: a question routed (or sent with `about`) to one provider goes to the best
+      // provider for its scope: Claude Code history to mike when mike is here, Codex to sessions.
+      let resolvedFrom;
+      if (!correcting && (how === "caller" || DECIDED.includes(how))) {
+        const best = resolve(name, question);
+        if (best !== name) (resolvedFrom = name), (name = best);
       }
       const args = shot
         ? { ...(question.trim() ? { question } : {}), do: shot.script, ...(params ? { params } : {}), ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}) }
         : { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(early === false ? { early: false } : {}), ...(cont && name === last ? { continue: true } : {}) };
-      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}) });
+      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(resolvedFrom ? { resolvedFrom } : {}), ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}) });
       remember({ domain: name, how, question: (question || "").slice(0, 500) });
+      // Pass the investigator's progress (one note per cell) on to the caller, if it asked for it.
+      const token = extra?._meta?.progressToken;
+      const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
+      const call = async (n, a) => (await child(n)).callTool({ name: "ask", arguments: a }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
       try {
-        const c = await child(name);
-        // Pass the investigator's progress (one note per cell) on to the caller, if it asked for it.
-        const token = extra?._meta?.progressToken;
-        const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
-        const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
+        let out = await call(name, args);
+        // Fallback, once: the provider held nothing for this question (its answer ended with the
+        // no-data line), so the next provider of the same capability gets the same question.
+        const next = !shot && out._meta?.[NO_DATA_META] ? nextAfter(name, question)[0] : null;
+        if (next) {
+          const from = name;
+          recordMisroute(SESSION, { question: question.slice(0, 500), routed: from, how, correct: next, why: "no data" });
+          journal({ question: question.slice(0, 500), domain: next, how: "fallback", from, routeMs: Date.now() - t0 });
+          remember({ domain: next, how: "fallback", question: question.slice(0, 500) });
+          name = next;
+          how = "fallback";
+          const { continue: _, ...fresh } = args;
+          out = await call(next, fresh);
+        }
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
         return { ...out, content: [{ type: "text", text: `${text}${!config.footer || ["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {

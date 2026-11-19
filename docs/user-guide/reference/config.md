@@ -136,6 +136,7 @@ A name with no folder fails the router when it starts (`no domain "<name>"`).
 |---|---|---|---|
 | `enabled` | boolean | on | `false` takes the domain out of the router and out of the tool's `about` list. |
 | `backend` | string | none | A backend name from `backends.list` that answers this domain's asks. Beats `backends.default`. A name that is not in `list` is ignored. |
+| `priority` | number | the manifest's | Pins the priority of every capability the domain provides (`[[provides]]` in a kit, `provides` in a domain.mjs). The highest wins. Settles a tie that `ask-kit doctor` reports. |
 | `from` | string | none | Written by `ask-kit add`: the repository or folder a domain came from. |
 | `commit` | string | none | Written by `ask-kit add`: the commit installed. |
 | any other key | any | none | Read by the domain itself. A domain's `makeGlobals({ push, config })` receives the whole config. The [notes domain in the how-to](../guides/write-a-domain.md) reads `domains.notes.dir`. |

@@ -51,6 +51,15 @@ In this order, first match wins:
 | `model` | `router.backend` is set and its one-word answer names an enabled domain. |
 | `timeout` | The router model did not answer within `router.timeoutMs`: session history (`sessions`) answers. |
 | `rules` | The model call failed or said something else, or no router model is set. Keyword rules: past-work words first, then kit `keywords`, then code words, else the first enabled domain. |
+| `fallback` | The domain chosen answered with no data, and the next provider of its capability answered instead. |
+
+Then capabilities: when the domain chosen by `caller`, `pattern`, `model`, `timeout` or `rules`
+provides a capability (`[[provides]]`), the question goes to the best provider of it for the
+agent the question names ("a codex session" goes to a provider whose `covers` include `codex`),
+or to the highest priority when it names none. The routing record keeps the first choice in
+`resolvedFrom`. An `about` that corrects the router within two minutes is used as given. When the
+provider's answer ends with the line `[no data]`, the router asks the next provider once
+(`fallback`) and returns that answer.
 
 A kit's `route_hint` that names a domain not enabled here (`ops`, `mike`) is rewritten before the
 router model reads it: `mike` and `sessions` become the past-work domain, other names are dropped.

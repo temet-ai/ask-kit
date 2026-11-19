@@ -9,6 +9,9 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 export const domain = {
   name: "sessions",
   says: "past work in your coding-agent sessions: what was discussed, decided, tried, built or failed, why, when and in which session; what a session did, changed or used",
+  // Session history from the agents' own files on this machine. A source that holds more of one
+  // agent's history (mike, for Claude Code on every machine) declares it at a higher priority.
+  provides: [{ capability: "session-history", covers: ["claude-code", "codex", "copilot-cli", "opencode", "gemini-cli"], reach: "this-machine", priority: 10 }],
   scriptsDir: path.join(DIR, "scripts"),
   apiDoc: path.join(DIR, "api.d.ts"),
   instructions: path.join(DIR, "instructions.md"),

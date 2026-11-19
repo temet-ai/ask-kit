@@ -47,6 +47,7 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `answerChars` | number | Length of the answer text. The answer itself is not stored. |
 | `error` | string | On failure: the message, cut at 300 characters. |
 | `cancelled` | boolean | On failure: the calling client cancelled the ask. |
+| `noData` | boolean | The domain provides a capability and its answer ended with the line `[no data]`: it held nothing for the question. The line is cut from the answer, and the router asks the next provider. |
 
 The rest depend on the kind. A field that a kind does not produce is absent.
 
@@ -106,7 +107,9 @@ Written by the router before it forwards a call.
 | `at` | ISO time. |
 | `question` | The question, cut at 500 characters. |
 | `domain` | The domain chosen. |
-| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout` or `rules`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
+| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout`, `rules` or `fallback`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
+| `resolvedFrom` | When capabilities sent the question to a better provider: the domain chosen first. |
+| `from` | On a `fallback` record: the provider that had no data. |
 | `routeMs` | Time the choice took. |
 | `routeError` | When the router model failed and the fallback decided: why, cut at 160 characters. |
 
@@ -114,8 +117,9 @@ Written by the router before it forwards a call.
 
 A route the router decided itself (`how` is `pattern`, `model`, `timeout` or `rules`) is a
 misroute when the same calling session asks again within two minutes with an `about` naming
-another domain. The router writes this record to the caller's routing file, and a row to
-`router/bench.jsonl`.
+another domain. A route to a capability provider that answered with no data is one too, and the
+provider asked next is where it should have gone. The router writes this record to the caller's
+routing file, and a row to `router/bench.jsonl`.
 
 | Field | Meaning |
 |---|---|
@@ -124,9 +128,9 @@ another domain. The router writes this record to the caller's routing file, and 
 | `question` | The question that was misrouted, cut at 500 characters. |
 | `routed` | Where the router sent it. |
 | `how` | How the router chose it. |
-| `correct` | Where it should have gone: the domain the caller named. |
-| `why` | `re-asked`. |
-| `afterMs` | Time between the two asks. |
+| `correct` | Where it should have gone: the domain the caller named, or the next provider. |
+| `why` | `re-asked` or `no data`. |
+| `afterMs` | For `re-asked`: time between the two asks. |
 
 The report counts the routes the router decided and lists the misroutes.
 

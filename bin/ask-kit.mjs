@@ -329,6 +329,13 @@ async function doctor() {
     console.log(`  backend ${n}${n === c.backends.default ? " (default)" : ""}: ${b.kind} ${b.preset ?? ""} ${b.model ?? ""} → ${status}`);
   }
   console.log(`  domains: ${Object.keys(c.domains).join(", ")}; router: ${c.router?.backend ?? "keyword rules (no API backend)"}`);
+  // Capabilities: who answers what more than one domain holds, and ties the config must settle.
+  const { makeRouter } = await import("../src/router.mjs");
+  const r = await makeRouter(c);
+  for (const [cap, w] of Object.entries(r.caps)) console.log(`  capability ${cap}: ${w.top}${Object.entries(w.byCover).filter(([, d]) => d !== w.top).map(([x, d]) => `; ${x}: ${d}`).join("")}`);
+  for (const n of r.hidden) console.log(`  hidden ${n}: ${r.skipped[n]}`);
+  for (const t of r.ties) console.log(`  ✗ tie: ${t.message}`);
+  if (r.ties.length) process.exitCode = 1;
 }
 
 // ---- kits: ask-kit.toml folders (src/kits.mjs, docs/design/kits.md) ----

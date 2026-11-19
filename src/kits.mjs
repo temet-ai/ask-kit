@@ -14,6 +14,7 @@ import { parse as parseToml } from "smol-toml";
 import { CONFIG_DIR, ROOT, STATE_ROOT, expand, slug } from "./config.mjs";
 import { makeRepo } from "../domains/code/repo.mjs";
 import { which } from "./platform.mjs";
+import { checkProvides } from "./capabilities.mjs";
 
 export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
@@ -64,6 +65,7 @@ export function readManifest(dir) {
   if (m.uses != null && !(Array.isArray(m.uses) && m.uses.every((u) => NAME.test(u)))) problems.push("uses: a list of kit names, e.g. [\"github\"]");
   if (m.uses?.includes?.(m.name)) problems.push("uses: a kit cannot use itself");
   if (m.skills != null && typeof m.skills !== "string") problems.push("skills: the folder of playbooks in the kit (default skills/)");
+  problems.push(...checkProvides(m.provides));
   for (const [i, r] of (m.roles ?? []).entries()) {
     if (!NAME.test(r.name ?? "")) problems.push(`roles[${i}].name: lowercase letters, digits and dashes, starting with a letter`);
     if (!r.when) problems.push(`roles[${i}].when: plain words saying when to use the role`);
@@ -517,7 +519,7 @@ export async function kitDomain(dir, { config, stack = [] } = {}) {
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
   // A kit that cannot run here is described, not built: no MCP server is started, no folder read.
   const why = usedWhy ?? unavailable(m, settings);
-  if (why) return { name: m.name, kit: true, manifest: m, dir, says: m.says, unavailable: why, keywords: [], patterns: [] };
+  if (why) return { name: m.name, kit: true, manifest: m, dir, says: m.says, unavailable: why, keywords: [], patterns: [], provides: m.provides ?? [] };
   const mcp = {};
   for (const s of m.sources) if (s.kind === "mcp") mcp[s.name] = await mcpTools(s, settings, outDir, path.join(dir, MANIFEST));
   const makeOwn = await makeSources(m, dir, settings, mcp);
@@ -547,6 +549,7 @@ export async function kitDomain(dir, { config, stack = [] } = {}) {
     keywords: m.keywords ?? [],
     routeHint: m.route_hint ?? null,
     patterns: (m.patterns ?? []).map((p) => new RegExp(p, "i")),
+    provides: m.provides ?? [],
     acts: m.acts ?? [],
     bench: m.bench ? path.join(dir, m.bench) : fs.existsSync(path.join(dir, "bench", "questions.json")) ? path.join(dir, "bench", "questions.json") : null,
     stateKey: m.state_key ? fill(m.state_key, settings) : undefined,

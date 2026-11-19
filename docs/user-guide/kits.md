@@ -54,7 +54,8 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | Manifest field | Does |
 |---|---|
 | `says` | What the kit answers, in the words people use. The router and the calling agent read it. |
-| `keywords`, `route_hint`, `patterns` | Routing: fallback words, a line for the router model, and regexes that claim a question outright with no model call |
+| `keywords`, `route_hint`, `patterns` | Routing: fallback words, a line for the router model, and regexes that claim a question outright with no model call (a question with past-work words, such as "session" or "yesterday", is only hinted) |
+| `[[provides]]` `capability`, `covers`, `reach`, `priority` | What the kit answers that another kit or domain may answer too. `capability` names it (`session-history`), `covers` lists what of it the kit holds (agents: `claude-code`, `codex`, `copilot-cli`, `opencode`, `gemini-cli`; left out, all of it), `reach` says where from (`this-machine`, `all-machines`), and the highest `priority` wins. A question that names an agent goes to the best provider whose `covers` include it. A provider whose answer ends with the line `[no data]` hands the question to the next one, once. A kit that wins nothing is not offered. Two providers with overlapping `covers` at the same priority are an error in `doctor` and `kit install`; `domains.<kit>.priority` in the config settles it. The built-in `sessions` domain provides `session-history` for all five agents, `this-machine`, priority 10. |
 | `cite` | How answers cite evidence |
 | `requires`, `platforms` | Programs that must be on PATH, and the systems it runs on (`linux`, `macos`, `windows`). A kit whose programs, `required` settings or folders are missing is not offered on that machine; `kit list` says why. |
 | `acts` | What the kit can change; shown at install |

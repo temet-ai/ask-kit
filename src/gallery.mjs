@@ -9,6 +9,7 @@ import { CONFIG_DIR, STATE_ROOT, loadConfig, saveConfig } from "./config.mjs";
 import { which } from "./platform.mjs";
 import { writeAgentsMd } from "./agentsmd.mjs";
 import { MANIFEST, readManifest } from "./kits.mjs";
+import { providersOf, providesOfName, tiesOf } from "./capabilities.mjs";
 
 // Kits carry the topic `ask-kit`; `ask-kit-domain` (the older domain.mjs form) is still listed.
 export const TOPIC = "ask-kit";
@@ -79,7 +80,7 @@ function findKits(dir) {
 
 // The preview shows what a kit reaches, which of its calls change things, and what it runs at
 // install: it is code that runs as the user, with no sandbox.
-function addKits(r, dir, commit, kitDirsFound, { yes }) {
+async function addKits(r, dir, commit, kitDirsFound, { yes }) {
   const kits = kitDirsFound.map((d) => ({ dir: d, m: readManifest(d) }));
   const out = {
     source: r.url ?? dir,
@@ -97,11 +98,21 @@ function addKits(r, dir, commit, kitDirsFound, { yes }) {
     })),
     installed: [],
   };
+  // A kit that provides a capability an enabled domain provides, for the same covers at the same
+  // priority, ties with it: the router could not choose, so the install stops until a pin settles it.
+  const config = loadConfig({ required: !!yes }) ?? {};
+  const names = kits.map(({ m }) => m.name);
+  const installedNames = Object.entries(config.domains ?? {}).filter(([n, d]) => d.enabled !== false && !names.includes(n)).map(([n]) => n);
+  const provides = {};
+  for (const n of installedNames) provides[n] = await providesOfName(n).catch(() => []);
+  for (const { m } of kits) provides[m.name] = m.provides ?? [];
+  const ties = tiesOf(providersOf([...installedNames, ...names], (n) => provides[n], config)).filter((t) => t.domains.some((d) => names.includes(d)));
+  if (ties.length) out.ties = ties.map((t) => t.message);
   if (!yes) {
     out.next = "Tell the user what each kit reaches (sources), what it can change (acts), what it runs at install (build), and read its modules and scripts. On their yes, run the same command with --yes.";
     return out;
   }
-  const config = loadConfig();
+  if (ties.length) throw new Error(`not installed: ${ties.map((t) => t.message).join("; ")}`);
   for (const { dir: d, m } of kits) {
     const dest = path.join(CONFIG_DIR, "kits", m.name);
     fs.rmSync(dest, { recursive: true, force: true });
