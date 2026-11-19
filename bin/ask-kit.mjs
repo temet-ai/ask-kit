@@ -16,6 +16,7 @@
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
 //   ask-kit serve [--domain d]   the MCP server agents start (all domains behind one router)
+//   ask-kit plugin build|start   write the Claude Code plugin's skill copies; its SessionStart hook
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,6 +71,8 @@ async function main() {
       return wizard();
     case "init":
       return init();
+    case "plugin":
+      return plugin(positional[0]);
     case "doctor":
       return doctor();
     case "ask":
@@ -213,6 +216,10 @@ async function init() {
   for (const r of rows) (by[r.agent] ??= []).push(r);
   for (const [agent, list] of Object.entries(by)) {
     if (list[0].action === "skip-no-agent") continue;
+    if (list[0].action === "skip-plugin") {
+      console.log(`· ${TARGETS[agent].label}: the ask-kit plugin is installed and brings the skills, agent and rule`);
+      continue;
+    }
     const kept = list.filter((r) => r.action.startsWith("skip-"));
     console.log(`✓ ${TARGETS[agent].label}${TARGETS[agent].verified === false ? " (format from its docs, not yet checked on a real install)" : ""}: ${list.length - kept.length} file(s)`);
     for (const k of kept) console.log(`    left alone (${k.action === "skip-edited" ? "you edited it" : "not ask-kit's"}): ${k.path}  — --force replaces it`);
@@ -223,6 +230,32 @@ async function init() {
   if (!d.tools.ripgrep) console.log("! ripgrep not found and the bundled copy is missing: run npm install in ask-kit, or install rg. The code domain needs it.");
   if (!d.tools.git) console.log("· git not found: the code domain answers without history, and `ask-kit add` cannot fetch shared domains.");
   console.log(`\nGuide for agents: ${guide}\n\nNext, paste this into any of your agents:\n\n  Read ${guide}, then set up ask-kit for me.\n\nor run: ask-kit setup`);
+}
+
+// ---- plugin: the Claude Code plugin (.claude-plugin/ at the repository root) ----
+
+async function plugin(sub) {
+  const { pluginFiles, render, TARGETS } = await import("../src/setup/bundle.mjs");
+  if (sub === "build") {
+    // The plugin's copies of the bundle, written into plugin/; test/plugin.mjs fails when they are stale.
+    for (const f of pluginFiles()) {
+      fs.mkdirSync(path.join(ROOT, path.dirname(f.path)), { recursive: true });
+      fs.writeFileSync(path.join(ROOT, f.path), f.content);
+      console.log(`wrote ${f.path}`);
+    }
+    return;
+  }
+  if (sub === "start") {
+    // The plugin's SessionStart hook: what it prints becomes context for the session.
+    const { writeAgentsMd } = await import("../src/agentsmd.mjs");
+    const { loadConfig } = await import("../src/config.mjs");
+    writeAgentsMd();
+    // `ask-kit init` from before the plugin already put the rule in ~/.claude/rules.
+    if (!fs.existsSync(path.join(TARGETS["claude-code"].base(), "rules", "ask-kit.md"))) console.log(render(fs.readFileSync(path.join(ROOT, "bundle", "rules", "ask.md"), "utf8")).trim());
+    if (!loadConfig({ required: false })) console.log("\nask-kit is installed as a Claude Code plugin but not set up yet, so `ask` will say so. When the user wants to use it, follow the ask-kit-setup skill.");
+    return;
+  }
+  throw new Error("plugin needs build or start");
 }
 
 async function uninstall() {

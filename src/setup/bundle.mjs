@@ -73,10 +73,40 @@ const readManifest = () => {
 };
 const MARK = ["<!-- >>> ask-kit: written by `ask-kit init`; edits inside are replaced -->", "<!-- <<< ask-kit -->"];
 
-/** {{ASK_KIT}} and {{AGENTS_MD}} filled in for this install. */
-export function render(text) {
-  const cmd = `${JSON.stringify(process.execPath).slice(1, -1)} ${path.join(ROOT, "bin", "ask-kit.mjs")}`;
-  return text.replaceAll("{{ASK_KIT}}", cmd).replaceAll("{{AGENTS_MD}}", AGENTS_MD);
+/**
+ * {{ASK_KIT}} and {{AGENTS_MD}} filled in for this install. With `plugin`, for the Claude Code
+ * plugin's copies: the command goes through ${CLAUDE_PLUGIN_ROOT}, which Claude Code fills in when
+ * it loads a skill or agent, and the guide is named by its usual place.
+ */
+export function render(text, { plugin = false } = {}) {
+  const cmd = plugin ? 'node "${CLAUDE_PLUGIN_ROOT}/bin/ask-kit.mjs"' : `${JSON.stringify(process.execPath).slice(1, -1)} ${path.join(ROOT, "bin", "ask-kit.mjs")}`;
+  const guide = plugin ? "~/.config/ask-kit/AGENTS.md (Windows: %APPDATA%\\ask-kit\\AGENTS.md; `ask-kit doctor` prints where)" : AGENTS_MD;
+  return text.replaceAll("{{ASK_KIT}}", cmd).replaceAll("{{AGENTS_MD}}", guide);
+}
+
+/** The id ("ask-kit@<marketplace>") of the ask-kit Claude Code plugin when it is installed, else null. */
+export function claudePlugin() {
+  try {
+    const f = path.join(TARGETS["claude-code"].base(), "plugins", "installed_plugins.json");
+    const j = JSON.parse(fs.readFileSync(f, "utf8"));
+    return Object.keys(j.plugins ?? j).find((k) => k.startsWith("ask-kit@")) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The Claude Code plugin's skill and agent files, relative to the repository root. */
+export function pluginFiles() {
+  const out = [];
+  const skillsDir = path.join(BUNDLE, "skills");
+  for (const name of fs.readdirSync(skillsDir).sort()) {
+    const src = path.join(skillsDir, name, "SKILL.md");
+    if (fs.existsSync(src)) out.push({ path: path.join("plugin", "skills", name, "SKILL.md"), content: render(fs.readFileSync(src, "utf8"), { plugin: true }) });
+  }
+  for (const f of fs.readdirSync(path.join(BUNDLE, "agents")).filter((x) => x.endsWith(".md")).sort()) {
+    out.push({ path: path.join("plugin", "agents", f), content: agentFile(render(fs.readFileSync(path.join(BUNDLE, "agents", f), "utf8"), { plugin: true }), "claude") });
+  }
+  return out;
 }
 
 function frontmatter(text) {
@@ -134,6 +164,11 @@ export function installBundle(agents, { dry = false, force = false } = {}) {
     // Only for agents that are set up here: their folder exists.
     if (!fs.existsSync(base)) {
       rows.push({ agent, path: base, action: "skip-no-agent" });
+      continue;
+    }
+    // The Claude Code plugin brings the same skills, agent and rule; a second copy would list each twice.
+    if (agent === "claude-code" && claudePlugin()) {
+      rows.push({ agent, path: base, action: "skip-plugin" });
       continue;
     }
     for (const f of files) {
