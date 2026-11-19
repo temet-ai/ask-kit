@@ -12,6 +12,7 @@
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
+//   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
 //   ask-kit kit new|link|list|test|profile|actions|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
@@ -122,6 +123,41 @@ async function main() {
       console.log(formatMine(r));
       console.log(`\nDrafts: ${file}\nCheck each answer in the source as it is now, fill expect, then copy the row into the kit's bench/questions.json.`);
       return;
+    }
+    case "smith": {
+      const smith = await import("../src/smith.mjs");
+      const [sub, ...rest] = positional;
+      const arg = rest.join(" ");
+      if (sub === "scaffold") {
+        if (!arg) throw new Error("smith scaffold needs a source, as `ask-kit gaps` lists it under No kit (e.g. \"mcp: flux\", gitlab)");
+        const r = await smith.scaffold(arg, { name: typeof flag("name") === "string" ? flag("name") : undefined, since: typeof flag("since") === "string" ? flag("since") : "30d" });
+        if (flag("json")) return print(r);
+        console.log(`Drafted ${r.name} (${r.kind}) in ${r.dir}: ${r.questions} mined questions${r.allow.length ? `, ${r.allow.length} tools that read` : ""}${r.leftOut.length ? `; left out because they change something: ${r.leftOut.join(", ")}` : ""}${r.settings.length ? `; settings read from the agent's config: ${r.settings.join(", ")}` : ""}.\nNext: ask-kit smith prove ${r.name}`);
+        return;
+      }
+      if (sub === "prove") {
+        if (!arg) throw new Error("smith prove needs a draft's name");
+        const r = await smith.prove(arg, { backends: typeof flag("backends") === "string" ? flag("backends").split(",") : undefined, log: (l) => console.error(l) });
+        if (flag("json")) return print(r);
+        console.log(`${r.name}: ${r.passed}/${r.of}.${r.changed.length ? ` Reference out of date (the source changed since it was asked; check and fix the row): ${r.changed.join(", ")}.` : ""}${r.failed.length ? ` Wrong: ${r.failed.join(", ")}; the instructions were rewritten from them (${r.tuned}), see ${r.dir}/instructions.md.` : ""}\nNext: ask-kit smith install ${r.name}; its real use is the next measure (ask-kit report).`);
+        return;
+      }
+      if (sub === "install") {
+        if (!arg) throw new Error("smith install needs a draft's name");
+        const r = smith.install(arg);
+        (await import("../src/agentsmd.mjs")).writeAgentsMd();
+        return print(r);
+      }
+      if (sub === "promote") {
+        if (!arg) throw new Error("smith promote needs a kit's name");
+        const r = await smith.promote(arg, { since: typeof flag("since") === "string" ? flag("since") : "30d" });
+        if (flag("json")) return print(r);
+        for (const s of r.skipped) console.error(`skipped ${s.script} ("${s.template}"): ${s.why}`);
+        if (!r.entries.length) return console.log(`${arg}: nothing to promote yet (ask-kit report lists what is worth an action).`);
+        console.log(`${r.toml}\n\n# ${r.entries.length} action${r.entries.length === 1 ? "" : "s"} for ${r.dir}/ask-kit.toml. Add them there, then: ask-kit kit actions ${arg}`);
+        return;
+      }
+      throw new Error("smith: scaffold <source> [--name n] [--since 30d] · prove <name> [--backends a,b] · install <name> · promote <kit> [--since 30d]");
     }
     case "gallery": {
       const { listGallery } = await import("../src/gallery.mjs");
