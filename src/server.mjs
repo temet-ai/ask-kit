@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import { rewriteCell } from "./core/rewrite.mjs";
 import { toolkit } from "./core/toolkit.mjs";
 import { loadDomain } from "./domains.mjs";
+import { makeAskKit } from "./kitcall.mjs";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, slug } from "./config.mjs";
 
 const CONFIG = loadConfig();
@@ -43,6 +44,10 @@ const snapshotPath = (id) => path.join(STATE_DIR, `${slug(id)}.snapshot`);
 let cellCalls = [];
 let cellScripts = [];
 const GLOBALS = DOMAIN.makeGlobals({ push: (c) => cellCalls.push(c), config: CONFIG });
+
+// ask.kit(name, question, { continue }): another kit's investigator answers; depth 1, journaled as a call.
+const askKit = makeAskKit({ config: CONFIG, from: DOMAIN_NAME, session: CALLER ?? SESSION, push: (c) => cellCalls.push(c) });
+for (const sig of ["exit"]) process.on(sig, () => void askKit.close());
 
 // ---- script library ----
 
@@ -126,6 +131,7 @@ function newContext() {
   context = vm.createContext({
     ...GLOBALS,
     scripts,
+    ask: { kit: askKit },
     tk: toolkit,
     ...toolkit,
     console: { log: sink("log"), info: sink("info"), warn: sink("warn"), error: sink("error") },
@@ -366,6 +372,9 @@ function helpText() {
     library: [
       "Scripts (scripts.run(name, params); scripts.show(name) for the source; scripts.draft(name, source) saves a variant for this session):",
       list,
+      "",
+      "Other kits: `await ask.kit(name, question, { continue })` asks another enabled kit's investigator and returns its answer text (with its footer). " +
+        "One level only: a kit started this way cannot call ask.kit. An unknown or unavailable name lists the kits that can run. Each call is journaled with the target kit.",
       "",
       "Typed API:",
       fs.readFileSync(DOMAIN.apiDoc, "utf8"),
