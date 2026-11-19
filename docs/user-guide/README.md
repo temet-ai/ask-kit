@@ -80,6 +80,8 @@ Use cases:
 - [Write code with it](use-coding.md)
 - [Search code and past work](use-searching.md)
 - [Pick up where you left off](use-resuming.md)
+- [Search your past sessions](search-past-sessions.md): where each agent stores them, and how `ask` finds a decision or a change in them.
+- [Keep your agent's context from filling up with searching](keep-agent-context-small.md): what fills an agent's context, the usual remedies, and what `ask` leaves out of it.
 - [Make it better](tuning.md): fix the questions it answers badly.
 
 More:
