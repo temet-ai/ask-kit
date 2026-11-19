@@ -27,7 +27,8 @@ import { parseDo, runShot, shotFooter } from "./shots.mjs";
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
 const CELL_MAX_S = 60;
-const MAX_STEPS = 20;
+// No step limit: time is the budget. With this much left the investigator is told to answer.
+const WRAP_MS = 30_000;
 const SERVER = path.join(ROOT, "src", "server.mjs");
 // Claude Code's own tools, left out so the investigator works through the REPL, where every call is journaled.
 const CLAUDE_DENY = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "Task", "Skill", "TodoWrite"];
@@ -363,11 +364,11 @@ export function registerAsk(server, ctx) {
       const how = native
         ? "\n\nYou work by calling the `repl` tool with JavaScript; it runs in a persistent REPL (top-level await, " +
           "variables persist between calls) and the tool result is what it returned. Only a tool result is real: never write " +
-          "a result yourself. You have a limited number of calls; each result says how many are left. " +
+          "a result yourself. You have a limited time; each result says how much is left. " +
           "When you have the answer, reply with the answer only and no tool call.\n\n"
         : "\n\nYou work by writing JavaScript cells. Put one cell in one ```js fenced block and stop: it runs in a persistent " +
           "REPL (top-level await, variables persist between cells) and the result comes back in the next message. Only that " +
-          "message is real: never write a result yourself. You have a limited number of steps; each result says how many are left. " +
+          "message is real: never write a result yourself. You have a limited time; each result says how much is left. " +
           "When you have the answer, reply with the answer only and no code block.\n\n";
       const early = !onEarly
         ? ""
@@ -413,8 +414,10 @@ export function registerAsk(server, ctx) {
       if (body.provider) totals.providers.add(body.provider);
       if (body.choices?.[0]?.finish_reason === "length") cutAtLength = true;
     };
+    // Lowered by the repeat guard below; otherwise only time ends the loop.
+    let stopAt = Infinity;
     try {
-      for (let step = 0; step < MAX_STEPS; step++) {
+      for (let step = 0; step < stopAt; step++) {
         if (signal?.aborted) throw new Error("the calling client cancelled the ask");
         if (leftMs() < 3000) {
           outOfTime = true;
@@ -448,15 +451,28 @@ export function registerAsk(server, ctx) {
         account(body);
         const msg = body.choices?.[0]?.message ?? {};
         const content = msg.content ?? "";
-        const left = MAX_STEPS - step - 1;
-        const nudge = left <= 2 ? `\n\n${left} call(s) left. Answer now with what you have, saying what you could not confirm.` : `\n\n${left} calls left.`;
+        const low = leftMs() < WRAP_MS || stopAt - step <= 2;
+        // Read after the cell has run, so the time it took is counted.
+        const nudge = () => {
+          const secs = Math.max(0, Math.round(leftMs() / 1000));
+          return leftMs() < WRAP_MS || stopAt - step <= 2
+            ? `\n\nAbout ${secs}s left. Answer now with what you have, saying what you could not confirm.`
+            : `\n\nAbout ${secs}s left.`;
+        };
         const runCode = async (code) => {
           cells++;
           onStep?.(cells, code);
           const timeoutSeconds = Math.max(1, Math.min(CELL_MAX_S, Math.floor((leftMs() - 2000) / 1000)));
           try {
             const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
-            return out.content.map((c) => c.text).join("\n");
+            const text = out.content.map((c) => c.text).join("\n");
+            // The REPL says when a cell repeats an earlier one with the same result; on the third, stop searching.
+            if (Number(/one you already ran \((\d+) times now/.exec(text)?.[1] ?? 0) >= 3) {
+              totals.stuck = (totals.stuck ?? 0) + 1;
+              stopAt = Math.min(stopAt, step + 2);
+              return text + "\n\n[Stop searching: this is the same result again. Answer now with what you found, and say what is still missing.]";
+            }
+            return text;
           } catch (e) {
             if (signal?.aborted) throw e;
             return `Error: the cell did not finish in ${timeoutSeconds}s (${e.message}). Narrow it: a shorter window, a sample, or a script.`;
@@ -485,7 +501,7 @@ export function registerAsk(server, ctx) {
             }
             messages.push({ role: "assistant", content });
             answer = content.trim();
-            atLimit = left <= 2;
+            atLimit = low;
             break;
           }
           messages.push({ role: "assistant", content: content || null, tool_calls: calls });
@@ -502,7 +518,7 @@ export function registerAsk(server, ctx) {
               : typeof code === "string"
                 ? await runCode(code)
                 : "Error: the call's arguments were not JSON with a `code` string.";
-            messages.push({ role: "tool", tool_call_id: c.id, content: text + (k === calls.length - 1 ? nudge : "") });
+            messages.push({ role: "tool", tool_call_id: c.id, content: text + (k === calls.length - 1 ? nudge() : "") });
           }
           continue;
         }
@@ -514,7 +530,7 @@ export function registerAsk(server, ctx) {
           if (!CELL.test(content.replace(EARLY_BLOCK, ""))) {
             CELL.lastIndex = 0;
             messages.push({ role: "assistant", content });
-            messages.push({ role: "user", content: `${note}${nudge}` });
+            messages.push({ role: "user", content: `${note}${nudge()}` });
             continue;
           }
           CELL.lastIndex = 0;
@@ -525,11 +541,11 @@ export function registerAsk(server, ctx) {
         if (!first) {
           messages.push({ role: "assistant", content });
           answer = content.trim();
-          atLimit = left <= 2;
+          atLimit = low;
           break;
         }
         messages.push({ role: "assistant", content: cellText.slice(0, first.index + first[0].length) });
-        messages.push({ role: "user", content: `Cell result:\n\`\`\`\n${await runCode(first[1])}\n\`\`\`${nudge}` });
+        messages.push({ role: "user", content: `Cell result:\n\`\`\`\n${await runCode(first[1])}\n\`\`\`${nudge()}` });
       }
     } finally {
       await repl.close().catch(() => {});
@@ -538,7 +554,7 @@ export function registerAsk(server, ctx) {
     let partial = false;
     if (answer == null) {
       partial = true;
-      const limit = outOfTime ? `the ${Math.round(timeoutMs / 1000)}s time limit` : `the ${MAX_STEPS}-step limit`;
+      const limit = outOfTime ? `the ${Math.round(timeoutMs / 1000)}s time limit` : "a search that kept repeating";
       messages.push({
         role: "user",
         content: `You are out of ${outOfTime ? "time" : "steps"}. Reply now in plain text, with no tool call: what you found (with its evidence), what you tried, and what is still missing.`,
@@ -558,7 +574,7 @@ export function registerAsk(server, ctx) {
     }
     if (cutAtLength) partial = true;
     if (partial) answer += (cutAtLength ? "\n\n[the reply hit the length limit and may be cut off]" : "") + "\n\n[not finished: ask again with continue: true to carry on from here]";
-    else if (atLimit) answer += "\n\n[answered at the step limit: if something is missing, ask again with continue: true]";
+    else if (atLimit) answer += "\n\n[answered near the time limit: if something is missing, ask again with continue: true]";
     writeLast(b, { askId, messages });
     return {
       answer,

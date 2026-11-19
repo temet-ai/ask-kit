@@ -130,10 +130,10 @@
       "id": "k01-loop-limits",
       "domain": "code",
       "repo": "ask-kit",
-      "question": "In the API investigator loop, what are the step limit, the per-cell time limit and the reserved closing time, and what happens when the investigator runs out of steps?",
-      "expected": "MAX_STEPS = 20, CELL_MAX_S = 60, RESERVE_MS = 15_000 (src/ask.mjs:26-28). Out of steps or time, one more call without tools asks for what it found; the answer is marked partial with '[not finished: ask again with continue: true ...]' (src/ask.mjs:480, 496).",
-      "facts": ["20 steps", "60 s per cell", "15 s reserve", "final no-tool call, answer marked not finished / partial"],
-      "source": "ask-kit src/ask.mjs:26-28, 480, 496"
+      "question": "In the API investigator loop, what bounds a run (is there a step limit?), what are the per-cell time limit, the reserved closing time and the wrap-up point, and what happens when the investigator runs out of time?",
+      "expected": "No step limit: time is the only budget, with the repeat guard ending a run that keeps getting the same result. CELL_MAX_S = 60, RESERVE_MS = 15_000, WRAP_MS = 30_000 (src/ask.mjs:28-31): with 30 s left each result tells it to answer now. Out of time, one more call without tools asks for what it found; the answer is marked partial with '[not finished: ask again with continue: true ...]' (src/ask.mjs:560, 576).",
+      "facts": ["no step limit, time only", "60 s per cell", "15 s reserve", "30 s wrap-up", "final no-tool call, answer marked not finished / partial"],
+      "source": "ask-kit src/ask.mjs:28-31, 560, 576"
     },
     {
       "id": "k02-claude-fork",

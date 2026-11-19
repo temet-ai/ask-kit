@@ -74,7 +74,7 @@ export function report({ since = "7d" } = {}) {
     const signals = [];
     if (!a.ok) signals.push(a.cancelled ? "cancelled" : `failed: ${a.error}`);
     if (a.partial) signals.push(a.cutAtLength ? "cut off" : "out of steps or time");
-    if (a.atLimit) signals.push("answered at the step limit");
+    if (a.atLimit) signals.push("answered near the time limit");
     if (a.ms > 90_000) signals.push(`slow (${Math.round(a.ms / 1000)}s)`);
     if (a.costUsd > 0.02) signals.push(`costly ($${a.costUsd.toFixed(3)})`);
     if (a.missteps > 2) signals.push(`${a.missteps} missteps`);
