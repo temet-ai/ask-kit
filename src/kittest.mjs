@@ -51,7 +51,10 @@ function runOnce(kit, script, params, session, timeoutMs) {
 function journalOf(kit, session) {
   let rows = [];
   try {
-    rows = fs.readFileSync(path.join(STATE_ROOT, kit, `${session}.jsonl`), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.type === "ask");
+    // A kit that keeps its state per project writes it one folder down (<kit>/<project>/).
+    const dir = path.join(STATE_ROOT, kit);
+    const file = [dir, ...fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name))].map((d) => path.join(d, `${session}.jsonl`)).find((f) => fs.existsSync(f));
+    rows = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.type === "ask");
   } catch {}
   return { cells: rows.length ? rows.reduce((s, r) => s + (r.cells ?? 0), 0) : null, shot: rows.length > 0 && rows.every((r) => r.shot) };
 }
