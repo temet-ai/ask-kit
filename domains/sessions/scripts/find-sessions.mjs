@@ -21,13 +21,18 @@ export default async function ({ history }, { topic, hours = 24 * 30, project, s
   const roles = tools ? ["user", "assistant", "tool_call", "tool_result"] : ["user", "assistant"];
   const opts = { since: hours, project, source, roles, max: 400 };
   let query = words.join(" ");
-  let hits = any ? [] : await history.grep(query, opts);
+  let hits = [];
+  if (any) {
+    // Any one word: search each word alone (grep wants every word in one event), then merge.
+    for (const w of words) hits.push(...(await history.grep(w, { ...opts, max: 150 })));
+    query = words.join(" | ");
+  } else hits = await history.grep(query, opts);
   // Nothing with every word in one event: drop to the two longest words, then to each word alone.
-  if (!hits.length && words.length > 2) {
+  if (!any && !hits.length && words.length > 2) {
     query = [...words].sort((a, b) => b.length - a.length).slice(0, 2).join(" ");
     hits = await history.grep(query, opts);
   }
-  if (!hits.length && words.length > 1) {
+  if (!any && !hits.length && words.length > 1) {
     const all = [];
     for (const w of words) all.push(...(await history.grep(w, { ...opts, max: 150 })));
     hits = all;

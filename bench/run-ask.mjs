@@ -1,4 +1,4 @@
-// Runs the question set (bench/private/questions.json, else bench/questions.example.json) through ask-kit's `ask` tool, one MCP server per domain (and per repo
+// Runs the question set (bench/questions.json, plus bench/private/questions.json when it exists; BENCH_QUESTIONS names another file, see bench/paths.mjs) through ask-kit's `ask` tool, one MCP server per domain (and per repo
 // for code), and writes one JSONL row per question with the answer and the journal's numbers.
 //
 //   ASK_KIT_CONFIG=<scratch> ASK_KIT_STATE=<scratch> \

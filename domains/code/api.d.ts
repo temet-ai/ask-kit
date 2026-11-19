@@ -40,3 +40,11 @@ declare function top<T>(rows: T[], key: string | ((r: T) => number), n?: number)
 declare function groupBy<T>(rows: T[], key: string | ((r: T) => string)): Record<string, T[]>;
 declare function countBy<T>(rows: T[], key: string | ((r: T) => string)): Record<string, number>;
 declare function clip(s: string | null, max?: number): string | null;
+declare function sumBy<T>(rows: T[], key: string | ((r: T) => number)): number;
+declare function since(hours: number): string; // ISO time `hours` ago
+declare function omit<T>(rows: T | T[], ...keys: string[]): any;
+declare function minutes(ms: number): number; // ms to minutes, one decimal
+declare const tk: { clip: typeof clip; shape: typeof shape; pick: typeof pick; omit: typeof omit; table: typeof table; top: typeof top; groupBy: typeof groupBy; countBy: typeof countBy; sumBy: typeof sumBy; since: typeof since; minutes: typeof minutes };
+
+// Ask another enabled kit a question (not this kit); `continue: true` follows up with the one asked before. Resolves to its answer text.
+declare const ask: { kit(name: string, question: string, o?: { continue?: boolean }): Promise<string> };
