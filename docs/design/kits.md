@@ -201,7 +201,7 @@ and `--ref` pins a version. The manifest also names every call that changes some
 | `http` source, `kit new --from mcp\|openapi`, `kit update`, `log`, `config-dir`, `id`, `min_ask_kit` | Not built |
 | `code` and `sessions` as kits | Not built: both still load as `domain.mjs` domains |
 | Fleet kit | Built, in the private repository `temet-ai/ask-kit-fleet`, on mike's MCP tools directly (no mike pack under it) |
-| mike pack | Not built. mike-ask is still its own host and runs installed kits from `src/route.mjs` |
+| mike kit | Built (2026-11-19): `temet-ai/ask-kit-mike` (private). mike-ask is now a launcher that runs ask-kit's router with the mike kit, `ops` as a kit, `claude-code-docs` and the built-in `code` and `sessions` |
 | Marketplace page | Built (2026-11-19): https://temet-ai.github.io/ask-kit/, from `site/` and the `kits-site` workflow, rebuilt every six hours from the topic |
 | `[[settings]]` `about` | Built (2026-11-19): shown by `kit list` for a missing required setting, in the install preview and on the kits page |
 | Claude Code plugin | Built (2026-11-19): `.claude-plugin/` makes the repository its own marketplace (`ask-kit@temet-ai`); `init` and `setup` skip Claude Code while it is installed |

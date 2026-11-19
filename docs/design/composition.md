@@ -217,17 +217,17 @@ mail or a fleet brief.
 
 ## Order of work
 
-| Step | Section | Measure |
-|---|---|---|
-| 1. Misroute journal and router fixes | 3 | Misroutes on real use, from 9%, and the router bench built from them |
-| 2. `provides`, fallback and pins, with `sessions` declared | 1 | In the router bench, Claude Code session questions go to mike and Codex ones to `sessions` |
-| 3. `ask-kit-mike`, and mike-ask on ask-kit's engine | 4 | mike-ask's bench scores the same; the duplicated engine lines are gone |
-| 4. Backends per domain and one-cell scripts | 5 | Share of asks that hit the limit, from 40%, and the median time |
-| 5. Lazy index, one kit list, cacheable prompt, `kit profile` | 2 | Tokens and milliseconds added per kit |
-| 6. `ask-kit gaps` | 7 | Coverage: the share of digging, weighted by tokens, that went to `ask` |
-| 7. The `rg` prefilter in `history.grep` (small, can go first) | 6 | Seconds per call |
-| 8. Promotion to actions, once real use shows repeating questions | 6 | Share of asks answered with no model, on real use only |
-| 9. A faster program for a script to call, when a hot path passes the cost-times-frequency line and an existing one fits | 6 | Time per run, before and after |
+| Step | Section | Measure | State (2026-11-19) |
+|---|---|---|---|
+| 1. Misroute journal and router fixes | 3 | Misroutes on real use, from 9%, and the router bench built from them | Built. mike-ask's 59 earlier routing questions are in its router bench |
+| 2. `provides`, fallback and pins, with `sessions` declared | 1 | In the router bench, Claude Code session questions go to mike and Codex ones to `sessions` | Built |
+| 3. `ask-kit-mike`, and mike-ask on ask-kit's engine | 4 | The duplicated engine lines are gone; real use through `report` | Built: `temet-ai/ask-kit-mike` (private); mike-ask is a launcher for ask-kit's router, deployed on omit, the Mac, infra and deus |
+| 4. Backends per domain and one-cell scripts | 5 | Share of asks that hit the limit, from 40%, and the median time | Backends done from the journal (mike on glm); one-cell scripts come from real use |
+| 5. Lazy index, one kit list, cacheable prompt, `kit profile` | 2 | Tokens and milliseconds added per kit | Built |
+| 6. `ask-kit gaps` | 7 | Coverage: the share of digging, weighted by tokens, that went to `ask` | Built, with smith's `mine` on it |
+| 7. The `rg` prefilter in `history.grep` (small, can go first) | 6 | Seconds per call | Built |
+| 8. Promotion to actions, once real use shows repeating questions | 6 | Share of asks answered with no model, on real use only | `[[actions]]` built; none yet, as no real question recurs |
+| 9. A faster program for a script to call, when a hot path passes the cost-times-frequency line and an existing one fits | 6 | Time per run, before and after | `rg` for transcript search; no other hot path |
 
 ## Sources
 
