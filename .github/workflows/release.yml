@@ -41,7 +41,11 @@ jobs:
             if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
           '
 
-      - run: npm publish --access public --provenance
+      # A version published by hand (the first one was) is left as it is.
+      - name: Publish to npm
+        run: |
+          v=$(node -p 'require("./package.json").version')
+          if npm view "@temet-ai/ask-kit@$v" version >/dev/null 2>&1; then echo "::notice::npm has $v already"; else npm publish --access public --provenance; fi
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Download and verify mcp-publisher
@@ -59,7 +63,10 @@ jobs:
           tar xzf "$archive" mcp-publisher
           rm -f "$archive" "$archive.sigstore.json"
       - run: ./mcp-publisher login github-oidc
-      - run: ./mcp-publisher publish
+      - name: Publish to the MCP Registry
+        run: |
+          v=$(node -p 'require("./server.json").version')
+          if curl -fs "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.temet-ai/ask-kit&version=$v" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.exit((JSON.parse(d).servers||[]).some(s=>(s.server||s).version===process.argv[1])?0:1))' "$v"; then echo "::notice::the MCP Registry has $v already"; else ./mcp-publisher publish; fi
 
       - run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
         env:
