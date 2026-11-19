@@ -92,28 +92,31 @@ assert.ok(bench.every((q) => q.reference && q.askedAt && !q.expect), "judged row
 assert.equal(findKit("owl"), null, "a draft is not a kit anyone routes to");
 await assert.rejects(smith.scaffold("mcp: owl", { since: "7d", chat }), /already has a draft/);
 
-// prove: the first round gets one question wrong, the second gets it right.
-const calls = [];
+// prove: one run; the question it got wrong rewrites the instructions once, and nothing is re-run.
+let runs = 0;
 const test = async (name, o) => {
-  calls.push(o.only ?? null);
+  runs++;
   assert.ok(findKit(name), "prove sees the draft");
-  const first = calls.length === 1;
-  const results = bench.filter((q) => !o.only || o.only.includes(q.id)).map((q, i) => ({ backend: "x", id: q.id, pass: !(first && i === 0), verdict: first && i === 0 ? "wrong" : "correct", reason: "named the wrong letter", answer: "L-3" }));
-  return { summary: [{ backend: "x", passed: results.filter((x) => x.pass).length, of: results.length }], results };
+  assert.equal(o.only, undefined);
+  const results = bench.map((q, i) => ({ backend: "x", id: q.id, pass: i !== 0, verdict: i === 0 ? "wrong" : "correct", reason: "named the wrong letter", answer: "L-3" }));
+  return { summary: [{ backend: "x", passed: 1, of: 2 }], results };
 };
+const tunes = asked.length;
 const p = await smith.prove("owl", { test, chat });
-assert.equal(p.rounds, 2);
-assert.deepEqual(calls, [null, [bench[0].id]], "the second round asks only what failed");
-assert.equal(p.passed, 2);
-assert.deepEqual(p.failed, []);
+assert.equal(runs, 1, "one measurement");
+assert.equal(asked.length, tunes + 1, "one rewrite");
+assert.equal(p.passed, 1);
+assert.deepEqual(p.failed, [bench[0].id]);
+assert.equal(p.tuned, "get_post first");
 assert.match(fs.readFileSync(path.join(r.dir, "instructions.md"), "utf8"), /get_post with the letter id first/);
-assert.equal(JSON.parse(fs.readFileSync(path.join(r.dir, "smith.json"), "utf8")).rounds[0].changed, "get_post first");
+assert.equal(JSON.parse(fs.readFileSync(path.join(r.dir, "smith.json"), "utf8")).proved.changed, "get_post first");
 
 // A question judged "changed" is reported, not tuned for.
 const stale = await smith.prove("owl", { test: async () => ({ summary: [], results: [{ backend: "x", id: bench[1].id, pass: false, verdict: "changed", answer: "" }] }), chat });
 assert.deepEqual(stale.changed, [bench[1].id]);
 assert.deepEqual(stale.failed, []);
-assert.equal(stale.rounds, 1);
+assert.equal(stale.tuned, null);
+assert.equal(asked.length, tunes + 1, "no rewrite when nothing failed");
 
 delete process.env.ASK_KIT_DRAFTS;
 const ins = smith.install("owl");

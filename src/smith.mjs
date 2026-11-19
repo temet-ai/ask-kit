@@ -4,9 +4,9 @@
 //   scaffold <source>  find the source on this machine (an MCP server in an agent's config, a program
 //                      on PATH, a folder), draft a kit for it from the questions agents asked, and
 //                      write it to STATE_ROOT/drafts/kits/<name>, where nothing routes to it
-//   prove <name>       kit test on the draft, the mined questions judged against what the agents
-//                      found by hand; failures go to a model that rewrites the instructions, up to
-//                      three rounds
+//   prove <name>       one kit test run on the draft, the mined questions judged against what the
+//                      agents found by hand; failures go once to a model that rewrites the
+//                      instructions. Nothing is re-run: real use is the next measure
 //   install <name>     move a proven draft into the kits folder and enable it
 //   promote <kit>      the questions `ask-kit report` finds keep running one script, as [[actions]]
 //                      entries (printed for the kit's author to add; smith never edits a kit)
@@ -229,7 +229,7 @@ export async function scaffold(source, o = {}) {
   );
   fs.writeFileSync(path.join(dir, "instructions.md"), `${String(draft.instructions ?? "").trim()}\n`);
   fs.writeFileSync(path.join(dir, "bench", "questions.json"), JSON.stringify({ about: `Mined by ask-kit smith: questions agents dug for by hand on ${source}. Each is judged against reference, what the agent found then.`, questions }, null, 2) + "\n");
-  fs.writeFileSync(path.join(dir, "smith.json"), JSON.stringify({ source, discovered: { ...d, env: Object.keys(d.env ?? {}) }, chains: chains.length, since: sc.since, allow, leftOut, offer, rounds: [] }, null, 2) + "\n");
+  fs.writeFileSync(path.join(dir, "smith.json"), JSON.stringify({ source, discovered: { ...d, env: Object.keys(d.env ?? {}) }, chains: chains.length, since: sc.since, allow, leftOut, offer }, null, 2) + "\n");
   readManifest(dir);
   return { dir, name, kind: d.kind, allow, leftOut, settings: settings.map((s) => s.key), questions: questions.length };
 }
@@ -244,9 +244,10 @@ const TUNE =
   "only: {\"instructions\": the whole new markdown, under 80 lines, \"changed\": one sentence on what you changed}.";
 
 /**
- * kit test on a draft, up to `rounds` times; between rounds a model rewrites instructions.md from the
- * failures. Questions judged "changed" (the source moved on since the reference) are not failures to
- * fix: they are reported for the user. o: {rounds, backends, log, test, chat}.
+ * One kit test run on a draft, then act on it: when questions failed, a model rewrites
+ * instructions.md from those failures once. Nothing is asked again; the next measure is the kit's
+ * real use (its journal, `ask-kit report`). Questions judged "changed" (the source moved on since
+ * the reference) are not failures to fix: they are reported for the user. o: {backends, log, test, chat}.
  */
 export async function prove(name, o = {}) {
   const dir = path.join(draftsDir(), name);
@@ -255,33 +256,22 @@ export async function prove(name, o = {}) {
   const log = o.log ?? (() => {});
   const test = o.test ?? (async (n, x) => (await import("./kittest.mjs")).kitTest(n, x));
   const chat = o.chat ?? (await import("./llm.mjs")).chat;
-  const meta = readJson(path.join(dir, "smith.json")) ?? { rounds: [] };
-  const rounds = o.rounds ?? 3;
-  const latest = new Map();
-  const before = meta.rounds.length;
-  let only;
-  for (let round = 1; round <= rounds; round++) {
-    log(`round ${round}${only ? `: ${only.length} questions` : ""}`);
-    const r = await test(name, { backends: o.backends, only, log });
-    for (const x of r.results) latest.set(`${x.backend}|${x.id}`, x);
-    const failed = r.results.filter((x) => !x.pass && x.verdict !== "changed");
-    meta.rounds.push({ round, at: new Date().toISOString(), summary: r.summary, failed: failed.map((x) => x.id) });
-    if (!failed.length || round === rounds) break;
-    const bench = readJson(path.join(dir, "bench", "questions.json")).questions;
-    const byId = Object.fromEntries(bench.map((q) => [q.id, q]));
+  const meta = readJson(path.join(dir, "smith.json")) ?? {};
+  const r = await test(name, { backends: o.backends, log });
+  const failed = r.results.filter((x) => !x.pass && x.verdict !== "changed");
+  const run = { at: new Date().toISOString(), summary: r.summary, failed: failed.map((x) => x.id) };
+  if (failed.length) {
+    const byId = Object.fromEntries(readJson(path.join(dir, "bench", "questions.json")).questions.map((q) => [q.id, q]));
     const instructions = fs.readFileSync(path.join(dir, "instructions.md"), "utf8");
     const user = `Instructions now:\n${instructions}\n\nWhat the source offers:\n${meta.offer ?? ""}\n\nWrong answers:\n${JSON.stringify(failed.map((x) => ({ question: byId[x.id]?.q, reference: byId[x.id]?.reference, answer: x.answer.slice(0, 1200), judge: x.reason ?? x.missing?.join("; ") })))}`;
     const t = await chat({ system: TUNE, user, json: true, maxTokens: 4000 });
     if (t.instructions) fs.writeFileSync(path.join(dir, "instructions.md"), `${String(t.instructions).trim()}\n`);
-    meta.rounds.at(-1).changed = t.changed ?? null;
-    log(`  instructions: ${t.changed ?? "rewritten"}`);
-    only = [...new Set(failed.map((x) => x.id))];
+    run.changed = t.changed ?? "rewritten";
+    log(`instructions: ${run.changed}`);
   }
+  meta.proved = run;
   fs.writeFileSync(path.join(dir, "smith.json"), JSON.stringify(meta, null, 2) + "\n");
-  const all = [...latest.values()];
-  const changed = all.filter((x) => x.verdict === "changed").map((x) => x.id);
-  const passed = all.filter((x) => x.pass).length;
-  return { name, dir, passed, of: all.length, changed, failed: all.filter((x) => !x.pass && x.verdict !== "changed").map((x) => x.id), rounds: meta.rounds.length - before };
+  return { name, dir, passed: r.results.filter((x) => x.pass).length, of: r.results.length, changed: r.results.filter((x) => x.verdict === "changed").map((x) => x.id), failed: failed.map((x) => x.id), tuned: run.changed ?? null };
 }
 
 // ---- promote: questions that keep running one script become [[actions]] ----

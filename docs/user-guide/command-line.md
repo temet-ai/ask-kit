@@ -14,7 +14,6 @@ ask-kit report [--since 7d] [--json]   flagged asks, scripts used, routes worth 
 ask-kit kit actions <kit> [--enable|--disable <action>] [--json]   a kit's [[actions]]: status and last 20 runs
 ask-kit gaps [--since 30d] [--json]   lookups agents did by hand instead of asking, by kit
 ask-kit mine <kit> [--since 30d] [--n 20] [--json]   those lookups' questions as draft bench rows
-ask-kit smith scaffold|prove|install|promote ...   a kit built from those lookups, proven, kept improving
 ask-kit gallery                  shared domains
 ask-kit add <repo> [--yes]       show a shared domain's files; --yes installs and enables it
 ask-kit lines                    the one-line prompts for any agent
@@ -114,7 +113,7 @@ helper fields.
 | Command | What it does |
 |---|---|
 | `smith scaffold <source> [--name n]` | Drafts a kit for a source `gaps` lists under No kit (`"mcp: flux"`, `gitlab`, `files: ~/notes`) |
-| `smith prove <name> [--rounds 3]` | Tests the draft on the questions it was mined from, fixing its instructions between rounds |
+| `smith prove <name>` | Tests the draft once on the questions it was mined from, and rewrites its instructions from any it got wrong |
 | `smith install <name>` | Moves a proven draft into the kits folder and enables it |
 | `smith promote <kit>` | Turns questions that keep running one script into `[[actions]]` entries |
 
@@ -136,16 +135,17 @@ reference such as `${GITLAB_TOKEN}` stays a reference. Any other value becomes a
 entry whose `detect` reads it from that config file each time. A server that finds its project
 from the folder it starts in gets that folder as `cwd`.
 
-**prove** runs `kit test` on the draft. Each mined question carries a `reference`: what the agent
-found by hand at the time. A judge model grades each answer against its reference:
+**prove** runs `kit test` on the draft once. Each mined question carries a `reference`: what the
+agent found by hand at the time. A judge model grades each answer against its reference:
 
 - `correct`: the answer passes.
-- `partial` or `wrong`: the question failed. Failures go to a model that rewrites
-  `instructions.md`, and the failed questions are asked again, for at most `--rounds` rounds.
+- `partial` or `wrong`: the question failed. The failures go once to a model that rewrites
+  `instructions.md`. Nothing is asked again: once the kit is installed, its real use (the
+  journal, `ask-kit report`) is the next measure.
 - `changed`: the answer cites evidence that the source has moved on since the reference was
   written. prove reports these for you to fix by hand, and doesn't count them as failures.
 
-Each round is recorded in the draft's `smith.json`. Any bench row with a `reference` and no
+The run is recorded in the draft's `smith.json`. Any bench row with a `reference` and no
 `expect` is graded this way, so you can write rows like that by hand too.
 
 **promote** reads `ask-kit report`'s "Worth an action" list for the kit. For each cluster it

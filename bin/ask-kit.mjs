@@ -12,7 +12,7 @@
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
-//   ask-kit smith scaffold <source> [--name n] · prove <name> [--rounds 3] · install <name> · promote <kit>   kits from that digging
+//   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
 //   ask-kit kit new|link|list|test|profile|actions|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
@@ -137,11 +137,9 @@ async function main() {
       }
       if (sub === "prove") {
         if (!arg) throw new Error("smith prove needs a draft's name");
-        const rounds = Number(flag("rounds"));
-        const r = await smith.prove(arg, { rounds: rounds > 0 ? rounds : 3, backends: typeof flag("backends") === "string" ? flag("backends").split(",") : undefined, log: (l) => console.error(l) });
+        const r = await smith.prove(arg, { backends: typeof flag("backends") === "string" ? flag("backends").split(",") : undefined, log: (l) => console.error(l) });
         if (flag("json")) return print(r);
-        console.log(`${r.name}: ${r.passed}/${r.of} after ${r.rounds} round${r.rounds === 1 ? "" : "s"}.${r.changed.length ? ` Reference out of date (the source changed since it was asked; check and fix the row): ${r.changed.join(", ")}.` : ""}${r.failed.length ? ` Still wrong: ${r.failed.join(", ")}.` : ""}\n${r.failed.length ? `Edit ${r.dir}/instructions.md or the bench, then prove again.` : `Next: ask-kit smith install ${r.name}`}`);
-        if (r.failed.length) process.exitCode = 1;
+        console.log(`${r.name}: ${r.passed}/${r.of}.${r.changed.length ? ` Reference out of date (the source changed since it was asked; check and fix the row): ${r.changed.join(", ")}.` : ""}${r.failed.length ? ` Wrong: ${r.failed.join(", ")}; the instructions were rewritten from them (${r.tuned}), see ${r.dir}/instructions.md.` : ""}\nNext: ask-kit smith install ${r.name}; its real use is the next measure (ask-kit report).`);
         return;
       }
       if (sub === "install") {
@@ -159,7 +157,7 @@ async function main() {
         console.log(`${r.toml}\n\n# ${r.entries.length} action${r.entries.length === 1 ? "" : "s"} for ${r.dir}/ask-kit.toml. Add them there, then: ask-kit kit actions ${arg}`);
         return;
       }
-      throw new Error("smith: scaffold <source> [--name n] [--since 30d] · prove <name> [--rounds 3] [--backends a,b] · install <name> · promote <kit> [--since 30d]");
+      throw new Error("smith: scaffold <source> [--name n] [--since 30d] · prove <name> [--backends a,b] · install <name> · promote <kit> [--since 30d]");
     }
     case "gallery": {
       const { listGallery } = await import("../src/gallery.mjs");
