@@ -1,0 +1,8 @@
+name = "base"
+says = "a fixture base kit"
+
+[[sources]]
+kind = "module"
+name = "basetool"
+module = "basetool.mjs"
+api = "basetool.d.ts"

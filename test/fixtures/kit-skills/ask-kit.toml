@@ -1,0 +1,18 @@
+name = "skilled"
+says = "a fixture with skills and roles"
+
+[[sources]]
+kind = "folder"
+name = "docs"
+path = "${KIT_DIR}/docs"
+
+[[roles]]
+name = "triage"
+when = "a question about something failing or broken"
+patterns = ["\\b(fail|broken|crash)\\w*"]
+instructions = "roles/triage.md"
+
+[[roles]]
+name = "inventory"
+when = "a request to list what exists"
+instructions = "roles/inventory.md"

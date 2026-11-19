@@ -1,0 +1,8 @@
+name = "top"
+says = "a fixture kit that uses base"
+uses = ["base"]
+
+[[sources]]
+kind = "module"
+name = "toptool"
+module = "toptool.mjs"

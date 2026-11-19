@@ -61,6 +61,21 @@ export function readManifest(dir) {
     if (s.kind === "module" && !s.module) problems.push(`sources[${i}].module: a .mjs file in the kit exporting make(ctx)`);
     if (s.kind === "mcp" && !(Array.isArray(s.command) ? s.command.length : s.command)) problems.push(`sources[${i}].command: the MCP server to start, e.g. ["mike-mcp"]`);
   }
+  if (m.uses != null && !(Array.isArray(m.uses) && m.uses.every((u) => NAME.test(u)))) problems.push("uses: a list of kit names, e.g. [\"github\"]");
+  if (m.uses?.includes?.(m.name)) problems.push("uses: a kit cannot use itself");
+  if (m.skills != null && typeof m.skills !== "string") problems.push("skills: the folder of playbooks in the kit (default skills/)");
+  for (const [i, r] of (m.roles ?? []).entries()) {
+    if (!NAME.test(r.name ?? "")) problems.push(`roles[${i}].name: lowercase letters, digits and dashes, starting with a letter`);
+    if (!r.when) problems.push(`roles[${i}].when: plain words saying when to use the role`);
+    if (!r.instructions || !fs.existsSync(path.join(dir, r.instructions))) problems.push(`roles[${i}].instructions: a file in the kit (got ${r.instructions ?? "nothing"})`);
+    for (const p of [].concat(r.patterns ?? [])) {
+      try {
+        new RegExp(p);
+      } catch {
+        problems.push(`roles[${i}].patterns: ${p} is not a regular expression`);
+      }
+    }
+  }
   if (problems.length) throw new Error(`${file}:\n- ${problems.join("\n- ")}`);
   return m;
 }
@@ -306,6 +321,48 @@ async function makeSources(m, dir, settings, mcp = {}) {
   };
 }
 
+// ---- skills and roles: playbooks the investigator loads when one fits ----
+//
+// `skills` is a folder of Markdown files (default skills/); a file's name is the skill's name and its
+// first line the purpose. `[[roles]]` are playbooks with a `when`; `skills.read("role:<name>")` loads one.
+const firstLine = (text) => (text.split("\n").map((l) => l.replace(/^[#>\s*-]+/, "").trim()).find(Boolean) ?? "").slice(0, 200);
+
+function skillEntries(m, dir) {
+  const out = [];
+  const folder = path.join(dir, m.skills ?? "skills");
+  if (fs.existsSync(folder)) {
+    for (const f of fs.readdirSync(folder).filter((f) => f.endsWith(".md")).sort()) {
+      out.push({ name: f.slice(0, -3), kit: m.name, kind: "skill", file: path.join(folder, f), purpose: firstLine(fs.readFileSync(path.join(folder, f), "utf8")) });
+    }
+  }
+  for (const r of m.roles ?? []) out.push({ name: `role:${r.name}`, kit: m.name, kind: "role", file: path.join(dir, r.instructions), purpose: r.when, patterns: [].concat(r.patterns ?? []).map((p) => new RegExp(p, "i")) });
+  return out;
+}
+
+function makeSkills(entries, push) {
+  const find = (name) => {
+    const e = entries.find((x) => x.name === name) ?? entries.find((x) => x.kind === "role" && x.name === `role:${name}`);
+    if (!e) throw new Error(`no skill "${name}"; skills.list() has: ${entries.map((x) => x.name).join(", ")}`);
+    return e;
+  };
+  return {
+    list: () => entries.map((e) => ({ name: e.name, kind: e.kind, purpose: e.purpose })),
+    read: (name) => {
+      const started = Date.now();
+      const e = find(String(name));
+      const text = fs.readFileSync(e.file, "utf8");
+      push({ kind: "skills", detail: `read ${e.name}`, ms: Date.now() - started, code: 0, size: text.length });
+      return text;
+    },
+  };
+}
+
+const SKILLS_API = `// skills: playbooks this kit keeps for particular jobs; read one when its purpose fits the question.
+declare const skills: {
+  list(): { name: string; kind: "skill" | "role"; purpose: string }[];
+  read(name: string): string; // a skill by name, or a role as "role:<name>"
+};`;
+
 // ---- what the investigator reads: api.d.ts and instructions, generated when the kit has none ----
 
 const TOOLKIT = fs.readFileSync(path.join(ROOT, "kits", "_host", "toolkit.d.ts"), "utf8");
@@ -321,7 +378,7 @@ function cliHelp(src, settings) {
   }
 }
 
-function writeApi(m, dir, settings, outDir, mcp = {}) {
+function writeApi(m, dir, settings, outDir, mcp = {}, { used = [], skills = false } = {}) {
   const parts = [`// The REPL's globals for the ${m.name} kit. \`help\` returns this file.\n`];
   for (const s of m.sources) {
     if (s.kind === "folder") {
@@ -346,13 +403,37 @@ function writeApi(m, dir, settings, outDir, mcp = {}) {
     }
   }
   if (m.sources.some((s) => s.kind === "folder") && !m.sources.some((s) => s.name === "folder")) parts.push(`declare const folder: typeof ${m.sources.find((s) => s.kind === "folder").name}; // the same object, for the built-in folder scripts`);
+  for (const u of used) {
+    const doc = fs.readFileSync(u.apiDoc, "utf8");
+    const cut = doc.indexOf(TOOLKIT);
+    parts.push(`// From the ${u.name} kit (used by this one):\n` + (cut >= 0 ? doc.slice(0, cut) : doc).replace(/^\/\/ The REPL.s globals for the .*\n/, "").replace(/\ndeclare const skills: \{[\s\S]*?\n\};/, "").replace(/^\/\/ skills: playbooks.*\n/m, ""));
+  }
+  if (skills) parts.push(SKILLS_API);
   parts.push(TOOLKIT);
   const file = path.join(outDir, "api.d.ts");
   fs.writeFileSync(file, parts.join("\n"));
   return file;
 }
 
-function writeInstructions(m, outDir) {
+function skillLines(entries, used) {
+  if (!entries.length && !used.length) return [];
+  const lines = [""];
+  if (used.length) lines.push(`Kits used: ${used.map((u) => `\`${u.name}\` (${u.says})`).join("; ")}. Their sources and scripts are in this REPL too.`, "");
+  const roles = entries.filter((e) => e.kind === "role");
+  const skills = entries.filter((e) => e.kind === "skill");
+  if (skills.length) lines.push("Skills (playbooks; `skills.read(name)` loads one before you start the job it names):", ...skills.map((e) => `- \`${e.name}\`: ${e.purpose}`), "");
+  if (roles.length) lines.push("Roles (when a question fits one, `skills.read(\"role:<name>\")` and follow it):", ...roles.map((e) => `- \`${e.name}\`: ${e.purpose}`), "");
+  return lines.slice(0, -1);
+}
+
+function writeInstructions(m, outDir, dir, entries = [], used = []) {
+  const extra = skillLines(entries, used);
+  if (m.instructions) {
+    if (!extra.length) return path.join(dir, m.instructions);
+    const file = path.join(outDir, "instructions.md");
+    fs.writeFileSync(file, fs.readFileSync(path.join(dir, m.instructions), "utf8").replace(/\n*$/, "\n") + extra.join("\n") + "\n");
+    return file;
+  }
   const kinds = new Set(m.sources.map((s) => s.kind));
   const lines = [
     `You are an investigator for ${m.says}. Another coding-agent session sends you one question or`,
@@ -375,6 +456,7 @@ function writeInstructions(m, outDir) {
     `- Short and direct: the answer first, then a few lines of support.`,
     `- Every fact names its evidence${m.cite ? ` as ${m.cite}` : kinds.has("folder") ? " as `path:line`" : ": the command and the line of its output, or an id"}.`,
     "- No preamble, no restating the question, no offer of further help.",
+    ...extra,
   ].filter(Boolean);
   const file = path.join(outDir, "instructions.md");
   fs.writeFileSync(file, lines.join("\n") + "\n");
@@ -412,23 +494,46 @@ export function unavailable(m, settings) {
 }
 
 /** The kit at `dir` as a domain object (the contract in src/domains.mjs). */
-export async function kitDomain(dir, { config } = {}) {
+export async function kitDomain(dir, { config, stack = [] } = {}) {
   const m = readManifest(dir);
+  // Kits this one uses: their sources and scripts join this kit's REPL. A cycle is refused.
+  const used = [];
+  let usedWhy = null;
+  for (const u of m.uses ?? []) {
+    if ([...stack, m.name].includes(u)) throw new Error(`${m.name}: uses cycle: ${[...stack, m.name, u].join(" uses ")}`);
+    const udir = findKit(u);
+    if (!udir) {
+      usedWhy ??= `uses the ${u} kit, which is not installed`;
+      continue;
+    }
+    const d = await kitDomain(udir, { config, stack: [...stack, m.name] });
+    if (d.unavailable) usedWhy ??= `uses the ${u} kit, which cannot run here: ${d.unavailable}`;
+    else used.push(d);
+  }
   // ${KIT_DIR} in a manifest is the kit's own folder (data a [[build]] step downloaded, say).
   const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config)).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
   const outDir = path.join(STATE_ROOT, "kits", m.name, slug(fill(m.state_key ?? "", settings) || "default"));
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
   // A kit that cannot run here is described, not built: no MCP server is started, no folder read.
-  const why = unavailable(m, settings);
+  const why = usedWhy ?? unavailable(m, settings);
   if (why) return { name: m.name, kit: true, manifest: m, dir, says: m.says, unavailable: why, keywords: [], patterns: [] };
   const mcp = {};
   for (const s of m.sources) if (s.kind === "mcp") mcp[s.name] = await mcpTools(s, settings, outDir, path.join(dir, MANIFEST));
-  const make = await makeSources(m, dir, settings, mcp);
+  const makeOwn = await makeSources(m, dir, settings, mcp);
+  const entries = [...skillEntries(m, dir)];
+  for (const d of used) for (const e of d.skillEntries ?? []) if (!entries.some((x) => x.name === e.name)) entries.push(e);
+  const make = (ctx) => {
+    const g = {};
+    for (const d of used) for (const [k, v] of Object.entries(d.makeGlobals(ctx))) if (k !== "folder" && k !== "skills") g[k] = v;
+    Object.assign(g, makeOwn(ctx));
+    if (entries.length) g.skills = makeSkills(entries, ctx.push);
+    return g;
+  };
   const own = path.join(dir, m.scripts ?? "scripts");
   const hostScripts = m.sources.some((s) => s.kind === "folder") && m.folder_scripts !== false ? [path.join(ROOT, "kits", "_host", "folder-scripts")] : [];
-  const scriptsDirs = [...hostScripts, own];
-  const apiDoc = writeApi(m, dir, settings, outDir, mcp);
-  const instructions = m.instructions ? path.join(dir, m.instructions) : writeInstructions(m, outDir);
+  const scriptsDirs = [...new Set([...hostScripts, ...used.flatMap((d) => d.scriptsDirs), own])];
+  const apiDoc = writeApi(m, dir, settings, outDir, mcp, { used, skills: entries.length > 0 });
+  const instructions = writeInstructions(m, outDir, dir, entries, used);
   const examples = await scriptExamples(scriptsDirs);
   const cite = m.cite ?? (m.sources.some((s) => s.kind === "folder") ? "`path:line`" : "the command and its output line, or an id");
   return {
@@ -444,7 +549,14 @@ export async function kitDomain(dir, { config } = {}) {
     acts: m.acts ?? [],
     bench: m.bench ? path.join(dir, m.bench) : fs.existsSync(path.join(dir, "bench", "questions.json")) ? path.join(dir, "bench", "questions.json") : null,
     stateKey: m.state_key ? fill(m.state_key, settings) : undefined,
-    childEnv: () => settings,
+    uses: used.map((d) => d.name),
+    skillEntries: entries,
+    // The role whose patterns match a question, or null: { name, when, file }.
+    roleFor: (question) => {
+      const e = entries.find((x) => x.kind === "role" && x.patterns.some((p) => p.test(String(question))));
+      return e ? { name: e.name.slice(5), when: e.purpose, file: e.file } : null;
+    },
+    childEnv: () => Object.assign({}, ...used.map((d) => d.childEnv()), settings),
     scriptsDir: own,
     scriptsDirs,
     apiDoc,
@@ -461,7 +573,7 @@ export async function kitDomain(dir, { config } = {}) {
       (m.acts?.length ? `, and acts when you ask (${m.acts.join(", ")}).` : "."),
     serverInstructions: `\`ask\` answers questions about ${m.says}. Call it before a run of lookups whose purpose is to answer a question.`,
     replInstructions: `A JavaScript REPL for ${m.says} (${m.sources.map((s) => `\`${s.name}\``).join(", ")}), with ready-made scripts. Variables persist. Call \`help\` once.`,
-    fingerprintFiles: () => [path.join(dir, MANIFEST), ...m.sources.filter((s) => s.kind === "module").flatMap((s) => [path.join(dir, s.module), ...(s.api ? [path.join(dir, s.api)] : [])])],
+    fingerprintFiles: () => [...used.flatMap((d) => d.fingerprintFiles()), ...entries.filter((e) => e.kind === "skill" || e.kind === "role").map((e) => e.file), path.join(dir, MANIFEST), ...m.sources.filter((s) => s.kind === "module").flatMap((s) => [path.join(dir, s.module), ...(s.api ? [path.join(dir, s.api)] : [])])],
     defaultBackend: m.backend,
   };
 }
