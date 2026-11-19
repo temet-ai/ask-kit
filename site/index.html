@@ -92,6 +92,8 @@ select { border: 1px solid var(--line); background: var(--card); color: var(--in
 
 .empty { padding: 40px 0 60px; color: var(--muted); }
 
+section.builtins { border-top: 1px solid var(--line); padding: 32px 0 36px; max-width: 900px; }
+section.builtins h2 { font-size: 22px; margin: 0 0 10px; font-weight: 600; }
 section.publish { border-top: 1px solid var(--line); padding: 36px 0 44px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
 section.publish h2, .detail h2 { font-size: 22px; margin: 0 0 12px; font-weight: 600; }
 ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 14px; }
@@ -187,6 +189,12 @@ const kind = (k) => (k.form !== "kit" ? "unknown" : k.acts.length ? "acts" : "re
 function changes(k) {
   return { acts: `<span class="acts">${plural(k.acts.length, "call")} that change things</span>`, reads: `<span class="reads">Reads only</span>`, unknown: `<span class="reads">No manifest</span>` }[kind(k)];
 }
+const AGENT_NAMES = { "claude-code": "Claude Code", codex: "Codex", "copilot-cli": "Copilot CLI", opencode: "opencode", "gemini-cli": "Gemini CLI" };
+function provide(p) {
+  const covers = p.covers.length ? ` for ${p.covers.map((c) => AGENT_NAMES[c] ?? c).join(", ")}` : "";
+  const reach = { "all-machines": ", on every machine", "this-machine": ", on this machine" }[p.reach] ?? "";
+  return `<dt class="mono">${esc(p.capability)}</dt><dd>Priority ${esc(String(p.priority))}${esc(covers)}${esc(reach)}.</dd>`;
+}
 function setting(s) {
   const otherwise = s.detect ? `Otherwise detected with <code>${esc(s.detect)}</code>, run in your agent's folder.` : s.default ? `Otherwise <code>${esc(s.default.replace("${KIT_DIR}/", "<kit folder>/"))}</code>.` : s.required ? "Required: without it the kit isn't offered on that machine." : "Optional.";
   return `<dt class="mono">${esc(s.key)}</dt><dd>${s.about ? `${esc(cap(s.about))}. ` : ""}${otherwise}${s.secret ? " Kept out of what the model sees." : ""}</dd>`;
@@ -260,6 +268,7 @@ function renderList() {
       </select>
     </div>
     <div class="grid" id="grid"></div>
+    ${(DATA.builtins ?? []).length ? `<section class="builtins"><h2 class="serif">Comes with ask-kit</h2><p style="margin-top:0">These answer with no kit installed.</p><dl class="settings">${DATA.builtins.map((b) => `<dt class="mono">${esc(b.name)}</dt><dd>${esc(cap(b.says))}.${b.provides.length ? ` Provides ${b.provides.map((p) => `<code>${esc(p.capability)}</code> at priority ${esc(String(p.priority))}${p.covers.length ? ` for ${esc(p.covers.map((c) => AGENT_NAMES[c] ?? c).join(", "))}` : ""}`).join("; ")}; a kit with a higher priority takes it over.` : ""}</dd>`).join("")}</dl></section>` : ""}
     <section class="publish" id="publish">
       <div>
         <h2 class="serif">List your own kit</h2>
@@ -321,6 +330,8 @@ function renderKit(repo) {
         </div>
       </section>
       ${(k.settings ?? []).length ? `<section><h2 class="serif">Settings</h2><p style="margin-top:0">Each one is read from the environment, then from <code>domains.${esc(k.name)}.settings</code> in ask-kit's config, and otherwise as shown.</p><dl class="settings">${k.settings.map(setting).join("")}</dl></section>` : ""}
+      ${(k.provides ?? []).length ? `<section><h2 class="serif">What it takes over</h2><p style="margin-top:0">When another kit offers the same thing, the one with the higher priority answers and the other is the fallback. The built-in <code>sessions</code> reader has priority 10 for session history.</p><dl class="settings">${k.provides.map(provide).join("")}</dl></section>` : ""}
+      ${(k.actions ?? []).length ? `<section><h2 class="serif">Answered with no model</h2><p style="margin-top:0">Questions matching these actions run the named script directly; anything else goes to the model.</p><dl class="settings">${k.actions.map((a) => `<dt class="mono">${esc(a.name)}</dt><dd>${esc(cap(a.title || a.name))}. Runs <code>${esc(a.script)}</code>${a.acts ? "; it changes something, so it stays off until you turn it on" : ""}.</dd>`).join("")}</dl></section>` : ""}
       ${k.questions.length ? `<section><h2 class="serif">Questions from its tests</h2><p style="margin-top:0;color:var(--muted)">The kit's own bench, run with <code>ask-kit kit test ${esc(k.name)}</code>. They show the kind of thing to ask it.</p><ol class="qs">${k.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ol></section>` : ""}
       <section>
         <h2 class="serif">What it can change</h2>

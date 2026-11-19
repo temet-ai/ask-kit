@@ -66,6 +66,8 @@ for (const r of await listGallery()) {
     acts: m?.acts ?? [],
     sources: (m?.sources ?? []).map((s) => s.kind),
     uses: m?.uses ?? [],
+    provides: (m?.provides ?? []).map((p) => ({ capability: p.capability, covers: p.covers ?? [], reach: p.reach ?? "", priority: p.priority ?? 0 })),
+    actions: (m?.actions ?? []).map((a) => ({ name: a.name, title: a.title ?? "", script: a.script, acts: !!a.acts })),
     settings: (m?.settings ?? []).map((s) => ({ key: s.key, about: s.about ?? "", default: s.default ?? "", detect: s.detect ? [].concat(s.detect).join(" ") : "", required: !!s.required, secret: !!s.secret })),
     questions,
     install: `ask-kit kit install ${r.repo}`,
@@ -73,5 +75,12 @@ for (const r of await listGallery()) {
   console.log(`${r.repo}: ${m ? "kit" : "domain"}, ${questions.length} bench question(s)`);
 }
 
-fs.writeFileSync(out, JSON.stringify({ built: new Date().toISOString(), kits }, null, 2) + "\n");
+// The domains that ship inside ask-kit, read from their domain.mjs.
+const builtins = [];
+for (const name of ["sessions", "code"]) {
+  const { domain: d } = await import(new URL(`../domains/${name}/domain.mjs`, import.meta.url));
+  builtins.push({ name, says: d.says, provides: (d.provides ?? []).map((p) => ({ capability: p.capability, covers: p.covers ?? [], reach: p.reach ?? "", priority: p.priority ?? 0 })) });
+}
+
+fs.writeFileSync(out, JSON.stringify({ built: new Date().toISOString(), kits, builtins }, null, 2) + "\n");
 console.log(`${kits.length} kit(s) → ${out}`);
