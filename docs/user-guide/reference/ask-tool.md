@@ -35,7 +35,9 @@ Both forms need a config file. Without one the server exits at start with
 | `timeoutSeconds` | integer, 30 to 900 | no | How long the investigation may run. The domain's `ask` defaults to 300. |
 
 The tool's description lists the enabled domains with their one-line descriptions (the `says`
-field of each domain), and the server's instructions repeat them.
+field of each domain), and each capability that more than one of them provides, once, under the
+one that wins it. The server's instructions do not repeat the list, so each kit costs the calling
+agent's context once.
 
 ### How the router chooses a domain
 
@@ -43,11 +45,30 @@ In this order, first match wins:
 
 | `how` | When |
 |---|---|
+| `shot` | `do` was given: the kit named, or the one kit with that script. |
 | `caller` | `about` was given. |
 | `follow-up` | `continue` is `true` and an earlier ask from this caller exists. It goes to the domain that answered last. |
 | `only` | One domain is enabled. |
+| `pattern` | A kit's `patterns` match the question and it has no past-work words ("session", "yesterday", "did we", "decided"). With past-work words the match is a hint in the router model's prompt instead. |
 | `model` | `router.backend` is set and its one-word answer names an enabled domain. |
-| `rules` | The model call failed or said something else, or no router model is set. Keyword rules. |
+| `timeout` | The router model did not answer within `router.timeoutMs`: session history (`sessions`) answers. |
+| `rules` | The model call failed or said something else, or no router model is set. Keyword rules: past-work words first, then kit `keywords`, then code words, else the first enabled domain. |
+| `fallback` | The domain chosen answered with no data, and the next provider of its capability answered instead. |
+
+Then capabilities: when the domain chosen by `caller`, `pattern`, `model`, `timeout` or `rules`
+provides a capability (`[[provides]]`), the question goes to the best provider of it for the
+agent the question names ("a codex session" goes to a provider whose `covers` include `codex`),
+or to the highest priority when it names none. The routing record keeps the first choice in
+`resolvedFrom`. An `about` that corrects the router within two minutes is used as given. When the
+provider's answer ends with the line `[no data]`, the router asks the next provider once
+(`fallback`) and returns that answer.
+
+A kit's `route_hint` that names a domain not enabled here (`ops`, `mike`) is rewritten before the
+router model reads it: `mike` and `sessions` become the past-work domain, other names are dropped.
+
+When the same caller asks again within two minutes with an `about` naming another domain than
+the router chose, the router records a misroute: see
+[Misroute record](journal.md#misroute-record).
 
 The router remembers the last domain per calling session on disk, so a follow-up from a new
 process (the shell, a restarted agent) still reaches the same investigator.

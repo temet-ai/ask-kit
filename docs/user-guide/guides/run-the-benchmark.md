@@ -23,6 +23,7 @@ For anything else you write questions about your own work, in the same format. S
 | [`bench/report.mjs`](https://github.com/temet-ai/ask-kit/blob/main/bench/report.mjs) | Turns results and grades into Markdown tables. |
 | [`bench/redact.mjs`](https://github.com/temet-ai/ask-kit/blob/main/bench/redact.mjs) | Copies raw results into `bench/results/` with home paths and private words replaced. |
 | `bench/results/` | The published runs: `<name>.jsonl` and `<name>.graded.jsonl`. |
+| [`bench/router.mjs`](https://github.com/temet-ai/ask-kit/blob/main/bench/router.mjs) | The router bench: routes every misroute the router recorded on this machine (`<state>/router/bench.jsonl`, or `--file`) again with the installed config and kits, and prints which now go where the caller wanted. `--rules` skips the router model. The rows are your own questions, so they stay on your machine. |
 | [`bench/RESULTS.md`](https://github.com/temet-ai/ask-kit/blob/main/bench/RESULTS.md) | The write-up. Its tables are pasted from `report.mjs`. |
 | `bench/private/` | A git-ignored folder for questions about private work. When it exists the scripts load its questions too. Nothing in it is published, and this guide does not describe it. |
 

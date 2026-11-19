@@ -14,71 +14,176 @@ import { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
-import { loadDomain } from "./domains.mjs";
+import { indexDomain, loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
+import { NO_DATA_META, capabilityLines, providersOf, ranked, scopeOf, tiesOf, winnersOf } from "./capabilities.mjs";
 
 const SERVER = path.join(ROOT, "src", "server.mjs");
 
-// Fallback only: the first domain whose words appear, else the first enabled domain.
-const RULES = [
-  ["sessions", /\b(sessions?|we (did|tried|built|said|decided)|discussed|decided|yesterday|last (week|night|time)|earlier|did (i|we|you)|when did|which session|transcripts?)\b/i],
-  ["code", /`[^`]+`|\b[\w-]+\/[\w./-]+\.\w+\b|\b(where is|defined|definition|function|struct|module|class|env var|flag|toggle|constant|calls?|implement\w*|in (this|the) (repo|code))\b/i],
-];
+// Words that make a question about past work: what a session did, said or decided.
+export const PAST_WORK = /\b(sessions?|we (did|tried|built|said|decided)|discussed|decided|yesterday|last (week|night|time)|earlier|did (i|we|you)|when did|which session|transcripts?)\b/i;
+// Fallback only, in this order: past-work words, then kit keywords, then code words, else the
+// first enabled domain. Past work comes first so "which session restarted the docker container"
+// goes to session history, not to docker.
+const CODE_WORDS = /`[^`]+`|\b[\w-]+\/[\w./-]+\.\w+\b|\b(where is|defined|definition|function|struct|module|class|env var|flag|toggle|constant|calls?|implement\w*|in (this|the) (repo|code))\b/i;
+// Routes the router decided itself; a caller who corrects one of these within MISROUTE_MS made it a misroute.
+export const DECIDED = ["model", "rules", "pattern", "timeout"];
+export const MISROUTE_MS = 120_000;
+// Past this many domains the router model sees only those the question's words point at.
+export const SHORTLIST_AT = 15;
+// Domain names other hosts use in kit hints (mike-ask's mike for past work); here they mean the past-work domain.
+const PAST_NAMES = ["sessions", "mike"];
+
+// A kit's route_hint names domains ("... is ops; ... are mike"). A name that is not enabled here is
+// rewritten to the past-work domain when it means past work, else dropped; a clause left naming
+// nothing is dropped, so the router model is never told to answer with a name it may not use.
+export function rewriteHint(hint, enabled, pastWork) {
+  const clauses = String(hint).split(/;\s*/).map((clause) => {
+    const m = clause.match(/^(.*\b(?:is|are)\s+)([a-z][a-z0-9-]*(?:(?:,\s*|\s+or\s+)[a-z][a-z0-9-]*)*)\s*$/);
+    if (!m) return clause;
+    const names = [...new Set(m[2].split(/,\s*|\s+or\s+/).map((n) => (enabled.includes(n) ? n : PAST_NAMES.includes(n) ? pastWork : null)).filter(Boolean))];
+    return names.length ? m[1] + names.join(" or ") : null;
+  });
+  return clauses.filter(Boolean).join("; ") || null;
+}
 
 export async function makeRouter(config) {
   const DOMAINS = {};
   const skipped = {};
+  // Milliseconds each domain added to building the router (kit profile reads them).
+  const loadMs = {};
   for (const n of Object.entries(config.domains ?? {}).filter(([, d]) => d.enabled !== false).map(([n]) => n)) {
+    const t0 = performance.now();
     try {
-      const d = await loadDomain(n);
+      // The index only: a kit's detect commands, sources and API wait for its first use.
+      const d = await indexDomain(n, config);
       // A kit that cannot run here (a missing program, setting or folder) is not offered.
       if (d.unavailable) skipped[n] = d.unavailable;
       else DOMAINS[n] = d;
     } catch (e) {
       skipped[n] = String(e.message ?? e).split("\n")[0];
     }
+    loadMs[n] = Math.round((performance.now() - t0) * 10) / 10;
   }
-  const enabled = Object.keys(DOMAINS);
-  if (!enabled.length) throw new Error(`no domains can run: ${JSON.stringify(skipped)}`);
-  // Kits bring their own routing: `patterns` claim a question outright (no model call), and
-  // `keywords` join the fallback rules.
+  if (!Object.keys(DOMAINS).length) throw new Error(`no domains can run: ${JSON.stringify(skipped)}`);
+  // Capabilities are resolved before routing: for each one, the providers that can run here are
+  // ranked by priority (a config pin wins). A domain that wins no capability for any scope is
+  // hidden: not offered, not in the prompt, kept only as a fallback for the one above it.
+  const providers = providersOf(Object.keys(DOMAINS), (n) => DOMAINS[n].provides, config);
+  const { caps, hidden } = winnersOf(providers);
+  const ties = tiesOf(providers);
+  for (const n of hidden) skipped[n] = `every capability it provides goes to another: ${[...new Set(providers.filter((p) => p.domain === n).map((p) => caps[p.capability].top))].join(", ")}`;
+  const enabled = Object.keys(DOMAINS).filter((n) => !hidden.includes(n));
+  // The domain past-work questions fall back to: the session-history winner.
+  const pastWork = caps["session-history"]?.top ?? (DOMAINS.sessions ? "sessions" : null);
+  const capLines = capabilityLines(caps, enabled);
+  // Where a question routed to `name` goes once capabilities are resolved for its scope (the
+  // agents it names): the best provider of the first capability `name` provides that holds it.
+  const resolve = (name, q) => {
+    const scope = scopeOf(q);
+    for (const p of providers.filter((x) => x.domain === name)) {
+      const order = ranked(providers, p.capability, scope);
+      if (order.length) return order[0];
+    }
+    return name;
+  };
+  // The providers to try after `name` when it has no data for the question.
+  const nextAfter = (name, q) => {
+    const scope = scopeOf(q);
+    for (const p of providers.filter((x) => x.domain === name)) {
+      const order = ranked(providers, p.capability, scope).filter((d) => d !== name);
+      if (order.length) return order;
+    }
+    return [];
+  };
+  // Kits bring their own routing: `keywords` join the fallback rules, and `patterns` claim a
+  // question outright (no model call) unless it has past-work words, when they are a hint instead.
   const kitRules = enabled
     .filter((n) => DOMAINS[n].keywords?.length)
     .map((n) => [n, new RegExp(`\\b(${DOMAINS[n].keywords.join("|")})\\b`, "i")]);
-  const byPattern = (q) => enabled.find((n) => DOMAINS[n].patterns?.some((re) => re.test(q))) ?? null;
-  const byRules = (q) => [...kitRules, ...RULES].find(([n, re]) => DOMAINS[n] && re.test(q))?.[0] ?? enabled[0];
-  const hints = enabled.map((n) => DOMAINS[n].routeHint).filter(Boolean);
+  const patternOf = (q) => enabled.find((n) => DOMAINS[n].patterns?.some((re) => re.test(q))) ?? null;
+  const byPattern = (q) => (PAST_WORK.test(q) ? null : patternOf(q));
+  const rules = [...(pastWork ? [[pastWork, PAST_WORK]] : []), ...kitRules, ...(DOMAINS.code ? [["code", CODE_WORDS]] : [])];
+  const byRules = (q) => rules.find(([, re]) => re.test(q))?.[0] ?? enabled[0];
+  const hintOf = Object.fromEntries(enabled.map((n) => [n, DOMAINS[n].routeHint ? rewriteHint(DOMAINS[n].routeHint, enabled, pastWork) : null]));
+  const hints = enabled.map((n) => hintOf[n]).filter(Boolean);
+  // What each domain adds to every routed ask's router prompt, in tokens (about 4 characters each).
+  const promptTokens = Object.fromEntries(enabled.map((n) => [n, Math.round((`${n}: ${DOMAINS[n].says}\n`.length + (hintOf[n] ? hintOf[n].length + 1 : 0)) / 4)]));
+
+  // Past SHORTLIST_AT domains, keywords and patterns pick the candidates the router model sees: the
+  // kits they match, with the built-in domains and the past-work domain. When none match, all go.
+  const keywordRe = Object.fromEntries(kitRules);
+  const offered = (q) => {
+    if (enabled.length <= SHORTLIST_AT) return enabled;
+    const hit = enabled.filter((n) => DOMAINS[n].kit && (keywordRe[n]?.test(q) || DOMAINS[n].patterns?.some((re) => re.test(q))));
+    return hit.length ? enabled.filter((n) => hit.includes(n) || !DOMAINS[n].kit || n === pastWork) : enabled;
+  };
 
   const routerBe = config.router?.backend ? config.backends?.list?.[config.router.backend] : null;
+  const timeoutMs = config.router?.timeoutMs ?? 8000;
+  // What does not change comes first (the rules, the domains, capabilities, hints), so a provider
+  // can cache the prefix across projects; the working directory and the question's own hint last.
+  const systemPrompt = (q) => {
+    const list = offered(q);
+    const hinted = patternOf(q);
+    const lines = capabilityLines(caps, list);
+    const shownHints = list.map((n) => hintOf[n]).filter(Boolean);
+    return (
+      `Route a question from a coding agent to the one investigator that can answer it. Reply with one word: ${list.join(", ")}.\n` +
+      list.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
+      (lines.length ? `\nWhat more than one of them holds goes to the first named, or to the one named for the agent the question is about:\n${lines.join("\n")}` : "") +
+      (pastWork && list.includes(pastWork) && list.includes("code") ? `\nPast work (what a session did or why) is ${pastWork} even when it is about code; the code as it is now is code.` : "") +
+      (shownHints.length ? `\n${shownHints.join("\n")}` : "") +
+      `\nThe coding agent is working in ${process.cwd()}.` +
+      (hinted && list.includes(hinted) ? `\nThe question names something ${hinted} holds (it matches ${hinted}'s pattern): choose ${hinted} unless it asks what a past session did or said.` : "")
+    );
+  };
   async function byModel(q) {
     if (!routerBe || routerBe.kind !== "api") throw new Error("no router model");
     const preset = API_PRESETS[routerBe.preset] ?? {};
     const base = (routerBe.baseUrl ?? preset.baseUrl).replace(/\/+$/, "");
     const key = resolveKey(routerBe.key) ?? (preset.keyEnv ? process.env[preset.keyEnv] : null);
-    const system =
-      `Route a question from a coding agent (working in ${process.cwd()}) to the one investigator that can answer it. Reply with one word: ${enabled.join(", ")}.\n` +
-      enabled.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
-      (DOMAINS.sessions && DOMAINS.code ? "\nPast work (what a session did or why) is sessions even when it is about code; the code as it is now is code." : "") +
-      (hints.length ? `\n${hints.join("\n")}` : "");
-    const res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
-      body: JSON.stringify({ model: config.router.model ?? routerBe.model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: system }, { role: "user", content: q.slice(0, 2000) }] }),
-      signal: AbortSignal.timeout(8000),
-    });
+    let res;
+    try {
+      res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+        body: JSON.stringify({ model: config.router.model ?? routerBe.model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: systemPrompt(q) }, { role: "user", content: q.slice(0, 2000) }] }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      if (e?.name === "TimeoutError") throw Object.assign(new Error(`router model: no reply in ${timeoutMs} ms`), { timeout: true });
+      throw e;
+    }
     if (!res.ok) throw new Error(`router model: HTTP ${res.status}`);
     const j = await res.json();
-    const word = (j.choices?.[0]?.message?.content ?? "").toLowerCase().match(/[a-z]+/)?.[0];
+    const word = (j.choices?.[0]?.message?.content ?? "").toLowerCase().match(/[a-z][a-z0-9-]*/)?.[0];
     if (!enabled.includes(word)) throw new Error(`router model said "${word}"`);
     return word;
   }
-  return { enabled, DOMAINS, byRules, byModel, byPattern, skipped };
+  // When the model fails: a timeout goes to session history (a slow router is no sign the question
+  // is about anything else), any other failure to the keyword rules.
+  const fallback = (q, e) => (e?.timeout && pastWork ? pastWork : byRules(q));
+  return { enabled, DOMAINS, byRules, byModel, byPattern, fallback, hints, systemPrompt, offered, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter, loadMs, promptTokens };
+}
+
+// Misroutes: the router's choice that the caller corrected, or (with capabilities) that answered
+// with no data. Each is a routing record and a router-bench row: the question, where it went, and
+// where it should have gone. bench/router.mjs reads the rows.
+export const benchFile = () => path.join(STATE_ROOT, "router", "bench.jsonl");
+export function recordMisroute(session, row) {
+  const at = new Date().toISOString();
+  try {
+    fs.mkdirSync(path.join(STATE_ROOT, "router"), { recursive: true, mode: 0o700 });
+    fs.appendFileSync(path.join(STATE_ROOT, "router", `${slug(session)}.jsonl`), JSON.stringify({ at, type: "misroute", ...row }) + "\n", { mode: 0o600 });
+    fs.appendFileSync(benchFile(), JSON.stringify({ at, question: row.question, routed: row.routed, correct: row.correct, why: row.why }) + "\n", { mode: 0o600 });
+  } catch {}
 }
 
 export async function serveRouter() {
   const config = loadConfig();
-  const { enabled, DOMAINS, byRules, byModel, byPattern } = await makeRouter(config);
+  const { enabled, DOMAINS, byModel, byPattern, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
   const SESSION = callerSession();
   const children = new Map();
   const child = (name) => {
@@ -97,28 +202,31 @@ export async function serveRouter() {
     } catch {}
   };
   // The domain that answered this caller last, kept on disk: a follow-up from a new process (the
-  // shell, a restarted agent) must still reach the same investigator.
+  // shell, a restarted agent) must still reach the same investigator. It keeps the question and how
+  // it was routed too, so a correction from a new process is still seen as one.
   const lastFile = path.join(STATE_ROOT, "router", `last-${slug(SESSION)}.json`);
-  let last = (() => {
+  const readLast = () => {
     try {
-      return JSON.parse(fs.readFileSync(lastFile, "utf8")).domain ?? null;
+      return JSON.parse(fs.readFileSync(lastFile, "utf8"));
     } catch {
       return null;
     }
-  })();
-  const remember = (name) => {
-    last = name;
+  };
+  let last = readLast()?.domain ?? null;
+  const remember = (row) => {
+    last = row.domain;
     try {
       fs.mkdirSync(path.dirname(lastFile), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(lastFile, JSON.stringify({ domain: name, at: new Date().toISOString() }));
+      fs.writeFileSync(lastFile, JSON.stringify({ ...row, at: new Date().toISOString() }));
     } catch {}
   };
 
   const server = new McpServer(
     { name: "ask", version: "0.1.0" },
     {
+      // The domains are listed once, in the tool's description; these words stay the same for every set of kits.
       instructions:
-        `One \`ask\` for questions whose answer you would otherwise dig for: ${enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ")}. ` +
+        "One `ask` for questions whose answer you would otherwise dig for; its description lists what it answers about. " +
         "Call it before a run of searches, reads or lookups whose purpose is to answer a question; read files yourself when you are about to edit them. " +
         "It is a conversation: continue: true sends a follow-up to the investigator that answered last, which keeps what it found.",
     },
@@ -130,6 +238,7 @@ export async function serveRouter() {
         "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
         "so you pay for one call and the answer. It goes to one of: " +
         enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
+        (capLines.length ? `. Held by more than one, so the router picks by the agent a question names (first named otherwise): ${capLines.join("; ")}` : "") +
         ". Pass `about` to choose yourself. For a follow-up, pass continue: true. " +
         'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
       inputSchema: {
@@ -174,26 +283,60 @@ export async function serveRouter() {
           name = await byModel(question);
           how = "model";
         } catch (e) {
-          name = byRules(question);
-          how = "rules";
+          name = fallback(question, e);
+          how = e?.timeout && pastWork ? "timeout" : "rules";
           err = String(e.message ?? e).slice(0, 160);
         }
+      }
+      // The caller naming another domain for its next question within two minutes corrects the
+      // router: the earlier route was a misroute, and the caller's choice stands as given.
+      let correcting = false;
+      if (how === "caller" && !shot) {
+        const prev = readLast();
+        const gap = prev?.at ? Date.now() - Date.parse(prev.at) : Infinity;
+        if (prev && DECIDED.includes(prev.how) && prev.domain !== name && gap < MISROUTE_MS) {
+          correcting = true;
+          recordMisroute(SESSION, { question: prev.question, routed: prev.domain, how: prev.how, correct: name, why: "re-asked", afterMs: gap });
+        }
+      }
+      // Capabilities: a question routed (or sent with `about`) to one provider goes to the best
+      // provider for its scope: Claude Code history to mike when mike is here, Codex to sessions.
+      let resolvedFrom;
+      if (!correcting && (how === "caller" || DECIDED.includes(how))) {
+        const best = resolve(name, question);
+        if (best !== name) (resolvedFrom = name), (name = best);
       }
       const args = shot
         ? { ...(question.trim() ? { question } : {}), do: shot.script, ...(params ? { params } : {}), ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}) }
         : { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(early === false ? { early: false } : {}), ...(cont && name === last ? { continue: true } : {}) };
-      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}) });
-      remember(name);
+      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(resolvedFrom ? { resolvedFrom } : {}), ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}) });
+      remember({ domain: name, how, question: (question || "").slice(0, 500) });
+      // Pass the investigator's progress (one note per cell) on to the caller, if it asked for it.
+      const token = extra?._meta?.progressToken;
+      const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
+      const call = async (n, a) => (await child(n)).callTool({ name: "ask", arguments: a }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
       try {
-        const c = await child(name);
-        // Pass the investigator's progress (one note per cell) on to the caller, if it asked for it.
-        const token = extra?._meta?.progressToken;
-        const onprogress = token === undefined ? undefined : (p) => extra.sendNotification({ method: "notifications/progress", params: { ...p, progressToken: token } }).catch(() => {});
-        const out = await c.callTool({ name: "ask", arguments: args }, undefined, { timeout: (timeoutSeconds ?? 300) * 1000 + 30_000, signal: extra?.signal, onprogress });
+        let out = await call(name, args);
+        // Fallback, once: the provider held nothing for this question (its answer ended with the
+        // no-data line), so the next provider of the same capability gets the same question.
+        const next = !shot && out._meta?.[NO_DATA_META] ? nextAfter(name, question)[0] : null;
+        if (next) {
+          const from = name;
+          recordMisroute(SESSION, { question: question.slice(0, 500), routed: from, how, correct: next, why: "no data" });
+          journal({ question: question.slice(0, 500), domain: next, how: "fallback", from, routeMs: Date.now() - t0 });
+          remember({ domain: next, how: "fallback", question: question.slice(0, 500) });
+          name = next;
+          how = "fallback";
+          const { continue: _, ...fresh } = args;
+          out = await call(next, fresh);
+        }
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
         return { ...out, content: [{ type: "text", text: `${text}${!config.footer || ["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {
-        return { content: [{ type: "text", text: `ask failed (${name}): ${e.message ?? e}` }], isError: true };
+        // A kit's detect settings run at its first use; one that turns out unable to run here says why.
+        let why = null;
+        if (DOMAINS[name]?.index) why = await loadDomain(name).then((d) => d.unavailable, () => null);
+        return { content: [{ type: "text", text: why ? `ask failed: ${name} cannot run here: ${why}` : `ask failed (${name}): ${e.message ?? e}` }], isError: true };
       }
     },
   );

@@ -136,6 +136,7 @@ A name with no folder fails the router when it starts (`no domain "<name>"`).
 |---|---|---|---|
 | `enabled` | boolean | on | `false` takes the domain out of the router and out of the tool's `about` list. |
 | `backend` | string | none | A backend name from `backends.list` that answers this domain's asks. Beats `backends.default`. A name that is not in `list` is ignored. |
+| `priority` | number | the manifest's | Pins the priority of every capability the domain provides (`[[provides]]` in a kit, `provides` in a domain.mjs). The highest wins. Settles a tie that `ask-kit doctor` reports. |
 | `from` | string | none | Written by `ask-kit add`: the repository or folder a domain came from. |
 | `commit` | string | none | Written by `ask-kit add`: the commit installed. |
 | any other key | any | none | Read by the domain itself. A domain's `makeGlobals({ push, config })` receives the whole config. The [notes domain in the how-to](../guides/write-a-domain.md) reads `domains.notes.dir`. |
@@ -153,6 +154,7 @@ whether or not the config lists it. The config decides only what the router offe
 |---|---|---|---|
 | `backend` | string | none | Name of an `api` backend. The router asks it for one word naming the domain. |
 | `model` | string | that backend's `model` | A different (usually cheaper) model for the routing call. Setup never writes it. |
+| `timeoutMs` | number | `8000` | How long the routing call may take. Past it, session history answers. |
 
 `router` is `null` or missing when no backend is an API. Setup sets `router.backend` to the first
 `api` backend in the list: the investigator you chose, else the first extra.
@@ -162,12 +164,15 @@ How the router chooses, in order:
 1. The `about` parameter of the call.
 2. A follow-up (`continue: true`) goes to the domain that answered last for this caller.
 3. A single enabled domain.
-4. One call to `router.backend`: temperature 0, 200 tokens, 8 seconds, the question cut at 2000
-   characters, reply must be one enabled domain name.
-5. Keyword rules, when the call fails or says something else. These test `sessions` first and
-   then `code`, and fall back to the first enabled domain.
+4. A kit whose `patterns` match a question with no past-work words in it.
+5. One call to `router.backend`: temperature 0, 200 tokens, `timeoutMs` (8 seconds), the question
+   cut at 2000 characters, reply must be one enabled domain name. When it times out, `sessions`
+   answers. With more than 15 domains, the call offers only the kits whose `keywords` or
+   `patterns` the question matches, with the built-in domains (all of them when none match).
+6. Keyword rules, when the call fails or says something else. These test past-work words
+   (`sessions`) first, then kit `keywords`, then `code`, and fall back to the first enabled domain.
 
-The router call sends the working directory and the question to the model. See
+The router call sends the working directory, the enabled domains' descriptions and the question to the model. See
 [What it stores and sends](../privacy.md).
 
 ## Limits that are not config

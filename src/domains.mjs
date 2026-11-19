@@ -19,7 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CONFIG_DIR, ROOT, loadConfig } from "./config.mjs";
-import { findKit, kitDomain, listKits } from "./kits.mjs";
+import { findKit, kitDomain, kitIndex, listKits } from "./kits.mjs";
 
 const NAME = /^[a-z][a-z0-9-]*$/;
 
@@ -36,6 +36,14 @@ export function listDomains() {
     } catch {}
   }
   return [...seen];
+}
+
+// The router's view of a domain: a kit's index (manifest only, nothing run), else the domain module.
+export async function indexDomain(name, config = loadConfig({ required: false })) {
+  if (!NAME.test(name ?? "")) throw new Error(`"${name}" is not a domain name`);
+  const kit = findKit(name);
+  if (kit) return kitIndex(kit, { config });
+  return loadDomain(name);
 }
 
 export async function loadDomain(name) {
