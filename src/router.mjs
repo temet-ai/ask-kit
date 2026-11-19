@@ -14,7 +14,7 @@ import { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
-import { loadDomain } from "./domains.mjs";
+import { indexDomain, loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
 import { NO_DATA_META, capabilityLines, providersOf, ranked, scopeOf, tiesOf, winnersOf } from "./capabilities.mjs";
@@ -30,6 +30,8 @@ const CODE_WORDS = /`[^`]+`|\b[\w-]+\/[\w./-]+\.\w+\b|\b(where is|defined|defini
 // Routes the router decided itself; a caller who corrects one of these within MISROUTE_MS made it a misroute.
 export const DECIDED = ["model", "rules", "pattern", "timeout"];
 export const MISROUTE_MS = 120_000;
+// Past this many domains the router model sees only those the question's words point at.
+export const SHORTLIST_AT = 15;
 // Domain names other hosts use in kit hints (mike-ask's mike for past work); here they mean the past-work domain.
 const PAST_NAMES = ["sessions", "mike"];
 
@@ -49,15 +51,20 @@ export function rewriteHint(hint, enabled, pastWork) {
 export async function makeRouter(config) {
   const DOMAINS = {};
   const skipped = {};
+  // Milliseconds each domain added to building the router (kit profile reads them).
+  const loadMs = {};
   for (const n of Object.entries(config.domains ?? {}).filter(([, d]) => d.enabled !== false).map(([n]) => n)) {
+    const t0 = performance.now();
     try {
-      const d = await loadDomain(n);
+      // The index only: a kit's detect commands, sources and API wait for its first use.
+      const d = await indexDomain(n, config);
       // A kit that cannot run here (a missing program, setting or folder) is not offered.
       if (d.unavailable) skipped[n] = d.unavailable;
       else DOMAINS[n] = d;
     } catch (e) {
       skipped[n] = String(e.message ?? e).split("\n")[0];
     }
+    loadMs[n] = Math.round((performance.now() - t0) * 10) / 10;
   }
   if (!Object.keys(DOMAINS).length) throw new Error(`no domains can run: ${JSON.stringify(skipped)}`);
   // Capabilities are resolved before routing: for each one, the providers that can run here are
@@ -99,19 +106,37 @@ export async function makeRouter(config) {
   const byPattern = (q) => (PAST_WORK.test(q) ? null : patternOf(q));
   const rules = [...(pastWork ? [[pastWork, PAST_WORK]] : []), ...kitRules, ...(DOMAINS.code ? [["code", CODE_WORDS]] : [])];
   const byRules = (q) => rules.find(([, re]) => re.test(q))?.[0] ?? enabled[0];
-  const hints = enabled.map((n) => DOMAINS[n].routeHint && rewriteHint(DOMAINS[n].routeHint, enabled, pastWork)).filter(Boolean);
+  const hintOf = Object.fromEntries(enabled.map((n) => [n, DOMAINS[n].routeHint ? rewriteHint(DOMAINS[n].routeHint, enabled, pastWork) : null]));
+  const hints = enabled.map((n) => hintOf[n]).filter(Boolean);
+  // What each domain adds to every routed ask's router prompt, in tokens (about 4 characters each).
+  const promptTokens = Object.fromEntries(enabled.map((n) => [n, Math.round((`${n}: ${DOMAINS[n].says}\n`.length + (hintOf[n] ? hintOf[n].length + 1 : 0)) / 4)]));
+
+  // Past SHORTLIST_AT domains, keywords and patterns pick the candidates the router model sees: the
+  // kits they match, with the built-in domains and the past-work domain. When none match, all go.
+  const keywordRe = Object.fromEntries(kitRules);
+  const offered = (q) => {
+    if (enabled.length <= SHORTLIST_AT) return enabled;
+    const hit = enabled.filter((n) => DOMAINS[n].kit && (keywordRe[n]?.test(q) || DOMAINS[n].patterns?.some((re) => re.test(q))));
+    return hit.length ? enabled.filter((n) => hit.includes(n) || !DOMAINS[n].kit || n === pastWork) : enabled;
+  };
 
   const routerBe = config.router?.backend ? config.backends?.list?.[config.router.backend] : null;
   const timeoutMs = config.router?.timeoutMs ?? 8000;
+  // What does not change comes first (the rules, the domains, capabilities, hints), so a provider
+  // can cache the prefix across projects; the working directory and the question's own hint last.
   const systemPrompt = (q) => {
+    const list = offered(q);
     const hinted = patternOf(q);
+    const lines = capabilityLines(caps, list);
+    const shownHints = list.map((n) => hintOf[n]).filter(Boolean);
     return (
-      `Route a question from a coding agent (working in ${process.cwd()}) to the one investigator that can answer it. Reply with one word: ${enabled.join(", ")}.\n` +
-      enabled.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
-      (capLines.length ? `\nWhat more than one of them holds goes to the first named, or to the one named for the agent the question is about:\n${capLines.join("\n")}` : "") +
-      (pastWork && DOMAINS.code ? `\nPast work (what a session did or why) is ${pastWork} even when it is about code; the code as it is now is code.` : "") +
-      (hints.length ? `\n${hints.join("\n")}` : "") +
-      (hinted ? `\nThe question names something ${hinted} holds (it matches ${hinted}'s pattern): choose ${hinted} unless it asks what a past session did or said.` : "")
+      `Route a question from a coding agent to the one investigator that can answer it. Reply with one word: ${list.join(", ")}.\n` +
+      list.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n") +
+      (lines.length ? `\nWhat more than one of them holds goes to the first named, or to the one named for the agent the question is about:\n${lines.join("\n")}` : "") +
+      (pastWork && list.includes(pastWork) && list.includes("code") ? `\nPast work (what a session did or why) is ${pastWork} even when it is about code; the code as it is now is code.` : "") +
+      (shownHints.length ? `\n${shownHints.join("\n")}` : "") +
+      `\nThe coding agent is working in ${process.cwd()}.` +
+      (hinted && list.includes(hinted) ? `\nThe question names something ${hinted} holds (it matches ${hinted}'s pattern): choose ${hinted} unless it asks what a past session did or said.` : "")
     );
   };
   async function byModel(q) {
@@ -140,7 +165,7 @@ export async function makeRouter(config) {
   // When the model fails: a timeout goes to session history (a slow router is no sign the question
   // is about anything else), any other failure to the keyword rules.
   const fallback = (q, e) => (e?.timeout && pastWork ? pastWork : byRules(q));
-  return { enabled, DOMAINS, byRules, byModel, byPattern, fallback, hints, systemPrompt, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter };
+  return { enabled, DOMAINS, byRules, byModel, byPattern, fallback, hints, systemPrompt, offered, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter, loadMs, promptTokens };
 }
 
 // Misroutes: the router's choice that the caller corrected, or (with capabilities) that answered
@@ -199,8 +224,9 @@ export async function serveRouter() {
   const server = new McpServer(
     { name: "ask", version: "0.1.0" },
     {
+      // The domains are listed once, in the tool's description; these words stay the same for every set of kits.
       instructions:
-        `One \`ask\` for questions whose answer you would otherwise dig for: ${enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ")}. ` +
+        "One `ask` for questions whose answer you would otherwise dig for; its description lists what it answers about. " +
         "Call it before a run of searches, reads or lookups whose purpose is to answer a question; read files yourself when you are about to edit them. " +
         "It is a conversation: continue: true sends a follow-up to the investigator that answered last, which keeps what it found.",
     },
@@ -307,7 +333,10 @@ export async function serveRouter() {
         const text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
         return { ...out, content: [{ type: "text", text: `${text}${!config.footer || ["caller", "only", "shot"].includes(how) ? "" : `\n[routed to ${name} by ${how}]`}` }] };
       } catch (e) {
-        return { content: [{ type: "text", text: `ask failed (${name}): ${e.message ?? e}` }], isError: true };
+        // A kit's detect settings run at its first use; one that turns out unable to run here says why.
+        let why = null;
+        if (DOMAINS[name]?.index) why = await loadDomain(name).then((d) => d.unavailable, () => null);
+        return { content: [{ type: "text", text: why ? `ask failed: ${name} cannot run here: ${why}` : `ask failed (${name}): ${e.message ?? e}` }], isError: true };
       }
     },
   );

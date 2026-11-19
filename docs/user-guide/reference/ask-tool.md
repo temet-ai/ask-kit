@@ -35,7 +35,9 @@ Both forms need a config file. Without one the server exits at start with
 | `timeoutSeconds` | integer, 30 to 900 | no | How long the investigation may run. The domain's `ask` defaults to 300. |
 
 The tool's description lists the enabled domains with their one-line descriptions (the `says`
-field of each domain), and the server's instructions repeat them.
+field of each domain), and each capability that more than one of them provides, once, under the
+one that wins it. The server's instructions do not repeat the list, so each kit costs the calling
+agent's context once.
 
 ### How the router chooses a domain
 

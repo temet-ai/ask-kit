@@ -59,7 +59,7 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `cite` | How answers cite evidence |
 | `requires`, `platforms` | Programs that must be on PATH, and the systems it runs on (`linux`, `macos`, `windows`). A kit whose programs, `required` settings or folders are missing is not offered on that machine; `kit list` says why. |
 | `acts` | What the kit can change; shown at install |
-| `[[settings]]` `key`, `about`, `default`, `detect`, `secret`, `required` | A value the kit needs, with `about` saying what it is (shown by `kit list` when it is missing, in the install preview and on the kits page): from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
+| `[[settings]]` `key`, `about`, `default`, `detect`, `secret`, `required` | A value the kit needs, with `about` saying what it is (shown by `kit list` when it is missing, in the install preview and on the kits page): from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder when the kit is first used, never when the router starts), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
 | `state_key` | One state folder per value (the github kit keeps one per repository) |
 | `[[sources]]` `kind = "folder"` | `path`, `exclude` (globs never searched or read: what the investigator reads goes to a model) |
 | `[[sources]]` `kind = "cli"` | `command`, `refuse` (argument strings refused, with why), `env`, `timeout_seconds` |
@@ -237,6 +237,11 @@ the script's output.
 `ask-kit report` prints the same measures for real use: its first line gives the asks, the
 flagged ones, the shots with their share of all asks ("with no model"), cost and median seconds,
 and `ask-kit report --json` has them as `shots` and `noModelShare`.
+
+`ask-kit kit profile [--since 30d] [--json]` shows what each kit costs and does in real use, kit
+tests and benchmarks left out: how often the router chose it, its asks' median seconds, cost and
+cells, its misroutes, the fallbacks away from it and its no-data answers, the tokens it adds to
+the router prompt of every routed ask, and the milliseconds it adds to starting the router.
 
 ## Share it
 

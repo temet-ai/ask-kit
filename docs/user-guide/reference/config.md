@@ -167,7 +167,8 @@ How the router chooses, in order:
 4. A kit whose `patterns` match a question with no past-work words in it.
 5. One call to `router.backend`: temperature 0, 200 tokens, `timeoutMs` (8 seconds), the question
    cut at 2000 characters, reply must be one enabled domain name. When it times out, `sessions`
-   answers.
+   answers. With more than 15 domains, the call offers only the kits whose `keywords` or
+   `patterns` the question matches, with the built-in domains (all of them when none match).
 6. Keyword rules, when the call fails or says something else. These test past-work words
    (`sessions`) first, then kit `keywords`, then `code`, and fall back to the first enabled domain.
 

@@ -89,11 +89,12 @@ export function readManifest(dir) {
 // secret (never shown to the model). Resolved: the environment, then config.domains.<kit>.settings,
 // then detect, then default. The investigator's server starts in another directory, so resolved
 // values travel to it in its environment.
-function resolveSettings(m, config, cwd = process.cwd()) {
+function resolveSettings(m, config, cwd = process.cwd(), { detect = true } = {}) {
   const out = {};
   const own = config?.domains?.[m.name]?.settings ?? {};
   for (const s of m.settings ?? []) {
     let v = process.env[s.key] ?? own[s.key];
+    if (v == null && s.detect && !detect) continue;
     if (v == null && s.detect) {
       try {
         const [bin, ...args] = [].concat(s.detect);
@@ -485,15 +486,64 @@ async function scriptExamples(dirs) {
  * marked `required` has a value, and every folder source exists. Returns null when it can, else why not.
  * The router offers only kits that can run, so a machine lists what it can answer.
  */
-export function unavailable(m, settings) {
+export function unavailable(m, settings, { lazy = false } = {}) {
   const here = { darwin: "macos", win32: "windows" }[process.platform] ?? process.platform;
   if (m.platforms && ![].concat(m.platforms).includes(here)) return `runs on ${[].concat(m.platforms).join(", ")}, not ${here}`;
   const missing = [].concat(m.requires ?? []).filter((p) => !which(p));
   if (missing.length) return `needs ${missing.join(", ")} on PATH`;
-  const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key]).map((s) => (s.about ? `${s.key} (${s.about})` : s.key));
+  // Lazily (the router's index), a setting that only `detect` can give is not known yet: it is
+  // checked when the kit is first used.
+  const pending = (s) => lazy && s.detect && settings[s.key] == null;
+  const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key] && !pending(s)).map((s) => (s.about ? `${s.key} (${s.about})` : s.key));
   if (unset.length) return `needs ${unset.join(", ")}: set it in the environment or in domains.${m.name}.settings in ask-kit's config`;
-  for (const s of m.sources) if (s.kind === "folder" && !fs.existsSync(expand(fill(s.path, settings)))) return `its folder ${fill(s.path, settings)} does not exist`;
+  const waiting = new Set((m.settings ?? []).filter(pending).map((s) => s.key));
+  for (const s of m.sources) {
+    if (s.kind !== "folder" || [...String(s.path).matchAll(/\$\{([A-Z0-9_]+)\}/g)].some(([, k]) => waiting.has(k))) continue;
+    if (!fs.existsSync(expand(fill(s.path, settings)))) return `its folder ${fill(s.path, settings)} does not exist`;
+  }
   return null;
+}
+
+/**
+ * What the router needs of a kit, without building it: name, says, keywords, patterns, route_hint,
+ * provides and its scripts folders (for shots), and whether it can run here as far as that is known
+ * without running anything. `detect` commands, sources, MCP tool lists, `--help` texts and the API
+ * file wait for the kit's first use, in its own server (kitDomain).
+ */
+export function kitIndex(dir, { config, stack = [] } = {}) {
+  const m = readManifest(dir);
+  let why = null;
+  const usedDirs = [];
+  for (const u of m.uses ?? []) {
+    if ([...stack, m.name].includes(u)) throw new Error(`${m.name}: uses cycle: ${[...stack, m.name, u].join(" uses ")}`);
+    const udir = findKit(u);
+    if (!udir) {
+      why ??= `uses the ${u} kit, which is not installed`;
+      continue;
+    }
+    const d = kitIndex(udir, { config, stack: [...stack, m.name] });
+    if (d.unavailable) why ??= `uses the ${u} kit, which cannot run here: ${d.unavailable}`;
+    else usedDirs.push(...d.scriptsDirs);
+  }
+  const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config, process.cwd(), { detect: false })).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
+  why ??= unavailable(m, settings, { lazy: true });
+  const own = path.join(dir, m.scripts ?? "scripts");
+  const hostScripts = m.sources.some((s) => s.kind === "folder") && m.folder_scripts !== false ? [path.join(ROOT, "kits", "_host", "folder-scripts")] : [];
+  return {
+    name: m.name,
+    kit: true,
+    index: true,
+    manifest: m,
+    dir,
+    says: m.says,
+    unavailable: why,
+    keywords: why ? [] : (m.keywords ?? []),
+    patterns: why ? [] : (m.patterns ?? []).map((p) => new RegExp(p, "i")),
+    routeHint: m.route_hint ?? null,
+    provides: m.provides ?? [],
+    scriptsDir: own,
+    scriptsDirs: [...new Set([...hostScripts, ...usedDirs, own])],
+  };
 }
 
 /** The kit at `dir` as a domain object (the contract in src/domains.mjs). */

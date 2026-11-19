@@ -11,7 +11,7 @@
 //   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|install|enable|disable   kits: ask-kit.toml folders
+//   ask-kit kit new|link|list|test|profile|install|enable|disable   kits: ask-kit.toml folders
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -410,11 +410,22 @@ async function kitCommand() {
       if (r.summary.some((s) => s.passed < s.of)) process.exitCode = 1;
       return;
     }
+    case "profile": {
+      const { kitProfile } = await import("../src/report.mjs");
+      const { makeRouter } = await import("../src/router.mjs");
+      const router = await makeRouter(loadConfig());
+      const r = kitProfile({ since: typeof flag("since") === "string" ? flag("since") : "30d", router });
+      if (flag("json")) return print(r);
+      console.log(`Since ${r.since} (kit tests and benchmarks left out)`);
+      console.log(`${"kit".padEnd(18)}${"chosen".padStart(7)}${"asks".padStart(6)}${"median s".padStart(10)}${"cost $".padStart(9)}${"cells".padStart(7)}${"misroutes".padStart(11)}${"fallbacks".padStart(11)}${"no data".padStart(9)}${"router tok".padStart(12)}${"load ms".padStart(9)}`);
+      for (const k of r.kits) console.log(`${k.name.padEnd(18)}${String(k.chosen).padStart(7)}${String(k.asks).padStart(6)}${String(k.medianSeconds ?? "-").padStart(10)}${k.costUsd.toFixed(4).padStart(9)}${String(k.medianCells ?? "-").padStart(7)}${String(k.misroutes).padStart(11)}${String(k.fallbacks).padStart(11)}${String(k.noData).padStart(9)}${String(k.routerTokens).padStart(12)}${String(k.loadMs ?? "-").padStart(9)}${k.hidden ? `  (hidden: ${k.hidden})` : ""}`);
+      return;
+    }
     case "install":
       if (!positional[1]) throw new Error("kit install needs a repository (owner/repo) or a folder");
       return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes") }));
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · install <owner/repo> [--yes] · enable|disable <name>");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo> [--yes] · enable|disable <name>");
   }
 }
 
