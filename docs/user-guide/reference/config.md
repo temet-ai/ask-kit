@@ -28,6 +28,7 @@ Source: [`src/config.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/con
 | `backends` | object | none, required | The models. See [`backends`](#backends). |
 | `domains` | object | none, required | Which domains are on. See [`domains`](#domains). |
 | `router` | object or `null` | `null` when no backend is an API | How the router picks a domain. See [`router`](#router). |
+| `aliases` | object | `{}` | Other words a caller may give as `about`, each naming an enabled domain: `{"docs": "claude-code-docs"}`. The tool lists them in `about` and its description. An alias of a domain that is not enabled, or one that is a domain's own name, is left out. mike-ask uses it to keep the `about` names its callers already pass. |
 | `footer` | boolean | `false` | `true` adds a last line to each answer with the domain, backend and seconds (`[code · glm-5.3-flash · 21s]`), and the router's `[routed to <domain> by <how>]` line. Off by default, because agents repeat whatever the reply carries. The journal records time, backend and cost either way. |
 | `actions` | object | `{ "shadowEvery": 20 }` | `shadowEvery`: one answered run of an action in this many also runs the investigator in the background, for `ask-kit report` to show both answers. `0` turns shadow runs off. See [Actions](../kits.md#actions). |
 | `setupAt` | string (ISO time) | time of setup | Written by `plan()`. Nothing reads it. |

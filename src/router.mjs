@@ -111,6 +111,10 @@ export async function makeRouter(config) {
   const byAction = (q, cfg = config) => enabled.find((n) => DOMAINS[n].actions?.length && matchAction(DOMAINS[n].actions.filter((a) => statusOf(n, a, cfg).on), q)) ?? null;
   const rules = [...(pastWork ? [[pastWork, PAST_WORK]] : []), ...kitRules, ...(DOMAINS.code ? [["code", CODE_WORDS]] : [])];
   const byRules = (q) => rules.find(([, re]) => re.test(q))?.[0] ?? enabled[0];
+  // `aliases` in the config: other words a caller may give as `about` ({"docs": "claude-code-docs"}),
+  // so a host keeps the names its callers already use. An alias of a domain not enabled here, or one
+  // that is itself a domain's name, is left out.
+  const aliases = Object.fromEntries(Object.entries(config.aliases ?? {}).filter(([a, d]) => /^[a-z][a-z0-9-]*$/.test(a) && enabled.includes(d) && !enabled.includes(a)));
   const hintOf = Object.fromEntries(enabled.map((n) => [n, DOMAINS[n].routeHint ? rewriteHint(DOMAINS[n].routeHint, enabled, pastWork) : null]));
   const hints = enabled.map((n) => hintOf[n]).filter(Boolean);
   // What each domain adds to every routed ask's router prompt, in tokens (about 4 characters each).
@@ -170,7 +174,7 @@ export async function makeRouter(config) {
   // When the model fails: a timeout goes to session history (a slow router is no sign the question
   // is about anything else), any other failure to the keyword rules.
   const fallback = (q, e) => (e?.timeout && pastWork ? pastWork : byRules(q));
-  return { enabled, DOMAINS, byRules, byModel, byPattern, byAction, fallback, hints, systemPrompt, offered, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter, loadMs, promptTokens };
+  return { enabled, aliases, DOMAINS, byRules, byModel, byPattern, byAction, fallback, hints, systemPrompt, offered, pastWork, skipped, providers, caps, hidden, ties, capLines, resolve, nextAfter, loadMs, promptTokens };
 }
 
 // Misroutes: the router's choice that the caller corrected, or (with capabilities) that answered
@@ -188,7 +192,8 @@ export function recordMisroute(session, row) {
 
 export async function serveRouter() {
   const config = loadConfig();
-  const { enabled, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
+  const { enabled, aliases, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
+  const aliasLine = Object.entries(aliases).map(([a, d]) => `"${a}" for ${d}`).join(", ");
   const SESSION = callerSession();
   const children = new Map();
   const child = (name) => {
@@ -244,11 +249,13 @@ export async function serveRouter() {
         "so you pay for one call and the answer. It goes to one of: " +
         enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
         (capLines.length ? `. Held by more than one, so the router picks by the agent a question names (first named otherwise): ${capLines.join("; ")}` : "") +
-        ". Pass `about` to choose yourself. For a follow-up, pass continue: true. " +
+        ". Pass `about` to choose yourself" +
+        (aliasLine ? ` (it also takes ${aliasLine})` : "") +
+        ". For a follow-up, pass continue: true. " +
         'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
       inputSchema: {
         question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
-        about: z.enum(enabled).optional().describe("Which investigator; left out, the router chooses"),
+        about: z.enum([...enabled, ...Object.keys(aliases)]).optional().describe("Which investigator; left out, the router chooses"),
         do: z.string().optional().describe('A shot: "<kit>.<script>" runs that kit script with no model and returns its result'),
         params: z.record(z.string(), z.any()).optional().describe("The shot script's parameters"),
         continue: z.boolean().optional().describe("Send this to the investigator that answered your last question"),
@@ -259,7 +266,7 @@ export async function serveRouter() {
     },
     async ({ question = "", about, do: doWhat, params, continue: cont = false, early, backend, timeoutSeconds }, extra) => {
       const t0 = Date.now();
-      let name = about;
+      let name = about ? (aliases[about] ?? about) : about;
       let how = "caller";
       let err;
       let shot = null;
@@ -272,7 +279,7 @@ export async function serveRouter() {
           return { content: [{ type: "text", text: `ask failed: ${e.message}` }], isError: true };
         }
         const has = (n) => (DOMAINS[n].scriptsDirs ?? [DOMAINS[n].scriptsDir]).some((d) => d && fs.existsSync(path.join(d, `${shot.script}.mjs`)));
-        const owners = shot.kit ? [shot.kit] : about ? [about] : enabled.length === 1 ? enabled : enabled.filter(has);
+        const owners = shot.kit ? [aliases[shot.kit] ?? shot.kit] : about ? [name] : enabled.length === 1 ? enabled : enabled.filter(has);
         if (owners.length !== 1 || !enabled.includes(owners[0]))
           return { content: [{ type: "text", text: `ask failed: no single kit for do "${doWhat}"${shot.kit && !enabled.includes(shot.kit) ? ` (${shot.kit} is not a kit that can run here)` : ""}; kits: ${enabled.join(", ")}. Write it as "<kit>.<script>".` }], isError: true };
         (name = owners[0]), (how = "shot");
