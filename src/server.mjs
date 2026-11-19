@@ -298,7 +298,15 @@ async function runCell(code, maxChars, timeoutSeconds) {
   try {
     const rewritten = rewriteCell(code);
     declared = rewritten.declared;
-    const promise = vm.runInContext(rewritten.script, context, { filename: "cell.js" });
+    // vm's timeout covers the synchronous part only (up to the first await). A loop that never yields
+    // would block this process, so the race below could never fire; vm stops it and the context stays usable.
+    let promise;
+    try {
+      promise = vm.runInContext(rewritten.script, context, { filename: "cell.js", timeout: timeoutSeconds * 1000 });
+    } catch (e) {
+      if (e?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") throw new Error(`cell timed out after ${timeoutSeconds}s of synchronous work (a loop that never ends, or one that never yields). The REPL is still usable; fix the loop, or do the work in smaller steps.`);
+      throw e;
+    }
     let timer;
     value = await Promise.race([
       promise,

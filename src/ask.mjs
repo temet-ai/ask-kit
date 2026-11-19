@@ -33,6 +33,15 @@ const shadowing = new AsyncLocalStorage();
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
 const CELL_MAX_S = 60;
+// An agent CLI has no closing call, so its process may run RESERVE_MS - 2 s past the ask's limit (which
+// already has RESERVE_MS taken off the client's timeout), but never to within 2 s of the client's own.
+const CLI_MARGIN_MS = 2000;
+/** How long an agent CLI process may run for an ask whose time limit is `timeoutMs`; `clientMs` is the client's tool timeout (0 when unknown). */
+export const cliLimitMs = (timeoutMs, clientMs = 0) => {
+  const own = timeoutMs + RESERVE_MS - CLI_MARGIN_MS;
+  return clientMs ? Math.max(1000, Math.min(own, clientMs - CLI_MARGIN_MS)) : own;
+};
+const stoppedAtLimit = (b, r) => `${b} was stopped at the time limit before it answered. Ask again with a narrower question, or raise timeoutSeconds if the client allows it.`;
 // No step limit: time is the budget. With this much left the investigator is told to answer.
 const WRAP_MS = 30_000;
 const SERVER = path.join(ROOT, "src", "server.mjs");
@@ -154,7 +163,7 @@ export function registerAsk(server, ctx) {
     try {
       return JSON.parse(r.out);
     } catch {
-      throw new Error(`claude exited ${r.code}: ${(r.err || r.out).slice(0, 500)}`);
+      throw new Error(r.timedOut ? stoppedAtLimit("claude", r) : `claude exited ${r.code}: ${(r.err || r.out).slice(0, 500)}`);
     }
   }
 
@@ -224,6 +233,7 @@ export function registerAsk(server, ctx) {
     const failed = ev.find((e) => e.type === "turn.failed" || e.type === "error");
     const usage = ev.filter((e) => e.type === "turn.completed").map((e) => e.usage ?? {}).pop() ?? {};
     const cells = ev.filter((e) => e.type === "item.completed" && e.item?.type === "mcp_tool_call").length;
+    if (!thread && !msgs.length && r.timedOut) throw new Error(stoppedAtLimit("codex", r));
     if (!thread && !msgs.length) throw new Error(`codex exited ${r.code}: ${(r.err || r.out).slice(-600)}`);
     return { thread, answer: msgs.pop() ?? "", error: failed ? JSON.stringify(failed).slice(0, 300) : null, usage, cells };
   }
@@ -298,6 +308,7 @@ export function registerAsk(server, ctx) {
     const msgs = ev.filter((e) => e.type === "assistant.message" && e.data?.content).map((e) => e.data.content);
     const sid = ev.find((e) => e.data?.sessionId)?.data.sessionId ?? null;
     const answer = msgs.pop() ?? (ev.length ? "" : r.out.trim());
+    if (!answer && r.timedOut) throw new Error(stoppedAtLimit("copilot", r));
     if (!answer) throw new Error(`copilot exited ${r.code}: ${(r.err || r.out).slice(-600)}`);
     writeLast(b, { askId, innerSession: sid ?? prev?.innerSession });
     const usage = ev.filter((e) => e.type === "session.usage_record").map((e) => e.data?.usage ?? {});
@@ -771,7 +782,7 @@ export function registerAsk(server, ctx) {
       const run = (async () => {
         try {
           if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
-          const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : timeoutMs + RESERVE_MS - 2000, cont, ac.signal, onStep, onEarly);
+          const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : cliLimitMs(timeoutMs, clientMs), cont, ac.signal, onStep, onEarly);
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
           ctx.keep({ question, backend, kind, ...r, ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });

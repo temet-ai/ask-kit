@@ -41,7 +41,7 @@ export function spawnCli(bin, args, opts = {}) {
   return spawn(full, args, opts);
 }
 
-/** Run a program to completion: {code, out, err}. Never rejects. */
+/** Run a program to completion: {code, out, err, timedOut?}. Never rejects. */
 export function runCli(bin, args, { cwd, env, timeoutMs = 60_000, signal } = {}) {
   return new Promise((resolve) => {
     let child;
@@ -55,14 +55,18 @@ export function runCli(bin, args, { cwd, env, timeoutMs = 60_000, signal } = {})
     let err = "";
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
+    let timedOut = false;
     const kill = () => child.kill("SIGTERM");
-    const timer = setTimeout(kill, timeoutMs);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, timeoutMs);
     signal?.addEventListener("abort", kill, { once: true });
     child.on("error", (e) => resolve({ code: -1, out, err: String(e.message) }));
     child.on("close", (code) => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", kill);
-      resolve({ code, out, err });
+      resolve({ code, out, err, ...(timedOut ? { timedOut } : {}) });
     });
   });
 }
