@@ -161,7 +161,10 @@ Because the model takes 87% of the time:
 - **Backend per domain from the journal.** The 40% of asks that hit the limit are mostly
   deepseek. The journal already holds each domain's time, steps and limit hits per backend from
   real use; move a domain to the backend that finishes there. No benchmark rounds: a benchmark
-  runs once, only when Dawid asks for that run.
+  runs once, only when Dawid asks for that run. Done on 2026-11-19 from 14 days of journal: mike
+  moved to glm (median 40 s and 35% limit or failure over 101 asks, against deepseek's 115 s and
+  50% over 92; $0.011 against $0.008 an ask). The kits stay on the default: they have under five
+  real asks on glm each, too few to move them.
 - **Scripts that answer in one cell** for the questions that recur, so a run takes two steps
   instead of 18.
 
