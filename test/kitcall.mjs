@@ -21,9 +21,9 @@ fs.writeFileSync(
 const stub = path.join(tmp, "stub-server.mjs");
 fs.writeFileSync(
   stub,
-  `import { McpServer } from ${JSON.stringify(path.join(ROOT, "node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js"))};
-import { StdioServerTransport } from ${JSON.stringify(path.join(ROOT, "node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js"))};
-import { z } from ${JSON.stringify(path.join(ROOT, "node_modules/zod/index.js"))};
+  `import { McpServer } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/mcp.js"))};
+import { StdioServerTransport } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/stdio.js"))};
+import { z } from ${JSON.stringify(import.meta.resolve("zod"))};
 const s = new McpServer({ name: "stub", version: "0" });
 s.registerTool("ask", { description: "stub", inputSchema: { question: z.string(), continue: z.boolean().optional() } }, async ({ question, continue: c }) => ({
   content: [{ type: "text", text: "answer from " + process.env.ASK_KIT_DOMAIN + " depth=" + process.env.ASK_KIT_DEPTH + " session=" + process.env.ASK_KIT_SESSION + " inner=" + (process.env.ASK_KIT_INNER ?? "no") + " continue=" + !!c + ": " + question + "\\n\\n[" + process.env.ASK_KIT_DOMAIN + " · stub-model · 7s · $0.0031]" }],
