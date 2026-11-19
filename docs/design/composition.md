@@ -198,6 +198,18 @@ started the digging. It is smith's first and third steps, run over files every u
 same numbers on mike's capture (fleet-mcp-integration, 2026-11-19: 1,221 chains in 565
 sessions, $285 at list price) put code first (331 sessions) and mike's tools second (251).
 
+Built on 2026-11-19 (src/gaps.mjs). Its first 30-day run on omit read 1,545 sessions in 34 s
+(0.4 s on the next run, 1,528 of the sessions from its cache). It found 753 chains answered by
+hand in 429 sessions. By lookup family: file 284 chains in 222 sessions, mike's tools 320 in
+204, git 53 in 47, web 39 in 17. By kit, code came first (281 chains in 199 sessions), then
+fleet (176 in 115) and mike (70 in 59 from typed questions, plus 119 that weren't; code's and
+fleet's counts include theirs, 111 and 122). It reads less than mike's
+capture: this machine only, and no subagent transcripts (those add 316 to-answer chains, 264 of
+them file). It also counts a forked seat's copied history once; without that, the to-answer
+chains (counting the 2 that ended in an ask) were 1,002 instead of 755. 174 asks against the
+753 by-hand chains put coverage at 19% by count and 5% by tokens. 336 of the 753 started from
+mail or a fleet brief.
+
 ## Order of work
 
 | Step | Section | Measure |

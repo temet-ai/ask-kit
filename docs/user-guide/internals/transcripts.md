@@ -8,7 +8,7 @@ proxy and no database of ask-kit's own, except a small cache of session metadata
 
 | File | What is in it |
 |---|---|
-| [src/transcripts/index.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/index.mjs) | `ADAPTERS` (the five adapters by name), `makeHistory({sources, push})` (the `history` API: `sources`, `sessions`, `session`, `events`, `usage`, `grep`), `cite`. |
+| [src/transcripts/index.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/index.mjs) | `ADAPTERS` (the five adapters by name), `listSessions(sources)` (every session without ask-kit's own investigators), `makeHistory({sources, push})` (the `history` API: `sources`, `sessions`, `session`, `events`, `usage`, `grep`), `cite`. |
 | [src/transcripts/common.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/common.mjs) | The event shape (header comment), `indexed` (the cache), `fileMayMatch` (the search pre-filter), `head`, `parseLines`, `walk`, `textOf`, `titleOf`, `clip`. |
 | [src/transcripts/claude-code.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/claude-code.mjs) | `adapter` for Claude Code. |
 | [src/transcripts/codex.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/codex.mjs) | `adapter` for Codex. |
@@ -30,7 +30,7 @@ Each adapter module exports `adapter`, an object with:
 | `where()` | The folder or file the adapter reads. Shown in `detect`, `doctor` and `history.sources()`. |
 | `available()` | Whether the store exists on this machine. |
 | `sessions()` | The sessions, as `{source, file, size, updatedAt, id, cwd, project, startedAt, title, ...}`. File-based adapters build it with `indexed()`. |
-| `events(session)` | The normalised events of one session. |
+| `events(session, {usage})` | The normalised events of one session. With `usage: true` (Claude Code, Codex, Copilot CLI) it also gives a `usage` event per model call, `{req, model, tokens: {input, cacheWrite, cacheRead, output}}`, and a `req` on each tool call naming the model call that made it. `ask-kit gaps` (src/gaps.mjs) uses this; the REPL never asks for it. |
 | `usage(session)` | Token counts by model. |
 | `noPrefilter` | Optional. `true` when `fileMayMatch` cannot be used on the store (opencode). |
 

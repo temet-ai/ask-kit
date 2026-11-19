@@ -46,6 +46,25 @@ ask-kit ask --domain sessions --backend <name> "<the same question>"
 Compare the answer, steps, time and cost with the report. Then ask two or three other questions
 that use what you changed, to make sure you didn't break something else.
 
+## Find what agents look up by hand
+
+The journal shows the questions `ask` was given. It can't show the ones it never got, when an
+agent read files or ran `gh` itself instead. `ask-kit gaps` finds those in your agents'
+transcripts:
+
+```sh
+ask-kit gaps --since 30d
+```
+
+- A kit under **Installed but skipped** covers the sources an agent read by hand instead of
+  calling `ask`. Read its example prompts. If they are questions the kit answers, make the kit's
+  `says` and `keywords` name them, so the rule and the router send them to `ask`.
+- A source under **No kit** with many sessions and tokens is a candidate for a kit. Its example
+  prompts are the first questions for the kit's `bench/questions.json`.
+
+Before a change, run `ask-kit gaps --since 7d` and note the coverage line. A week after it, run
+the same command and compare.
+
 ## Habits that give better answers
 
 - Put what you already know in the question.
