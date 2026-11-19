@@ -65,7 +65,7 @@ export function plan(answers, d, { dry = false } = {}) {
     setupAt: new Date().toISOString(),
   };
   const clients = (answers.clients ?? []).filter((c) => REGISTER[c]);
-  const bundle = installBundle(clients, { dry: true }).filter((r) => !r.action.startsWith("skip-no") && r.action !== "unchanged");
+  const bundle = installBundle(clients, { dry: true }).filter((r) => !r.action.startsWith("skip-no") && r.action !== "skip-plugin" && r.action !== "unchanged");
   const changes = [
     { client: null, what: `write ${CONFIG_FILE}`, run() {} },
     ...clients.map((c) => REGISTER[c]()),

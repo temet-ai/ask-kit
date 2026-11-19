@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ask-kit kits</title>
+<meta name="description" content="Kits for ask-kit's ask tool, listed from every public GitHub repository with the topic ask-kit.">
+<link rel="icon" href="ask-kit-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,500..700,100&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #f5eee4; --card: #fbf7f1; --sunk: #efe5d8; --ink: #2a1c16; --muted: #76625a;
+  --line: #e1d3c3; --cocoa: #795548; --cocoa-soft: #ead9cc; --acts: #9a5b13; --acts-soft: #f6e4c8;
+  --shadow: 0 1px 0 rgba(60, 35, 20, .06), 0 6px 18px -10px rgba(60, 35, 20, .25);
+  --logo: none;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1d1512; --card: #251b17; --sunk: #2c211c; --ink: #f2e7dd; --muted: #b29d90;
+    --line: #3b2d26; --cocoa: #d0a58f; --cocoa-soft: #3a2a23; --acts: #e8b25e; --acts-soft: #3a2a17;
+    --shadow: 0 1px 0 rgba(0, 0, 0, .3); --logo: brightness(2.1) saturate(.45) sepia(.35); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1d1512; --card: #251b17; --sunk: #2c211c; --ink: #f2e7dd; --muted: #b29d90;
+  --line: #3b2d26; --cocoa: #d0a58f; --cocoa-soft: #3a2a23; --acts: #e8b25e; --acts-soft: #3a2a17;
+  --shadow: 0 1px 0 rgba(0, 0, 0, .3); --logo: brightness(2.1) saturate(.45) sepia(.35); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15.5px/1.55 "Instrument Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--cocoa); text-underline-offset: 3px; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .86em; }
+p code { white-space: nowrap; }
+.serif { font-family: "Fraunces", Georgia, serif; font-variation-settings: "SOFT" 100; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+header.top { border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: flex-start; gap: 20px; padding-top: 18px; padding-bottom: 16px; }
+header.top img { height: 46px; width: auto; display: block; filter: var(--logo); }
+header.top nav { margin-left: auto; display: flex; gap: 18px; align-items: center; padding-top: 4px; font-size: 14px; }
+header.top nav a { color: var(--ink); text-decoration: none; }
+header.top nav a:hover { color: var(--cocoa); }
+.theme { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+
+.intro { padding: 40px 0 8px; max-width: 820px; }
+.tally { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.intro h1 { font-size: 34px; line-height: 1.1; margin: 0 0 14px; font-weight: 600; }
+.intro p { margin: 0 0 10px; max-width: 64ch; color: var(--ink); }
+.intro .note { color: var(--muted); font-size: 14px; }
+.count { border-left: 1px solid var(--line); padding-left: 28px; align-self: start; }
+.count b { display: block; font-family: "Fraunces", Georgia, serif; font-variation-settings: "SOFT" 100; font-size: 44px; line-height: 1; font-weight: 600; color: var(--cocoa); }
+.count span { display: block; color: var(--muted); font-size: 13.5px; margin-top: 6px; }
+.count a { font-size: 14px; display: inline-block; margin-top: 12px; }
+
+.line { display: flex; align-items: stretch; border: 1px solid var(--line); background: var(--sunk); border-radius: 9px; overflow: hidden; }
+.line code { flex: 1; min-width: 0; padding: 9px 12px; white-space: pre-wrap; overflow-x: auto; color: var(--ink); }
+.line .w { white-space: nowrap; }
+.line button { border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--muted); font: 500 12.5px "Instrument Sans", sans-serif; padding: 0 12px; cursor: pointer; }
+.line button:hover { color: var(--cocoa); }
+.line button.done { color: var(--cocoa); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 0 18px; }
+.search { flex: 1 1 320px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 0 12px; }
+.search input { flex: 1; border: 0; background: transparent; color: var(--ink); font: inherit; padding: 10px 0; outline: none; }
+.search kbd { font: 12px "JetBrains Mono", monospace; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--card); }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--cocoa-soft); color: var(--ink); font-weight: 600; }
+select { border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; border-radius: 9px; padding: 8px 10px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; padding-bottom: 48px; }
+.kit { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px; cursor: pointer; transition: border-color .15s, transform .15s; }
+.kit:hover { border-color: var(--cocoa); transform: translateY(-1px); }
+.kit:focus-visible { outline: 2px solid var(--cocoa); outline-offset: 2px; }
+.kit .head { display: flex; align-items: flex-start; gap: 10px; }
+.kit .head img { width: 22px; height: 22px; border-radius: 6px; margin-top: 4px; }
+.kit h2 { font-size: 22px; line-height: 1.15; margin: 0; font-weight: 600; }
+.kit .repo { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kit .ver { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; padding-top: 4px; }
+.kit .says { margin: 0; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.asked { margin: 0; padding: 9px 12px; border-left: 3px solid var(--cocoa); background: var(--sunk); border-radius: 0 8px 8px 0; font-size: 14.5px; }
+.asked small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin-top: auto; }
+.facts b { color: var(--ink); font-weight: 600; }
+.acts { color: var(--acts); font-weight: 600; }
+.reads { color: var(--muted); }
+
+.empty { padding: 40px 0 60px; color: var(--muted); }
+
+section.publish { border-top: 1px solid var(--line); padding: 36px 0 44px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
+section.publish h2, .detail h2 { font-size: 22px; margin: 0 0 12px; font-weight: 600; }
+ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 14px; }
+ol.steps li { counter-increment: s; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 4px 10px; }
+ol.steps li::before { content: counter(s); grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; background: var(--cocoa-soft); color: var(--cocoa); font: 600 13px "Instrument Sans", sans-serif; display: grid; place-items: center; }
+ol.steps p { margin: 2px 0 6px; }
+
+footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; padding-top: 18px; padding-bottom: 28px; }
+
+/* One kit */
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 44px; padding: 28px 0 56px; }
+.back { display: inline-block; font-size: 14px; margin-bottom: 18px; text-decoration: none; }
+.detail h1 { font-size: 38px; line-height: 1.1; margin: 0; font-weight: 600; }
+.detail .sub { color: var(--muted); margin: 6px 0 18px; font-size: 14px; }
+.detail .lead { font-size: 17px; margin: 0 0 12px; }
+.detail section { margin-top: 30px; }
+.detail .lines { display: grid; gap: 8px; }
+.detail .lines small { color: var(--muted); font-size: 12.5px; }
+ol.qs { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+ol.qs li::marker { color: var(--muted); font-size: 13px; }
+ul.actlist { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+ul.actlist li { font: 13px "JetBrains Mono", monospace; background: var(--acts-soft); color: var(--ink); border-radius: 6px; padding: 3px 8px; }
+.trust { margin-top: 14px; border: 1px solid var(--line); border-left: 3px solid var(--acts); background: var(--card); border-radius: 0 10px 10px 0; padding: 12px 16px; font-size: 14.5px; }
+.trust p { margin: 0 0 6px; } .trust p:last-child { margin: 0; }
+aside.meta { align-self: start; position: sticky; top: 20px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 6px 16px; }
+aside.meta dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); }
+aside.meta dt, aside.meta dd { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+aside.meta dt { color: var(--muted); padding-right: 14px; }
+aside.meta dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+aside.meta dt:nth-last-of-type(1), aside.meta dd:last-of-type { border-bottom: 0; }
+
+@media (max-width: 820px) {
+  .wrap { padding: 0 16px; }
+  section.publish, .detail { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  aside.meta { position: static; }
+  header.top nav { gap: 12px; }
+  .intro h1 { font-size: 28px; } .detail h1 { font-size: 30px; }
+}
+@media (prefers-reduced-motion: reduce) { .kit { transition: none; } .kit:hover { transform: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a href="#" aria-label="ask-kit kits"><img src="ask-kit-logo.png" alt="ask-kit"></a>
+    <nav>
+      <a href="#">Kits</a>
+      <a href="https://github.com/temet-ai/ask-kit/blob/main/docs/user-guide/kits.md">Guide</a>
+      <a href="https://github.com/temet-ai/ask-kit">GitHub</a>
+      <button class="theme" id="theme" type="button">Theme: auto</button>
+    </nav>
+  </div>
+</header>
+<main id="main" class="wrap"></main>
+<footer>
+  <div class="wrap">
+    <span>ask-kit, MIT licence</span>
+    <span id="built"></span>
+    <a href="https://github.com/temet-ai/ask-kit/blob/main/site/build-index.mjs">How this list is built</a>
+  </div>
+</footer>
+
+<script>
+const AGENTS = "~/.config/ask-kit/AGENTS.md";
+const GUIDE = "https://github.com/temet-ai/ask-kit/blob/main/docs/user-guide/kits.md";
+let DATA = { kits: [] };
+let MANY_OWNERS = false;
+const state = { q: "", filter: "all", sort: "name" };
+try { Object.assign(state, JSON.parse(localStorage.getItem("kits-view") || "{}"), { q: "" }); } catch {}
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ago = (d) => {
+  if (!d) return "";
+  const days = Math.round((Date.now() - new Date(d)) / 864e5);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : days < 31 ? `${days} days ago` : new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+};
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const cap = (s) => String(s ?? "").replace(/^\p{Ll}/u, (c) => c.toUpperCase());
+const platform = (p) => esc({ linux: "Linux", darwin: "macOS", macos: "macOS", win32: "Windows", windows: "Windows" }[String(p).toLowerCase()] ?? p);
+// Long lines wrap between words only, so a repository name is never split at its hyphen.
+const line = (text) => `<div class="line"><code>${text.split(" ").map((w) => `<span class="w">${esc(w).replaceAll("/", "/<wbr>")}</span>`).join(" ")}</code><button type="button" data-copy="${esc(text)}">Copy</button></div>`;
+
+// A kit without a manifest (the older domain form) doesn't say what it changes, so it gets no label either way.
+const kind = (k) => (k.form !== "kit" ? "unknown" : k.acts.length ? "acts" : "reads");
+function changes(k) {
+  return { acts: `<span class="acts">${plural(k.acts.length, "call")} that change things</span>`, reads: `<span class="reads">Reads only</span>`, unknown: `<span class="reads">No manifest</span>` }[kind(k)];
+}
+/** The README intro, without its first sentence when that is the stock "An ask-kit kit that lets..." line. */
+function intro(k) {
+  const text = (k.intro || "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  const parts = text.split(/(?<=\.)\s+/);
+  const rest = (/^An? \S*ask-kit\S* kit\b/i.test(parts[0] ?? "") ? parts.slice(1) : parts).join(" ");
+  return rest ? esc(rest).replace(/`([^`]+)`/g, "<code>$1</code>") : "";
+}
+
+function card(k) {
+  const needs = k.requires.map((r) => `<b class="mono">${esc(r)}</b>`);
+  const q = k.questions[0];
+  return `<article class="kit" tabindex="0" data-repo="${esc(k.repo)}">
+    <div class="head">
+      ${k.avatar && MANY_OWNERS ? `<img src="${esc(k.avatar)}&s=44" alt="">` : ""}
+      <div style="min-width:0"><h2 class="serif">${esc(k.name)}</h2><div class="repo mono" title="${esc(k.repo)}">${esc(k.repo)}</div></div>
+      ${k.version ? `<span class="ver mono">v${esc(k.version)}</span>` : ""}
+    </div>
+    <p class="says">${esc(cap(k.says))}</p>
+    ${q ? `<p class="asked"><small>Asked in its tests${k.questions.length > 1 ? ` (1 of ${k.questions.length})` : ""}</small>${esc(q)}</p>` : ""}
+    <div class="facts">
+      ${changes(k)}
+      ${needs.length ? `<span>Needs ${needs.join(", ")}</span>` : `<span>Needs nothing extra</span>`}
+      ${k.platforms.length ? `<span>${k.platforms.map(platform).join(", ")} only</span>` : ""}
+      ${k.stars ? `<span>${plural(k.stars, "star")}</span>` : ""}
+      <span>Updated ${esc(ago(k.updated))}</span>
+    </div>
+    ${line(k.install)}
+  </article>`;
+}
+
+function visible() {
+  const words = state.q.toLowerCase().split(/\s+/).filter(Boolean);
+  let list = DATA.kits.filter((k) => state.filter === "all" || kind(k) === state.filter);
+  if (words.length) list = list.filter((k) => {
+    const hay = [k.name, k.repo, k.says, k.intro, ...k.requires, ...k.questions, ...k.acts].join(" ").toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+  const by = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    stars: (a, b) => b.stars - a.stars || a.name.localeCompare(b.name),
+    updated: (a, b) => String(b.updated).localeCompare(String(a.updated)),
+    tested: (a, b) => b.questions.length - a.questions.length || a.name.localeCompare(b.name),
+  }[state.sort];
+  return list.sort(by);
+}
+
+function renderList() {
+  const kits = DATA.kits;
+  const owners = new Set(kits.map((k) => k.owner)).size;
+  document.title = "ask-kit kits";
+  main.innerHTML = `
+    <div class="intro">
+      <h1 class="serif">Kits for ask-kit</h1>
+      <p>A kit adds something for <code>ask</code> to answer about: a service, a database, a CLI or a folder of docs. Each one is a public GitHub repository with the topic <code>ask-kit</code>, and most carry an <code>ask-kit.toml</code>.</p>
+      <p>Install one from the shell with the line on its card, or paste this into an agent that has ask-kit:</p>
+      ${line(`Read ${AGENTS}, then add this kit: github.com/<owner>/<repo>`)}
+      <p class="note" style="margin-top:10px">Listings aren't reviewed. A kit runs as you, so read what its install preview says it reaches and changes.</p>
+    </div>
+    <p class="tally">${plural(kits.length, "kit")} from ${plural(owners, "author")} · <a href="#publish">List your own kit</a></p>
+    <div class="controls">
+      <label class="search"><input id="q" type="search" placeholder="Search kits, questions, tools" value="${esc(state.q)}" aria-label="Search kits"><kbd>/</kbd></label>
+      <div class="seg" role="group" aria-label="Filter">
+        ${[["all", "All"], ["reads", "Reads only"], ["acts", "Changes things"]].map(([v, l]) => `<button type="button" data-filter="${v}" aria-pressed="${state.filter === v}">${l}</button>`).join("")}
+      </div>
+      <select id="sort" aria-label="Sort">
+        ${[["name", "Name"], ["stars", "Most stars"], ["updated", "Recently updated"], ["tested", "Most test questions"]].map(([v, l]) => `<option value="${v}"${state.sort === v ? " selected" : ""}>${l}</option>`).join("")}
+      </select>
+    </div>
+    <div class="grid" id="grid"></div>
+    <section class="publish" id="publish">
+      <div>
+        <h2 class="serif">List your own kit</h2>
+        <p>There is no submission form. A public repository with the topic <code>ask-kit</code> appears here the next time the list is rebuilt (every six hours), with what its <code>ask-kit.toml</code> on the default branch says. The <a href="${GUIDE}">kits guide</a> covers the manifest, scripts, skills and sharing.</p>
+        <p>Or have your agent do it:</p>
+        ${line(`Read ${AGENTS}, then make a kit for <a tool, folder or service> and prove it on real questions from my sessions.`)}
+      </div>
+      <ol class="steps">
+        <li><strong>Make it</strong><div><p>From a folder or a CLI. This writes its <code>ask-kit.toml</code>; add real questions to <code>bench/questions.json</code> so it can be tested.</p>${line("ask-kit kit new <name> --from folder:<path>")}${line("ask-kit kit new <name> --from cli:<command>")}</div></li>
+        <li><strong>Test it</strong><div><p>Runs its bench questions and reports score, time and price per model. Its bench questions show on its page here.</p>${line("ask-kit kit test <name>")}</div></li>
+        <li><strong>Publish it</strong><div><p>Push the kit folder, a README and a <code>RECIPE.md</code> to a public repository, ideally named <code>ask-kit-&lt;name&gt;</code>, and add the topic.</p>${line("gh repo edit --add-topic ask-kit")}</div></li>
+      </ol>
+    </section>`;
+  drawGrid();
+  const q = document.getElementById("q");
+  q.addEventListener("input", () => { state.q = q.value; drawGrid(); });
+  main.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => { state.filter = b.dataset.filter; save(); main.querySelectorAll("[data-filter]").forEach((x) => x.setAttribute("aria-pressed", x === b)); drawGrid(); }));
+  document.getElementById("sort").addEventListener("change", (e) => { state.sort = e.target.value; save(); drawGrid(); });
+}
+
+function drawGrid() {
+  const grid = document.getElementById("grid");
+  const list = visible();
+  grid.innerHTML = list.length ? list.map(card).join("") : `<p class="empty">No kit matches “${esc(state.q)}”. Try a tool name, such as docker or psql.</p>`;
+}
+
+function renderKit(repo) {
+  const k = DATA.kits.find((x) => x.repo.toLowerCase() === repo.toLowerCase());
+  if (!k) { main.innerHTML = `<div class="detail"><div><a class="back" href="#">← All kits</a><h1 class="serif">No kit called ${esc(repo)}</h1><p>It may have lost the <code>ask-kit</code> topic, or been made private since the list was rebuilt.</p></div></div>`; return; }
+  document.title = `${k.name} · ask-kit kits`;
+  const blob = (f) => `${k.url}/blob/HEAD/${f}`;
+  const rows = [
+    ["Id", k.id && `<span class="mono">${esc(k.id)}</span>`],
+    ["Version", k.version && `<span class="mono">${esc(k.version)}</span>`],
+    ["Reads through", k.sources.length && k.sources.map(esc).join(", ")],
+    ["Needs", k.requires.length ? k.requires.map((r) => `<span class="mono">${esc(r)}</span>`).join(", ") : "nothing extra"],
+    ["Runs on", k.platforms.length ? k.platforms.map(platform).join(", ") : "Linux, macOS, Windows"],
+    ["Uses kits", k.uses.length && k.uses.map(esc).join(", ")],
+    ["Stars", k.stars && String(k.stars)],
+    ["Updated", esc(ago(k.updated))],
+    ["Owner", `<a href="https://github.com/${esc(k.owner)}">${esc(k.owner)}</a>`],
+    ["Files", `<a href="${esc(k.url)}">repository</a><br><a href="${esc(blob(k.form === "kit" ? "ask-kit.toml" : "README.md"))}">${k.form === "kit" ? "ask-kit.toml" : "README.md"}</a>`],
+  ].filter(([, v]) => v);
+  main.innerHTML = `<div class="detail">
+    <div>
+      <a class="back" href="#">← All kits</a>
+      <h1 class="serif">${esc(k.name)}</h1>
+      <div class="sub mono">${esc(k.repo)}</div>
+      <p class="lead">${esc(cap(k.says))}</p>
+      ${intro(k) ? `<p>${intro(k)}</p>` : ""}
+      <section>
+        <h2 class="serif">Install</h2>
+        <div class="lines">
+          <small>From the shell. Without <code>--yes</code> it only shows what the kit reaches, changes and runs.</small>
+          ${line(k.install)}
+          ${line(`${k.install} --yes`)}
+          <small style="margin-top:6px">Or in an agent that has ask-kit:</small>
+          ${line(`Read ${AGENTS}, then add this kit: github.com/${k.repo}`)}
+        </div>
+      </section>
+      ${k.questions.length ? `<section><h2 class="serif">Questions from its tests</h2><p style="margin-top:0;color:var(--muted)">The kit's own bench, run with <code>ask-kit kit test ${esc(k.name)}</code>. They show the kind of thing to ask it.</p><ol class="qs">${k.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ol></section>` : ""}
+      <section>
+        <h2 class="serif">What it can change</h2>
+        ${{ acts: `<p style="margin-top:0">Its manifest lists these calls as ones that change something:</p><ul class="actlist">${k.acts.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`, reads: `<p style="margin-top:0">Its manifest lists no calls that change anything.</p>`, unknown: `<p style="margin-top:0">It has no <code>ask-kit.toml</code>, so it doesn't say. Its install preview shows what it runs.</p>` }[kind(k)]}
+        <div class="trust"><p>A kit is code that runs as you, with no sandbox, and this listing isn't reviewed.</p></div>
+      </section>
+    </div>
+    <aside class="meta"><dl>${rows.map(([t, v]) => `<dt>${t}</dt><dd>${v}</dd>`).join("")}</dl></aside>
+  </div>`;
+  window.scrollTo(0, 0);
+}
+
+function route() {
+  const repo = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  if (repo.includes("/")) renderKit(repo); else renderList();
+}
+function save() { try { localStorage.setItem("kits-view", JSON.stringify({ filter: state.filter, sort: state.sort })); } catch {} }
+
+const main = document.getElementById("main");
+main.addEventListener("click", async (e) => {
+  const copy = e.target.closest("[data-copy]");
+  if (copy) {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(copy.dataset.copy); copy.textContent = "Copied"; copy.classList.add("done"); setTimeout(() => { copy.textContent = "Copy"; copy.classList.remove("done"); }, 1400); } catch {}
+    return;
+  }
+  if (e.target.closest(".line")) return;
+  const kit = e.target.closest(".kit");
+  if (kit) location.hash = `/${kit.dataset.repo}`;
+});
+main.addEventListener("keydown", (e) => { const kit = e.target.closest?.(".kit"); if (kit && e.key === "Enter") location.hash = `/${kit.dataset.repo}`; });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement?.tagName !== "INPUT") { const q = document.getElementById("q"); if (q) { e.preventDefault(); q.focus(); } }
+});
+window.addEventListener("hashchange", route);
+
+const themes = ["auto", "light", "dark"];
+let theme = "auto";
+try { theme = localStorage.getItem("kits-theme") || "auto"; } catch {}
+function applyTheme() {
+  if (theme === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", theme);
+  document.getElementById("theme").textContent = `Theme: ${theme}`;
+}
+document.getElementById("theme").addEventListener("click", () => { theme = themes[(themes.indexOf(theme) + 1) % 3]; try { localStorage.setItem("kits-theme", theme); } catch {} applyTheme(); });
+applyTheme();
+
+fetch("kits.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
+  DATA = d;
+  MANY_OWNERS = new Set(d.kits.map((k) => k.owner)).size > 1;
+  document.getElementById("built").textContent = `List built ${new Date(d.built).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
+  route();
+}).catch(() => { main.innerHTML = `<p class="empty">The kit list (kits.json) didn't load. Reload the page; if it keeps failing, the list is on <a href="https://github.com/topics/ask-kit">GitHub's ask-kit topic</a>.</p>`; });
+</script>
+</body>
+</html>

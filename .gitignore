@@ -2,6 +2,8 @@ node_modules/
 *.log
 .DS_Store
 .claude/worktrees/
+# Built by site/build-index.mjs (the kits-site workflow); not kept in git.
+/site/kits.json
 # Agent transcript folders: a recording or test run that loses its temporary HOME writes them here.
 /.claude/projects/
 /.codex/

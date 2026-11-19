@@ -67,6 +67,18 @@ digging:
 It shows what it will change before it changes anything. Restart your agents afterwards, and
 they call `ask` by themselves when they need to find something out.
 
+In Claude Code you can install it as a plugin instead. Its npm packages come with the install, and
+it needs Node.js 22.13 or newer:
+
+```
+/plugin marketplace add temet-ai/ask-kit
+/plugin install ask-kit@temet-ai
+```
+
+The plugin brings the `ask` tool, the skills and the tuner agent. Then ask Claude to set up
+ask-kit, and the ask-kit-setup skill asks you the same questions. The plugin covers Claude Code
+only; `ask-kit init` and `ask-kit setup` leave Claude Code alone while it is installed.
+
 Without an agent: `npm install -g --allow-git=root github:temet-ai/ask-kit`, then `ask-kit init`
 and `ask-kit setup`. It needs Node.js 22.13 or newer and git. If npm answers `EACCES`, add
 `--prefix ~/.local` to the install command.

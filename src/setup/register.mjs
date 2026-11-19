@@ -13,6 +13,7 @@ import path from "node:path";
 import { ROOT } from "../config.mjs";
 import { API_PRESETS } from "../providers.mjs";
 import { which } from "../platform.mjs";
+import { claudePlugin } from "./bundle.mjs";
 
 const BIN = path.join(ROOT, "bin", "ask-kit.mjs");
 export const SERVE = { command: process.execPath, args: [BIN, "serve"] };
@@ -30,6 +31,9 @@ function cli(bin, args) {
 }
 
 function claudeCode() {
+  // The plugin starts its own `ask` server; a user-scope one as well would give Claude Code two.
+  const plugin = claudePlugin();
+  if (plugin) return { client: "claude-code", what: `Claude Code: the ${plugin} plugin already provides \`ask\``, run() {}, remove() {} };
   let exists = false;
   try {
     cli("claude", ["mcp", "get", "ask"]);
