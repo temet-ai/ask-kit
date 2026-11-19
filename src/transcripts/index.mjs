@@ -10,6 +10,27 @@ import { STATE_ROOT } from "../config.mjs";
 
 export const ADAPTERS = Object.fromEntries([claudeCode, codex, copilotCli, geminiCli, opencode].map((a) => [a.name, a]));
 
+/**
+ * Every session of the enabled sources, newest first, without ask-kit's own investigators
+ * (claude -p, codex exec, copilot -p run in its state folder and write transcripts like any
+ * session; they are not the person's work).
+ */
+export async function listSessions(sources) {
+  const list = [];
+  for (const n of (sources ?? Object.keys(ADAPTERS)).filter((n) => ADAPTERS[n])) {
+    if (!ADAPTERS[n].available()) continue;
+    try {
+      list.push(...(await ADAPTERS[n].sessions()));
+    } catch (e) {
+      list.push({ source: n, error: e.message });
+    }
+  }
+  return list
+    // "/warm/cwd" also catches investigators from other installs or tools that use the same layout.
+    .filter((s) => !s.error && !(s.cwd && (s.cwd.startsWith(STATE_ROOT) || s.cwd.replaceAll("\\", "/").endsWith("/warm/cwd"))))
+    .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+}
+
 const toMs = (x) => (x == null ? null : typeof x === "number" ? Date.now() - x * 3600_000 : Date.parse(x));
 
 export function makeHistory({ sources, push = () => {} }) {
@@ -19,21 +40,7 @@ export function makeHistory({ sources, push = () => {} }) {
 
   async function all() {
     if (cache && Date.now() - cache.at < 30_000) return cache.list;
-    const list = [];
-    for (const n of enabled) {
-      if (!ADAPTERS[n].available()) continue;
-      try {
-        list.push(...(await ADAPTERS[n].sessions()));
-      } catch (e) {
-        list.push({ source: n, error: e.message });
-      }
-    }
-    // ask-kit's own investigators (claude -p, codex exec, copilot -p) run in its state folder and
-    // write transcripts like any session; they are not the person's work.
-    const ok = list
-      // "/warm/cwd" also catches investigators from other installs or tools that use the same layout.
-      .filter((s) => !s.error && !(s.cwd && (s.cwd.startsWith(STATE_ROOT) || s.cwd.replaceAll("\\", "/").endsWith("/warm/cwd"))))
-      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+    const ok = await listSessions(enabled);
     cache = { at: Date.now(), list: ok };
     return ok;
   }

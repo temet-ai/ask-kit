@@ -47,12 +47,20 @@ function meta(file) {
   return { id, cwd, project: cwd ? path.basename(cwd) : null, startedAt, title, model };
 }
 
-function events(s) {
+// o.usage: also a "usage" event per model call (session.usage_record) and `req` on tool calls,
+// the number of the assistant.turn_start both follow.
+function events(s, o = {}) {
   const out = [];
   const push = (e) => out.push({ i: out.length, ...e });
+  let turn = 0;
   for (const r of parseLines(s.file)) {
     const ts = r.timestamp;
     const d = r.data ?? {};
+    if (o.usage && r.type === "assistant.turn_start") turn++;
+    if (o.usage && r.type === "session.usage_record") {
+      const u = d.usage ?? {};
+      push({ ts, role: "usage", req: String(turn), model: u.model, text: "", tokens: { input: u.inputTokens ?? 0, cacheWrite: u.cacheWriteTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, output: u.outputTokens ?? 0 } });
+    }
     switch (r.type) {
       case "user.message":
         push({ ts, role: "user", text: textOf(d.content) });
@@ -61,7 +69,8 @@ function events(s) {
         if (d.content) push({ ts, role: "assistant", text: textOf(d.content), model: d.model });
         break;
       case "tool.execution_start":
-        push({ ts, role: "tool_call", tool: d.toolName, toolId: d.toolCallId, input: d.arguments, text: JSON.stringify(d.arguments ?? {}), model: d.model });
+        // An MCP tool is named "<server>-<tool>"; `server` says where the split is.
+        push({ ts, role: "tool_call", tool: d.toolName, toolId: d.toolCallId, input: d.arguments, text: JSON.stringify(d.arguments ?? {}), model: d.model, ...(d.mcpServerName ? { server: d.mcpServerName } : {}), ...(o.usage ? { req: String(turn) } : {}) });
         break;
       case "tool.execution_complete":
         push({ ts, role: "tool_result", toolId: d.toolCallId, ok: d.success !== false, text: textOf(d.result?.content ?? d.result ?? d.error) });
