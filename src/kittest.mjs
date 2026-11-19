@@ -56,7 +56,8 @@ function journalOf(kit, session) {
     const file = [dir, ...fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name))].map((d) => path.join(d, `${session}.jsonl`)).find((f) => fs.existsSync(f));
     rows = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.type === "ask");
   } catch {}
-  return { cells: rows.length ? rows.reduce((s, r) => s + (r.cells ?? 0), 0) : null, shot: rows.length > 0 && rows.every((r) => r.shot) };
+  const sum = (k) => (rows.some((r) => r[k] != null) ? rows.reduce((s, r) => s + (r[k] ?? 0), 0) : null);
+  return { cells: rows.length ? sum("cells") ?? 0 : null, shot: rows.length > 0 && rows.every((r) => r.shot), costUsd: sum("costUsd"), ms: sum("ms") };
 }
 
 export async function kitTest(name, { backends, only, timeoutSeconds = 600, log = () => {} } = {}) {
@@ -75,11 +76,11 @@ export async function kitTest(name, { backends, only, timeoutSeconds = 600, log 
       const r = q.do ? await runOnce(name, q.do, q.params, session, timeoutSeconds * 1000) : await askOnce(name, be, q.q, session, timeoutSeconds * 1000);
       const j = journalOf(name, session);
       const answer = r.out.trim();
-      const footer = answer.match(/\[[a-z0-9-]+ · [^·\]]+ · (\d+)s(?: · \$([\d.]+))?\]\s*$/);
+      // Time and cost come from the journal: the answer's footer carries no cost.
       const missing = (q.expect ?? []).filter((re) => !new RegExp(re, "i").test(answer));
       const anyOk = !q.any?.length || q.any.some((re) => new RegExp(re, "i").test(answer));
       const pass = r.code === 0 && !missing.length && anyOk;
-      const row = { backend: be, id: q.id, pass, seconds: footer ? Number(footer[1]) : Math.round((Date.now() - t0) / 1000), costUsd: footer?.[2] ? Number(footer[2]) : null, cells: j.cells, noModel: !!q.do && j.shot, missing: [...missing, ...(anyOk ? [] : [`one of ${q.any.join(" | ")}`])], answer: answer.slice(0, 1500), ...(r.code ? { error: r.err } : {}) };
+      const row = { backend: be, id: q.id, pass, seconds: Math.round((j.ms ?? Date.now() - t0) / 1000), costUsd: j.costUsd != null ? Math.round(j.costUsd * 1e6) / 1e6 : null, cells: j.cells, noModel: !!q.do && j.shot, missing: [...missing, ...(anyOk ? [] : [`one of ${q.any.join(" | ")}`])], answer: answer.slice(0, 1500), ...(r.code ? { error: r.err } : {}) };
       results.push(row);
       log(`${pass ? "pass" : "FAIL"}  ${be}  ${q.id}  ${row.seconds}s${row.costUsd != null ? ` $${row.costUsd}` : ""}${row.noModel ? "  shot" : row.cells != null ? `  ${row.cells} cells` : ""}${pass ? "" : `  missing: ${row.missing.join(", ") || row.error?.slice(0, 200)}`}`);
     }
