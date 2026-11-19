@@ -288,7 +288,7 @@ export function tidyPrompt(p) {
 // ---- which kit a lookup belongs to ----
 
 // Programs whose kit is known even when the kit runs them from a module, not a `requires` entry.
-const PROGRAMS = {
+export const PROGRAMS = {
   gh: "github", docker: "docker", "docker-compose": "docker", podman: "docker", psql: "postgres", pg_isready: "postgres", pg_dump: "postgres",
   systemctl: "systemd", journalctl: "systemd", coredumpctl: "systemd", loginctl: "systemd", ps: "systemd", pgrep: "systemd", ss: "systemd",
   lsof: "systemd", df: "systemd", du: "systemd", free: "systemd", uptime: "systemd", sensors: "systemd", "nvidia-smi": "systemd",

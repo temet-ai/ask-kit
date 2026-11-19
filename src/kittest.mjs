@@ -4,7 +4,9 @@
 //
 // bench/questions.json: {"questions": [{"id": "ci-why", "q": "why did CI fail on main?",
 //   "expect": ["regex", ...], "any": ["regex", ...]?}]}. A question passes when every `expect`
-// matches (any case) and, when `any` is given, at least one of it does. A question with `do`
+// matches (any case) and, when `any` is given, at least one of it does. A question with a
+// `reference` (and `askedAt`) and no patterns, as `smith scaffold` writes them, is graded by a judge
+// model instead: it passes when the answer gives the reference's facts. A question with `do`
 // ("<script>", optional `params` object) runs as a shot, like `ask-kit run`: no model, and it counts
 // in the summary's share answered with no model. Each result carries the cells the investigator ran,
 // read from the ask's journal row.
@@ -60,7 +62,32 @@ function journalOf(kit, session) {
   return { cells: rows.length ? sum("cells") ?? 0 : null, shot: rows.length > 0 && rows.every((r) => r.shot), costUsd: sum("costUsd"), ms: sum("ms") };
 }
 
-export async function kitTest(name, { backends, only, timeoutSeconds = 600, log = () => {} } = {}) {
+const JUDGE =
+  "You grade answers from a question-answering tool. For each item you get a question, a reference answer an agent found by hand " +
+  "when the question was asked (with its date), and the tool's answer now. Verdicts: \"correct\" when the answer gives the reference's " +
+  "main facts (other wording, extra detail and new line numbers do not matter); \"partial\" when it gives some of them and misses " +
+  "others; \"changed\" when it contradicts the reference but cites evidence that the thing itself has changed since the reference " +
+  "was written; \"wrong\" when it contradicts the reference without such evidence, answers about something else, or says it could " +
+  "not find out. Reply with JSON only: {\"grades\":[{\"key\":...,\"verdict\":...,\"reason\":\"one sentence\"}]}.";
+
+/** {key: {verdict, reason}} for items {key, q, reference, askedAt, answer}, a dozen per judge call. */
+export async function judgeAnswers(items, config) {
+  const { chat } = await import("./llm.mjs");
+  const out = {};
+  for (let i = 0; i < items.length; i += 12) {
+    const batch = items.slice(i, i + 12);
+    const user = JSON.stringify(batch.map((x) => ({ key: x.key, question: x.q, reference: x.reference, referenceDate: x.askedAt ?? null, answer: x.answer })));
+    try {
+      const r = await chat({ system: JUDGE, user, json: true, maxTokens: 1500, config, backend: config.judge?.backend });
+      for (const g of r.grades ?? []) out[g.key] = { verdict: String(g.verdict), reason: String(g.reason ?? "") };
+    } catch (e) {
+      for (const x of batch) out[x.key] = { verdict: "wrong", reason: `the judge failed: ${String(e.message ?? e).slice(0, 120)}` };
+    }
+  }
+  return out;
+}
+
+export async function kitTest(name, { backends, only, timeoutSeconds = 600, log = () => {}, judge } = {}) {
   const d = await loadDomain(name);
   const file = d.bench;
   if (!file || !fs.existsSync(file)) throw new Error(`${name} has no bench (bench/questions.json in the kit)`);
@@ -80,9 +107,26 @@ export async function kitTest(name, { backends, only, timeoutSeconds = 600, log 
       const missing = (q.expect ?? []).filter((re) => !new RegExp(re, "i").test(answer));
       const anyOk = !q.any?.length || q.any.some((re) => new RegExp(re, "i").test(answer));
       const pass = r.code === 0 && !missing.length && anyOk;
+      const judged = !!q.reference && !q.expect?.length && !q.any?.length && r.code === 0;
       const row = { backend: be, id: q.id, pass, seconds: Math.round((j.ms ?? Date.now() - t0) / 1000), costUsd: j.costUsd != null ? Math.round(j.costUsd * 1e6) / 1e6 : null, cells: j.cells, noModel: !!q.do && j.shot, missing: [...missing, ...(anyOk ? [] : [`one of ${q.any.join(" | ")}`])], answer: answer.slice(0, 1500), ...(r.code ? { error: r.err } : {}) };
       results.push(row);
+      if (judged) continue;
       log(`${pass ? "pass" : "FAIL"}  ${be}  ${q.id}  ${row.seconds}s${row.costUsd != null ? ` $${row.costUsd}` : ""}${row.noModel ? "  shot" : row.cells != null ? `  ${row.cells} cells` : ""}${pass ? "" : `  missing: ${row.missing.join(", ") || row.error?.slice(0, 200)}`}`);
+    }
+  }
+  // Questions with a `reference` and no patterns (smith's mined rows) are graded by a judge: the
+  // answer against what an agent found by hand when it was asked.
+  const byId = Object.fromEntries(qs.map((q) => [q.id, q]));
+  const toJudge = results.filter((r) => byId[r.id].reference && !byId[r.id].expect?.length && !byId[r.id].any?.length && !r.error);
+  if (toJudge.length) {
+    const verdicts = await (judge ?? judgeAnswers)(toJudge.map((r) => ({ key: `${r.backend}|${r.id}`, q: byId[r.id].q, reference: byId[r.id].reference, askedAt: byId[r.id].askedAt, answer: r.answer })), config);
+    for (const r of toJudge) {
+      const v = verdicts[`${r.backend}|${r.id}`] ?? { verdict: "wrong", reason: "the judge gave no verdict" };
+      r.pass = v.verdict === "correct";
+      r.verdict = v.verdict;
+      r.reason = v.reason;
+      if (!r.pass) r.missing = [`${v.verdict}: ${v.reason}`];
+      log(`${r.pass ? "pass" : "FAIL"}  ${r.backend}  ${r.id}  ${r.seconds}s${r.costUsd != null ? ` $${r.costUsd}` : ""}  judged ${v.verdict}${r.pass ? "" : `: ${v.reason}`}`);
     }
   }
   const cellsSorted = (rs) => rs.map((r) => r.cells).filter((c) => c != null).sort((a, b) => a - b);

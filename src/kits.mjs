@@ -21,7 +21,10 @@ export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
 const SOURCE_KINDS = ["folder", "cli", "module", "mcp"];
 
-export const kitDirs = () => [path.join(CONFIG_DIR, "kits"), path.join(ROOT, "kits")];
+// Kits smith drafts sit in STATE_ROOT/drafts/kits. Only `smith prove` sees them (ASK_KIT_DRAFTS=1
+// in its own and its children's environment); nothing else lists or routes to a draft.
+export const draftsDir = () => path.join(STATE_ROOT, "drafts", "kits");
+export const kitDirs = () => [path.join(CONFIG_DIR, "kits"), path.join(ROOT, "kits"), ...(process.env.ASK_KIT_DRAFTS === "1" ? [draftsDir()] : [])];
 
 export function listKits() {
   const out = [];
@@ -228,7 +231,8 @@ async function mcpConnect(src, settings, caller) {
     if (caller) env[src.caller_env] = caller;
   }
   const c = new Client({ name: "ask-kit", version: "0" });
-  await c.connect(new StdioClientTransport({ command: bin, args, env, stderr: "ignore" }));
+  // `cwd`: a server that finds its project from the directory it starts in (a .mcp.json server).
+  await c.connect(new StdioClientTransport({ command: bin, args, env, stderr: "ignore", ...(src.cwd ? { cwd: expand(fill(src.cwd, settings)) } : {}) }));
   return c;
 }
 
