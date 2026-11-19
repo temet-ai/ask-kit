@@ -1,7 +1,7 @@
 {
   "name": "ask-kit",
   "displayName": "ask-kit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "One plain-language `ask` tool: a cheap model with a REPL and scripts answers about your past sessions, your code and any kit you add, outside your agent's context.",
   "author": { "name": "Dawid du Toit", "url": "https://github.com/temet-ai" },
   "homepage": "https://github.com/temet-ai/ask-kit#readme",
