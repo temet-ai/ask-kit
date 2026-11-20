@@ -32,6 +32,10 @@ that CLI's service under its own terms, and the sessions appear in its history.
   time the hook told an agent to use `ask`: time, session id, subagent type, the `about` named, the
   kind of lookup and the count. No command, path or prompt is kept. Counter files older than a
   week are removed. It sends nothing.
+- `find-sessions` keeps a digest of each session it found a match in, in
+  `~/.local/state/ask-kit/index/digests.json`: title, the first 200 characters of the first
+  prompt, project, dates and the twelve most used words of your prompts. It sends nothing; the
+  investigator reads the digests of the sessions it searched.
 - The skills, agent and rule it installed into your agents, each listed with its hash in
   `installed.json`.
 

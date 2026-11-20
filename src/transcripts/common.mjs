@@ -128,11 +128,83 @@ export function indexed(source, files, readMeta) {
 }
 
 /**
+ * The needles with the one least likely to be common first. A cheap rule: the longest wins. Long
+ * words ("prefilter", "ankh-morpork") appear in fewer files than short ones ("the", "fix", "test"),
+ * and a word with a digit, dot, dash, slash or underscore (an id, a flag, a file name) is rarer
+ * than a plain word of the same length, so it counts as two characters longer. Ties keep the
+ * caller's order. No corpus statistics: deciding how to read the files must not read them.
+ */
+export function rarestFirst(needles) {
+  const weight = (w) => w.length + (/[\d._\-/]/.test(w) ? 2 : 0);
+  return [...needles].sort((a, b) => weight(b) - weight(a));
+}
+
+/**
+ * A literal that every match of `re` must contain, or null: the longest plain run of characters in
+ * the pattern outside groups, classes and alternations, at least 3 long. A character before `*`,
+ * `?` or `{` may be absent, so it is dropped from its run. Lower-cased, because the pre-filter is
+ * case-insensitive whatever the flags say.
+ */
+export function literalOf(re) {
+  const src = re.source;
+  const runs = [];
+  let run = "";
+  const end = () => {
+    if (run) runs.push(run);
+    run = "";
+  };
+  const skipClass = (i) => {
+    // i is on "[": return the index of its closing "]".
+    i++;
+    if (src[i] === "^") i++;
+    if (src[i] === "]") i++;
+    while (i < src.length && src[i] !== "]") i += src[i] === "\\" ? 2 : 1;
+    return i;
+  };
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "\\") {
+      const n = src[i + 1];
+      i++;
+      // An escaped punctuation mark is itself; \d \w \b \n \u... are not literals.
+      if (n && /[^A-Za-z0-9]/.test(n)) run += n;
+      else end();
+    } else if (c === "[") {
+      end();
+      i = skipClass(i);
+    } else if (c === "(") {
+      // The group may be optional or repeated: skip it whole.
+      end();
+      let depth = 1;
+      i++;
+      while (i < src.length && depth) {
+        if (src[i] === "\\") i++;
+        else if (src[i] === "[") i = skipClass(i);
+        else if (src[i] === "(") depth++;
+        else if (src[i] === ")") depth--;
+        i++;
+      }
+      i--;
+    } else if (c === "*" || c === "?" || c === "{") {
+      run = run.slice(0, -1);
+      end();
+      if (c === "{") while (i < src.length && src[i] !== "}") i++;
+    } else if (c === "|") return null; // top-level alternation: no single literal is required
+    else if (c === "+" || /[.^$)]/.test(c)) end();
+    else run += c;
+  }
+  end();
+  const best = runs.sort((a, b) => b.length - a.length)[0];
+  return best && best.length >= 3 ? best.toLowerCase() : null;
+}
+
+/**
  * Does one raw line of the file hold every word of `needles` (case-insensitive)? An event is one
  * line in every JSONL store, so a file without such a line cannot match. Cheap: no JSON parsing.
  */
 export function fileMayMatch(file, needles) {
   if (!needles.length) return true;
+  needles = rarestFirst(needles);
   let text;
   try {
     text = fs.readFileSync(file, "utf8").toLowerCase();
@@ -156,7 +228,8 @@ export function fileMayMatch(file, needles) {
 
 /**
  * `fileMayMatch` over many files at once: the subset of `files` that may hold a matching line.
- * One ripgrep (`-l -i -F`) lists the files holding the first word; with more words each listed
+ * One ripgrep (`-l -i -F`) lists the files holding the rarest word (`rarestFirst`; the Set gets
+ * `.needle` and `.listed`, the word and how many files ripgrep named, for tests and the journal); with more words each listed
  * file is then checked by `fileMayMatch`, so the result equals the JS prefilter's. File paths go
  * as arguments in batches under the Windows command-line limit, never through a shell. Without
  * ripgrep (or with ASK_KIT_NO_RG=1, or if a batch fails) the JS prefilter runs on those files.
@@ -173,7 +246,10 @@ export async function filesMayMatch(files, needles) {
     return out;
   }
   // The same escaped form fileMayMatch looks for.
+  needles = rarestFirst(needles);
   const first = JSON.stringify(needles[0]).slice(1, -1);
+  out.needle = needles[0];
+  out.listed = 0;
   const batches = [];
   let cur = [];
   let len = 0;
@@ -200,6 +276,7 @@ export async function filesMayMatch(files, needles) {
       continue;
     }
     const known = new Set(batch);
+    out.listed += listed.length;
     for (const f of listed) if (known.has(f) && (needles.length === 1 || fileMayMatch(f, needles))) out.add(f);
   }
   return out;

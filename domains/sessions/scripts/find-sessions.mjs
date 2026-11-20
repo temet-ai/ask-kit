@@ -1,6 +1,6 @@
 export const meta = {
   purpose:
-    "Which sessions did or discussed a topic: searches what people typed and what agents said (and, with tools: true, tool calls) for the topic's words, ranks sessions by hits, prompts weighing most.",
+    "Which sessions did or discussed a topic: searches what people typed and what agents said (and, with tools: true, tool calls) for the topic's words, ranks sessions by hits (prompts weighing most) and by a digest of each session: title or first prompt, project, top terms.",
   params: {
     topic: "a few distinctive words, e.g. 'flaky retry test'",
     hours: "window, default 24*30",
@@ -9,7 +9,7 @@ export const meta = {
     tools: "also search tool calls and results, default false",
     any: "match sessions holding any one word (default: each event must hold all words; retried with fewer words when nothing matches)",
   },
-  returns: "{query, total, sessions:[{source,id,project,title,startedAt,hits,userHits,first:{i,role,snippet}}]}",
+  returns: "{query, total, complete, sessions:[{source,id,project,title,startedAt,hits,userHits,score,digest:{terms,firstPrompt,startedAt,updatedAt},first:{i,role,snippet}}]}",
   example: 'await scripts.run("find-sessions", { topic: "keyboard layout" })',
 };
 
@@ -46,6 +46,18 @@ export default async function ({ history }, { topic, hours = 24 * 30, project, s
     if (h.role === "user") s.userHits++;
     by.set(k, s);
   }
-  const sessions = [...by.values()].sort((a, b) => b.userHits * 3 + b.hits - (a.userHits * 3 + a.hits)).slice(0, 15);
+  // Rank on hits and on the session's digest (title or first prompt, project, top terms). Hits count
+  // up to 20 so one chatty session cannot bury a session whose title or prompts are about the topic.
+  const found = [...by.values()];
+  const digests = history.digests ? await history.digests(found) : [];
+  const has = (text, w) => String(text ?? "").toLowerCase().includes(w);
+  found.forEach((s, n) => {
+    const d = digests[n];
+    let bonus = 0;
+    if (d) for (const w of words) bonus += (has(d.title, w) || has(d.firstPrompt, w) ? 6 : 0) + (d.terms.includes(w) ? 3 : 0) + (has(d.project, w) ? 2 : 0);
+    s.score = Math.min(s.userHits * 3 + s.hits, 20) + bonus;
+    if (d) s.digest = { terms: d.terms.slice(0, 6), firstPrompt: d.firstPrompt?.slice(0, 120) ?? null, startedAt: d.startedAt, updatedAt: d.updatedAt };
+  });
+  const sessions = found.sort((a, b) => b.score - a.score || b.hits - a.hits).slice(0, 15);
   return { query, total: by.size, complete: hits.complete !== false, sessions };
 }

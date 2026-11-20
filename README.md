@@ -136,7 +136,8 @@ general version. It needs no mike and no server.
 
 It sends your question, and the excerpts the investigator reads, to the model you chose. There's
 no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
-including the clipped prompts `ask-kit gaps` caches from your transcripts, a lookup counter per
+including the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
+session `find-sessions` matched (title, first prompt, top words), a lookup counter per
 Claude Code session and a log of the nudges the plugin's hook gave (time, session id, kind of
 lookup; no commands or prompts) and, for the one in 20
 action answers that a model checks in the background, both answers.
