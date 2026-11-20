@@ -19,7 +19,7 @@ says = "my markdown notes: what I wrote about a topic, a project or a decision, 
 keywords = ["notes?"]          # fallback routing when no router model answers
 route_hint = "what I wrote down is notes; what a session did is sessions"   # read by the router model
 cite = "`path:line`"           # how answers cite evidence
-acts = ["notes.edit"]          # what it can change: shown at install
+acts = ["notes.edit"]          # what it can change: shown at install, withheld unless the caller asks for a change (act)
 requires = ["rg"]              # programs on PATH; without them (or a `required` setting, or the folder) the kit is not offered
 
 [[settings]]                   # values it needs: env, then config domains.<kit>.settings, then detect, then default
@@ -37,7 +37,7 @@ exclude = ["*.env", "private/**"]   # never searched or read: what it reads goes
   host's `find`, `outline` and `tree` scripts. One manifest is a whole kit.
 - `cli`: `gh("pr", "list")` → `{code, out, err}`, `.json(...)`, `.text(...)`, `.help(sub)`;
   `refuse = [{ args = "auth token", why = "prints the token" }]` for output that would leak a secret.
-- `module`: `module = "x.mjs"` exporting `make({ settings, push, config, kitDir, cwd })`; `api =
+- `module`: `module = "x.mjs"` exporting `make({ settings, push, config, kitDir, cwd, act })`; `api =
   "api.d.ts"` describes what it returns. Use it when the client needs logic (parsing, checks).
 - Optional: `instructions = "instructions.md"`, `scripts/` (each with `meta` and a default
   function taking the globals), `bench/questions.json`, `[[build]] command = [...]` run at install,
@@ -57,8 +57,11 @@ their yes: `ask-kit kit install <owner/repo> --yes`. `ask-kit gallery` lists sha
    source, with the questions in their words. Those are the bench; never invent questions.
 2. `ask-kit kit new <name> --from folder:<path>` or `--from cli:<command>` writes the manifest.
    Write `says` in the words people use. Add a module when the CLI needs checks or parsing.
-3. Give the kit the actions its source needs (restart, comment, edit): investigators act, not only
-   read. Refuse only output that prints secrets and commands that never end.
+3. Give the kit the actions its source needs (restart, comment, edit): investigators act in their
+   domain. Name each in `acts` as `<source>.<function>` or as the command (`gh pr comment`): the
+   host withholds them unless the caller asked for a change (`act`), and a module's `make()` gets
+   `act` for the ones it cannot name that way. Refuse only output that prints secrets and commands
+   that never end.
 4. Two to five scripts for the questions in the bench, each with `meta` (purpose, params, returns,
    example). The host lists their examples to the investigator.
 5. `bench/questions.json`: `{"questions": [{"id", "q", "expect": [regex], "any"?: [regex]}]}`, each

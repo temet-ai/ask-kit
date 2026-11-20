@@ -43,6 +43,7 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `kind` | string | `api`, `claude-cli`, `codex-cli` or `copilot-cli`. |
 | `ok` | boolean | `false` when the ask failed. |
 | `continued` | boolean | A follow-up. |
+| `act` | boolean | The investigator had the calls that change things: the caller asked for a change. See [Asking for a change](ask-tool.md#asking-for-a-change-act). |
 | `ms` | number | Duration of the ask. For the CLIs that warm a session it leaves out the warm-up. |
 | `answerChars` | number | Length of the answer text. The answer itself is not stored. |
 | `error` | string | On failure: the message, cut at 300 characters. |
@@ -115,6 +116,7 @@ Written by the router before it forwards a call.
 | `from` | On a `fallback` record: the provider that had no data. |
 | `routeMs` | Time the choice took. |
 | `routeError` | When the router model failed and the fallback decided: why, cut at 160 characters. |
+| `act`, `actBy` | When the ask was sent with `act`: its value, and `caller` (passed by the caller) or `request` (the router set it because the request opens with what to do). |
 
 ### Misroute record
 

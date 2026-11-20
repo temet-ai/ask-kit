@@ -7,7 +7,7 @@
 //   ask-kit questions            the setup questions and suggested answers, as JSON (for an agent)
 //   ask-kit apply <file|-> [--dry-run]   apply answers (JSON) from an agent or a file
 //   ask-kit doctor               check the config: sources, backends, tools
-//   ask-kit ask "<question>" [--domain d] [--backend b] [--continue]   ask from the shell
+//   ask-kit ask "<question>" [--domain d] [--backend b] [--continue] [--act|--no-act]   ask from the shell (--act: it may change things)
 //   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
 //   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
@@ -33,7 +33,7 @@ const flag = (name) => {
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? undefined : argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : true;
 };
-const positional = argv.slice(1).filter((a, i, all) => !a.startsWith("--") && !(all[i - 1]?.startsWith("--") && !["--json", "--dry-run", "--continue", "--yes"].includes(all[i - 1])));
+const positional = argv.slice(1).filter((a, i, all) => !a.startsWith("--") && !(all[i - 1]?.startsWith("--") && !["--json", "--dry-run", "--continue", "--yes", "--act", "--no-act"].includes(all[i - 1])));
 
 async function main() {
   switch (cmd) {
@@ -558,7 +558,7 @@ async function askFromShell() {
   try {
     out = await client.callTool(
       // No early answers from a shell: the process ends with the reply, and the rest of the run with it.
-      { name: "ask", arguments: { question, early: false, ...(typeof backend === "string" ? { backend } : {}), ...(flag("continue") ? { continue: true } : {}) } },
+      { name: "ask", arguments: { question, early: false, ...(typeof backend === "string" ? { backend } : {}), ...(flag("continue") ? { continue: true } : {}), ...(argv.includes("--act") ? { act: true } : argv.includes("--no-act") ? { act: false } : {}) } },
       undefined,
       { timeout: 900_000, onprogress },
     );

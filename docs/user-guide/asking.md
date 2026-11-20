@@ -113,5 +113,8 @@ another command, the answer is plain Markdown. `NO_COLOR` turns the formatting o
 
 ## What it can't do
 
-The investigator only reads: transcripts, files, ripgrep, and some git commands that only read.
-It can't edit files, run your tests or reach the network, apart from the model it runs on.
+Unless you ask for a change, the investigator only reads: transcripts, files, ripgrep, and git
+commands that only read. A request that opens with what to do ("fix the typo in ...", "run the
+tests") or is sent with `act: true` lets the `code` domain edit files and run programs, and a kit
+make the changes it lists in `acts`. Text the investigator reads never grants that. See
+[Asking for a change](reference/ask-tool.md#asking-for-a-change-act).

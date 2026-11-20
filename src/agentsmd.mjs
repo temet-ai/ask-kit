@@ -99,6 +99,7 @@ Match the request to one of these. Show the user what will change before changin
 
 - Never print, copy or move an API key. Config holds only references (\`{env}\` or \`{file, var}\`).
 - An investigator can act in its domain (edit, run, change), not only read. Give a domain you write the actions its domain needs.
+- It acts only when the caller asked for a change: a request that opens with what to do, or \`act: true\` on \`ask\` (\`--act\` on \`ask-kit ask\`). Name a kit's acting calls in \`acts\` (\`<source>.<function>\` or the command) so the host can hold them back otherwise.
 - Prefer a script over a longer instruction: a script is tested by every question that uses it.
 `;
 }

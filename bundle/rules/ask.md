@@ -15,6 +15,10 @@ Call `ask` first when the answer lies in:
 
 Then read the files yourself when you are about to edit them.
 
+- `ask` can also make a change in its domain (edit, run, restart, send). It does only when your
+  request asks for one: open with what to do ("fix the typo in ...", "restart ...") or pass
+  `act: true`. Anything else gets an investigator that only reads.
+
 - `ask` is a conversation: `continue: true` sends a follow-up to the same investigator, which
   still holds what it found. Use it to dig into something the answer named or to finish an answer
   that stopped short; it is quicker and cheaper than a new question.

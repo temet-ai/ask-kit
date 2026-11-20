@@ -33,6 +33,7 @@ Both forms need a config file. Without one the server exits at start with
 | `continue` | boolean | no, default `false` | Send this as a follow-up to the investigator that answered your last question. |
 | `backend` | string | no | A backend name from the config. Left out, the domain's backend is used. |
 | `timeoutSeconds` | integer, 30 to 900 | no | How long the investigation may run. The domain's `ask` defaults to 300. |
+| `act` | boolean | no | `true`: the request asks for a change, so the investigator gets the calls that change things. Left out, the router sets it to `true` when the request opens with what to do; `false` keeps the ask read-only. See [Asking for a change](#asking-for-a-change-act). |
 
 The tool's description lists the enabled domains with their one-line descriptions (the `says`
 field of each domain), and each capability that more than one of them provides, once, under the
@@ -93,6 +94,7 @@ call runs as a new question on `code`.
 | `backend` | one of the backend names in the config | no | The model that investigates. Default: see [`backends`](config.md#backends). |
 | `continue` | boolean | no, default `false` | Ask the same investigator as your last question on this backend, so it keeps what it found. |
 | `timeoutSeconds` | integer, 30 to 900 | no, default 300 | Time limit for the ask. |
+| `act` | boolean | no | Whether the investigator may change things. Left out: `true` when the request opens with what to do, or when `continue: true` follows an ask that could act; otherwise `false`. |
 
 If several of `question`, `request` and `prompt` are given, the first non-blank one in that order
 is used. The tool's description is the domain's `askDescription`, followed by
@@ -118,6 +120,36 @@ same backend. The caller's session is the first of these environment variables t
 
 A follow-up needs an earlier question on the same backend. Without one it fails with
 `nothing to continue: no earlier <backend> question in this session`.
+
+### Asking for a change (`act`)
+
+An investigator reads text nobody vouched for: repository files, issue bodies, tool output inside
+transcripts. So its REPL holds the calls that change things only when the caller's own request
+asked for a change. Text read during the ask never grants them.
+
+`act` is `true` when one of these holds, in this order:
+
+| Source | When |
+|---|---|
+| The caller | `act: true` was passed. `act: false` keeps the ask read-only, whatever it says. |
+| The request | It opens with a verb that changes something, after any "please", "can you" or "go ahead and": fix, add, write, edit, commit, run, restart, send, record, message, delete and the like (`ACTING` in [`src/actions.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/actions.mjs)). The router sets `act` from it and journals `actBy: "request"`; a domain's own `ask` does the same when `act` is left out. |
+| A follow-up | `continue: true` with `act` left out keeps the `act` of the ask it continues. |
+| An action | A kit's acting [[actions]] entry, turned on in the config, matched the whole request. |
+| A shot | `do` runs the script the caller named, with no model: it may act unless `act: false`. |
+
+What `act: false` holds back:
+
+| Domain or source | Without `act` |
+|---|---|
+| `code`, and a kit's `folder` sources | `write`, `edit` and `run` throw. `git` runs only commands that read (`log`, `show`, `diff`, `blame`, `status`, `ls-files`, `grep` and a few more), without options that write a file (`--output`). |
+| A kit's `mcp` source | Tools named in the kit's `acts` (`mike.define_fleet`) throw. |
+| A kit's `cli` source | A call whose arguments hold an `acts` phrase (`gh pr comment`) is refused. |
+| A kit's `module` source | Functions named in `acts` (`inspect.start`) throw, also when a call names one as its first argument (`mcp.call("send_session_message")` for `mcp.send_session_message`), and so does a call whose arguments hold an `acts` phrase. The module's `make()` also gets `act`, for the acts the host cannot recognise. |
+| `ask.kit` | The other kit is asked with the same `act`, never inferred from the question. |
+
+A withheld call throws `... is off in this ask` or `not in this ask: ...`, and the investigator is
+told to answer what it can and say that the change needs `ask` with `act: true`. Every ask row in
+the journal has `act`.
 
 ## What comes back
 
@@ -198,8 +230,10 @@ Copilot) send none.
 ## From the shell
 
 ```sh
-ask-kit ask "<question>" [--domain <name>] [--backend <name>] [--continue]
+ask-kit ask "<question>" [--domain <name>] [--backend <name>] [--continue] [--act | --no-act]
 ```
+
+`--act` and `--no-act` pass `act: true` and `act: false`.
 
 Starts `ask-kit serve` (with `--domain` when given) as a child, calls `ask` with a 900 second
 client timeout, prints the text and exits with code 1 on `isError`. It asks for progress: on a

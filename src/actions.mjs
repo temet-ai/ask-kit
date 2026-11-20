@@ -29,6 +29,15 @@ export const ACTION_META = "ask-kit/action";
 // Fell-through reasons that count against an action (a mismatch is not a run).
 const BAD = ["error", "empty", "expect"];
 
+// A request that asks for a change rather than an answer: it opens with a verb that changes
+// something, once any politeness ("please", "can you", "go ahead and") is left off. Only the
+// caller's own words are tested: the router and the `ask` tool set act from it when the caller
+// did not say, and smith keeps such prompts out of bench rows.
+export const ACTING = /^(create|add|post|merge|approve|fix|implement|write|update|delete|remove|push|commit|make|build|deploy|move|rename|send|reply|comment|close|open|raise|file|log|set|change|apply|edit|refactor|revert|rebase|restart|stop|start|kill|rerun|retry|run|install|uninstall|enable|disable|prune|clean|reset|record|save|message|mail|spawn|label|tag|release|bump|upgrade|cancel|decline|mark|resolve|assign|replace|insert|drop|truncate|terminate|go ahead|do it|do that|proceed)\b/i;
+const LEAD = /^(?:(?:okay|ok|so|now|then|and|also|please|pls|yes|great|thanks|go ahead and|can you|could you|would you|will you|i want you to|i need you to|i'd like you to|let's|lets)[,!.]?\s+)+/i;
+/** Does this request ask for a change? */
+export const asksForChange = (question) => ACTING.test(String(question ?? "").trim().replace(LEAD, ""));
+
 /** Problems with a manifest's [[actions]], for readManifest. */
 export function checkActions(actions) {
   const problems = [];

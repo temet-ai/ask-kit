@@ -18,7 +18,7 @@ import { indexDomain, loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
 import { NO_DATA_META, capabilityLines, providersOf, ranked, scopeOf, tiesOf, winnersOf } from "./capabilities.mjs";
-import { ACTION_META, markReaskOf, matchAction, statusOf } from "./actions.mjs";
+import { ACTION_META, asksForChange, markReaskOf, matchAction, statusOf } from "./actions.mjs";
 
 const SERVER = path.join(ROOT, "src", "server.mjs");
 
@@ -275,6 +275,8 @@ export async function serveRouter() {
         ". Pass `about` to choose yourself" +
         (aliasLine ? ` (it also takes ${aliasLine})` : "") +
         ". For a follow-up, pass continue: true. " +
+        "The investigator only reads unless the ask may change things: a request that opens with what to do (\"fix ...\", \"restart ...\", \"send ...\") gets its acting calls, " +
+        "and so does any request sent with act: true; a follow-up keeps the act of the ask it continues. " +
         'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
       inputSchema: {
         question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
@@ -285,9 +287,14 @@ export async function serveRouter() {
         early: z.boolean().optional().describe("Let the investigator send the main fact before it finishes (default true); continue: true collects the rest"),
         backend: z.string().optional().describe("The investigator's model: a backend name from ask-kit's config"),
         timeoutSeconds: z.number().int().min(30).max(900).optional(),
+        act: z.boolean().optional().describe("true: the request asks for a change, so the investigator gets its acting calls. Left out, the router sets it when the request opens with what to do (fix, add, restart, send ...); false keeps the ask read-only"),
       },
     },
-    async ({ question = "", about, do: doWhat, params, continue: cont = false, early, backend, timeoutSeconds }, extra) => {
+    async ({ question = "", about, do: doWhat, params, continue: cont = false, early, backend, timeoutSeconds, act }, extra) => {
+      // The caller's words decide whether the investigator may change things: act as given, else a
+      // request that opens with what to do. Left unset otherwise, so a follow-up keeps the act of the ask it continues.
+      const actBy = act != null ? "caller" : !doWhat && asksForChange(question) ? "request" : null;
+      if (actBy === "request") act = true;
       const t0 = Date.now();
       let name = about ? (aliases[about] ?? about) : about;
       let how = "caller";
@@ -348,10 +355,11 @@ export async function serveRouter() {
         const best = resolve(name, question);
         if (best !== name) (resolvedFrom = name), (name = best);
       }
+      const acting = act != null ? { act } : {};
       const args = shot
-        ? { ...(question.trim() ? { question } : {}), do: shot.script, ...(params ? { params } : {}), ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}) }
-        : { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(early === false ? { early: false } : {}), ...(cont && name === last ? { continue: true } : {}) };
-      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(resolvedFrom ? { resolvedFrom } : {}), ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}) });
+        ? { ...(question.trim() ? { question } : {}), do: shot.script, ...(params ? { params } : {}), ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...acting }
+        : { question, ...(backend ? { backend } : {}), ...(timeoutSeconds ? { timeoutSeconds } : {}), ...(early === false ? { early: false } : {}), ...(cont && name === last ? { continue: true } : {}), ...acting };
+      journal({ question: (question || `do ${name}.${shot?.script}`).slice(0, 500), domain: name, how, routeMs: Date.now() - t0, ...(resolvedFrom ? { resolvedFrom } : {}), ...(shot ? { do: shot.script } : {}), ...(err ? { routeError: err } : {}), ...(actBy ? { act, actBy } : {}) });
       remember({ domain: name, how, question: (question || "").slice(0, 500) });
       // Pass the investigator's progress (one note per cell) on to the caller, if it asked for it.
       const token = extra?._meta?.progressToken;

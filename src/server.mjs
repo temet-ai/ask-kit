@@ -43,10 +43,14 @@ const snapshotPath = (id) => path.join(STATE_DIR, `${slug(id)}.snapshot`);
 
 let cellCalls = [];
 let cellScripts = [];
-const GLOBALS = DOMAIN.makeGlobals({ push: (c) => cellCalls.push(c), config: CONFIG });
+// Whether this investigator may change things: set by `ask` (ASK_KIT_ACT=1) only when the caller's
+// own request asked for a change. Without it the domain builds its globals read-only.
+const ACT = INNER && process.env.ASK_KIT_ACT === "1";
+const GLOBALS = DOMAIN.makeGlobals({ push: (c) => cellCalls.push(c), config: CONFIG, act: ACT });
 
-// ask.kit(name, question, { continue }): another kit's investigator answers; depth 1, journaled as a call.
-const askKit = makeAskKit({ config: CONFIG, from: DOMAIN_NAME, session: CALLER ?? SESSION, push: (c) => cellCalls.push(c) });
+// ask.kit(name, question, { continue }): another kit's investigator answers; depth 1, journaled as a
+// call. It asks with this ask's act, so a read-only ask cannot reach a kit's acting calls through another kit.
+const askKit = makeAskKit({ config: CONFIG, from: DOMAIN_NAME, session: CALLER ?? SESSION, push: (c) => cellCalls.push(c), act: ACT });
 for (const sig of ["exit"]) process.on(sig, () => void askKit.close());
 
 // ---- script library ----

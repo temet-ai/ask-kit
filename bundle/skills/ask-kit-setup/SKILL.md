@@ -72,8 +72,9 @@ Run `ask-kit doctor`: every source should show sessions and every API backend `o
 one question from the shell, for example
 `ask-kit ask --domain sessions "what did I work on yesterday?"`, and show the answer.
 
-Tell the user to restart their agents so they load the new `ask` tool, and that a follow-up goes
-to the same investigator with `continue: true`.
+Tell the user to restart their agents so they load the new `ask` tool, that a follow-up goes
+to the same investigator with `continue: true`, and that `ask` changes things (edits, runs,
+restarts) only when a request asks for it: one that opens with what to do, or sent with `act: true`.
 
 ## Changing it later
 
