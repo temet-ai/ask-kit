@@ -293,10 +293,10 @@ belongs to the other kit's investigator.
 ## Prove it
 
 ```sh
-ask-kit kit test notes --backends deepseek-v4.1-flash-1017,glm-5.3-flash
+ask-kit kit test notes
 ```
 
-asks every question in the kit's bench on each backend and prints one summary line per backend:
+asks every question in the kit's bench on the kit's backend (`--backends a,b` for several) and prints one summary line per backend:
 questions passed, median seconds, cost, the cells the investigator ran (the total, and the
 median per question) and how many questions were answered with no model:
 
