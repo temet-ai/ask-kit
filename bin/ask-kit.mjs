@@ -19,7 +19,7 @@
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
 //   ask-kit serve [--domain d]   the MCP server agents start (all domains behind one router)
-//   ask-kit plugin build|start   write the Claude Code plugin's skill copies; its SessionStart hook
+//   ask-kit plugin build|start|tool|subagent   write the Claude Code plugin's skill copies; its SessionStart, PostToolUse and SubagentStart hooks
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -325,7 +325,9 @@ async function plugin(sub) {
     if (!loadConfig({ required: false })) console.log("\nask-kit is installed as a Claude Code plugin but not set up yet, so `ask` will say so. When the user wants to use it, follow the ask-kit-setup skill.");
     return;
   }
-  throw new Error("plugin needs build or start");
+  if (sub === "tool") return (await import("../src/nudge.mjs")).runToolHook();
+  if (sub === "subagent") return (await import("../src/nudge.mjs")).runSubagentHook();
+  throw new Error("plugin needs build, start, tool or subagent");
 }
 
 async function uninstall() {

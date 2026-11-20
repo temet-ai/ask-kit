@@ -77,7 +77,10 @@ it needs Node.js 22.13 or newer:
 /plugin install ask-kit@temet-ai
 ```
 
-The plugin brings the `ask` tool, the skills and the tuner agent. Then ask Claude to set up
+The plugin brings the `ask` tool, the skills, the tuner agent and two hooks. After the third
+lookup in a row that `ask` could have answered, a PostToolUse hook adds one line to Claude's
+context naming the investigator that fits, and a SubagentStart hook gives each subagent the short
+rule. Then ask Claude to set up
 ask-kit, and the ask-kit-setup skill asks you the same questions. The plugin covers Claude Code
 only; `ask-kit init` and `ask-kit setup` leave Claude Code alone while it is installed.
 
@@ -133,7 +136,9 @@ general version. It needs no mike and no server.
 
 It sends your question, and the excerpts the investigator reads, to the model you chose. There's
 no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
-including the clipped prompts `ask-kit gaps` caches from your transcripts and, for the one in 20
+including the clipped prompts `ask-kit gaps` caches from your transcripts, a lookup counter per
+Claude Code session and a log of the nudges the plugin's hook gave (time, session id, kind of
+lookup; no commands or prompts) and, for the one in 20
 action answers that a model checks in the background, both answers.
 [What it stores and sends](docs/user-guide/privacy.md) has the full list.
 

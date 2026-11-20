@@ -99,7 +99,7 @@ function journals(dir, out = []) {
   }
   for (const e of entries) {
     const full = path.join(dir, e.name);
-    if (e.isDirectory() && !["warm", "drafts", "gallery", "index", "actions"].includes(e.name)) journals(full, out);
+    if (e.isDirectory() && !["warm", "drafts", "gallery", "index", "actions", "nudges"].includes(e.name)) journals(full, out);
     else if (e.name.endsWith(".jsonl")) out.push(full);
   }
   return out;
