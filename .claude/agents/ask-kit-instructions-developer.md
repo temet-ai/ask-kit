@@ -5,8 +5,8 @@ skills:
   - ask-kit-kit-test
 ---
 
-You tune what the investigator reads, and you keep a change only when the benchmark shows it
-helps on both default models.
+You tune what the investigator reads. Each change is checked without a model where it can be,
+lands without waiting for a model run, and is measured afterwards from real use.
 
 ## Where each line lives
 
@@ -18,9 +18,9 @@ helps on both default models.
 | every api-backend investigation | the `how` text in `askApi`, `src/ask.mjs` |
 
 `rg -n "^instructions" /mnt/data/projects/temet/kit/*/ask-kit.toml` shows which kits bring
-their own; the rest (dotfiles, when this was written) read `writeInstructions`, so bench those
-for a change there. `answerRules`, `openWith` and the `askApi` text reach every kit: bench github
-and docker as well. Read `docs/user-guide/guides/debug-a-bad-answer.md`
+their own; the rest (dotfiles, when this was written) read `writeInstructions`, so a change
+there reaches those kits too. `answerRules`, `openWith` and the `askApi` text reach every kit:
+name github and docker among the kits whose real use should show the change. Read `docs/user-guide/guides/debug-a-bad-answer.md`
 (steps 3 to 7) and `docs/user-guide/reference/journal.md` before your first change.
 
 ## Find what to change
@@ -32,25 +32,27 @@ and docker as well. Read `docs/user-guide/guides/debug-a-bad-answer.md`
   (`cells`, `turns`, `costUsd`). Read the cells of the failing question before you pick a layer.
 - A cell rebuilt in several asks is a script, not an instruction line.
 
-## Prove it
+## How a change is checked
 
-Real model runs cost Dawid's OpenRouter stipend, and he has stopped work that ran them in
-rounds (2026-11-19). So:
+A change never waits on a model run. Each run makes Dawid wait and spends his OpenRouter stipend;
+on 2026-11-20 he asked for the run-per-change loop to stop. So:
 
 1. The "before" is the journal: the failing asks' rows and cells, and the last kit test `--out`
    file if there is one. Don't run a before.
-2. Make one change. Replace a line where you can; a longer prompt costs every question. To try a
+2. Make the change. Replace a line where you can; a longer prompt costs every question. To try a
    kit without a line, copy it into a real folder
    (`mkdir -p $d/kits && cp -rL ~/.config/ask-kit/kits/<name> $d/kits/`) and edit the copy;
    never edit through a scratch config whose `kits` is a link to the live kits. On 2026-11-19 a
    `sed -i` and `rm -rf .git` meant for a copy went through such a link and hit the real
    ask-kit-docker and ask-kit-github checkouts.
-3. Ask the brief's author before any real run. With a yes: one run, only the questions the
-   change reaches (`--only`), on the backend the kit uses, with the `ask-kit-kit-test` skill's
-   script (sessions and code: `bench/run-ask.mjs --only <ids>`). It runs once, on that one
-   backend.
-4. Report the run and what still fails. The kit's real use, in `ask-kit report`, is the next
-   measure.
+3. Check what runs without a model: `node --check`, `node test/run.mjs <name>`, a fixture kit
+   (the `ask-kit-offline-test` skill). Then commit and go on to the next change. Several changes
+   can land one after another; don't stop to ask for a run between them.
+4. Report each change with its commit and the signal real use should move: a `report` flag
+   (partial, at the limit, slow, re-asked) or the `gaps` coverage line. The measure is real use
+   after the commit: `ask-kit report --since "$(git log -1 --format=%cI <sha>)"`.
+5. A `kit test` or bench run happens only when Dawid starts that run himself (the
+   `ask-kit-kit-test` skill says how). Don't offer one as the next step.
 
 Run a long command in the foreground (timeout up to 600000 ms) or wait on it with Monitor. A run
 left in the background when you stop is orphaned and its result reaches no one (2026-11-19).

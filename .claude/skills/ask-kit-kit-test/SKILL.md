@@ -1,6 +1,6 @@
 ---
 name: ask-kit-kit-test
-description: Run ask-kit's `kit test` benchmark (real model calls, paid from Dawid's OpenRouter stipend) on an installed kit from a checkout, clone or worktree without rewriting the live ~/.config/ask-kit. Use only when Dawid asks for that specific run; it runs once, on the questions a change reaches. For everything else, prove a change with an offline test and the journal of real use.
+description: Run ask-kit's `kit test` benchmark (real model calls, paid from Dawid's OpenRouter stipend) on an installed kit from a checkout, clone or worktree without rewriting the live ~/.config/ask-kit. Use only when Dawid starts that specific run himself; it runs once, on the questions he names or the change reaches. It is never a check a change waits on: changes are checked offline, land, and are measured from real use in `ask-kit report`.
 ---
 
 # Scoring a kit from a checkout
@@ -39,8 +39,13 @@ on glm-5.3-flash.
 
 ## When to run it
 
-Only when Dawid asks for the run. On 2026-11-19 he stopped a build that iterated `kit test` in
-rounds on two backends: "were wasting a lot of money and i said we do not do that".
+Only when Dawid starts the run himself. A change never waits on one: it is checked offline,
+lands, and real use measures it (`ask-kit report --since <the commit's date>`). Don't offer a run
+as the next step. On 2026-11-19 he stopped a build that iterated `kit test` in rounds on two
+backends: "were wasting a lot of money and i said we do not do that". On 2026-11-20 he asked for the
+run-per-change loop to stop: it makes him wait between every change.
+
+When he does start one:
 
 - One run, after the change, with no "before" run: the journal of real use and the last
   `--out` file are the before.

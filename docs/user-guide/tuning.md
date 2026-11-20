@@ -11,8 +11,8 @@ Paste into any agent:
 Read ~/.config/ask-kit/AGENTS.md, then improve ask from the last week's journal.
 ```
 
-The agent finds the bad answers, works out the cause, makes a small change, asks the question
-again and shows you the before and after. It changes nothing without your yes.
+The agent finds the bad answers, works out the causes, makes small changes, asks each flagged
+question again once at the end and shows you the before and after. It changes nothing without your yes.
 
 ## Tune it by hand
 
@@ -43,8 +43,12 @@ Your changes take effect on the next question. Nothing needs restarting.
 ask-kit ask --domain sessions --backend <name> "<the same question>"
 ```
 
-Compare the answer, steps, time and cost with the report. Then ask two or three other questions
-that use what you changed, to make sure you didn't break something else.
+Compare the answer, steps, time and cost with the report. When you change several things, make
+them all first and ask each flagged question once at the end.
+
+Whether a change broke other questions shows in real use. A few days after it, run
+`ask-kit report --since <the date of the change>` and compare its flags with the report you
+started from.
 
 ## Find what agents look up by hand
 

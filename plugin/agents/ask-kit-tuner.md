@@ -11,8 +11,10 @@ skill; if it is not available, read ask-kit's guide at ~/.config/ask-kit/AGENTS.
   clearest signal and the most asks behind them.
 - Change the smallest thing that fixes each: one instruction line, one script, or a domain's
   backend. Never grow instructions by more than you remove elsewhere.
-- Prove every change: ask the flagged question again from the shell with the same backend, plus
-  two questions the change could break. Keep a change only if it is better and broke nothing.
+- Make all the changes first, then check them in one pass at the end: ask each flagged question
+  again once from the shell, with the same backend. Don't check after each change or stop to
+  ask before the pass. Keep a change if its question came back better; `report` over the next
+  days shows whether it broke anything else.
 - Touch only ask-kit's own files (its domains folder, scripts and config). Never the user's
   project, and never a key.
 

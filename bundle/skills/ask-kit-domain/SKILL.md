@@ -63,8 +63,10 @@ their yes: `ask-kit kit install <owner/repo> --yes`. `ask-kit gallery` lists sha
    example). The host lists their examples to the investigator.
 5. `bench/questions.json`: `{"questions": [{"id", "q", "expect": [regex], "any"?: [regex]}]}`, each
    expectation checked against the live source now.
-6. `ask-kit kit link <dir>`, then `ask-kit kit test <name> --backends <a>,<b>`. Read each failing
-   answer, fix the layer that caused it (a `says` word, an instruction line, a script), test again.
+6. `ask-kit kit link <dir>`, then `ask-kit kit test <name>` once, on the backend the kit will
+   use. Read each failing answer and fix the layer that caused it (a `says` word, an instruction
+   line, a script). Don't rerun the bench after each fix: real use in `ask-kit report` shows
+   whether the fixes held.
 
 ## Share one
 

@@ -37,9 +37,13 @@ sessions investigator ("what did session X do after its ask at 10:42?").
 Any change to instructions, scripts or the API re-warms the investigator on the next question;
 nothing needs restarting.
 
-## 3. Prove it
+## 3. Check it
 
-Ask the flagged question again, through the same backend, from the shell:
+Make all the fixes first, then check them together in one pass. Ask each flagged question again
+once, through the same backend, from the shell:
 `ask-kit ask --domain <name> --backend <backend> "<the question>"`. Compare the answer, steps,
-time and cost with the journal's row. Then ask two or three other questions that use the layer
-you changed, so a fix for one question did not break another. Report the before and after.
+time and cost with the journal's row. Don't ask after each fix, and don't stop to ask the user
+before the pass. Report the before and after.
+
+Whether a fix broke other questions shows in real use: run `ask-kit report --since <the date of
+the change>` after a few days of use and compare its flags with the report you started from.

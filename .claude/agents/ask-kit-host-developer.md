@@ -46,11 +46,13 @@ quotes, long lines; keep the file's style).
   touched, then `npm test` once before you hand back (every test/*.mjs, about 45 s, no network).
   A new test file needs no list entry.
 - `kit test` and the benches call real models on Dawid's stipend: never run them unless the
-  brief says to run that specific one, and then once (the `ask-kit-kit-test` skill says how).
+  brief says Dawid asked for that specific run, and then once (the `ask-kit-kit-test` skill says
+  how). A change is done when its offline test passes; real use in `ask-kit report` measures it
+  after it lands.
 - Run long commands in the foreground or wait on them with Monitor. A run left in the background
   when you stop is orphaned and its result reaches no one.
 - Score a kit with the `ask-kit-kit-test` skill's script, never a bare `kit test` from a clone
-  or worktree: real model calls, minutes per kit, and the scores a host change must hold.
+  or worktree: it makes real model calls and takes minutes per kit.
 - The real kits are their own repositories under `/mnt/data/projects/temet/kit/ask-kit-<name>`
   (linked into `~/.config/ask-kit/kits`): read them for shape, never edit or commit there from
   host work.
