@@ -23,6 +23,7 @@ import { API_PRESETS } from "./providers.mjs";
 import { runCli } from "./platform.mjs";
 import { ollamaChat, OLLAMA_DEFAULT_CTX } from "./ollama.mjs";
 import { parseDo, runShot, shotFooter } from "./shots.mjs";
+import { checkCitations } from "./citations.mjs";
 import { NO_DATA_META } from "./capabilities.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ACTION_META, SHADOW_EVERY, logRun, logShadow, matchAction, noteQuestion, runCount, shapeProblem, statusOf } from "./actions.mjs";
@@ -785,11 +786,12 @@ export function registerAsk(server, ctx) {
           const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : cliLimitMs(timeoutMs, clientMs), cont, ac.signal, onStep, onEarly);
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
-          ctx.keep({ question, backend, kind, ...r, ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
+          const cited = r.ok ? await checkCitations(r.answer, D, config).catch(() => null) : null; // src/citations.mjs
+          ctx.keep({ question, backend, kind, ...r, ...(cited ? { citations: cited.journal } : {}), ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.
           const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
-          return { content: [{ type: "text", text: r.answer + footer }], isError: !r.ok, ...(noData ? { _meta: { [NO_DATA_META]: true } } : {}) };
+          return { content: [{ type: "text", text: r.answer + (cited?.line ?? "") + footer }], isError: !r.ok, ...(noData ? { _meta: { [NO_DATA_META]: true } } : {}) };
         } catch (e) {
           const cancelled = ac.signal.aborted;
           const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");

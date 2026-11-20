@@ -1,6 +1,7 @@
 // What the journals say about how `ask` is doing: every ask with its feedback signals, which
 // scripts were used, and the cell shapes that keep being written by hand (routes worth a script).
 // Read by the ask-kit-improve skill and the ask-kit-tuner agent.
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { STATE_ROOT } from "./config.mjs";
@@ -105,11 +106,20 @@ function journals(dir, out = []) {
   return out;
 }
 
-const parseSince = (s) => {
+/** `--since`: 24h, 7d, a date, or a git commit sha or ref (its commit date, from the repository in the current folder). */
+export const parseSince = (s) => {
   const m = String(s ?? "7d").match(/^(\d+)([hd])$/);
   if (m) return Date.now() - Number(m[1]) * (m[2] === "d" ? 86400_000 : 3600_000);
-  const t = Date.parse(s);
-  if (Number.isNaN(t)) throw new Error(`--since ${s}: use 24h, 7d or a date`);
+  const text = String(s);
+  if (/^\d{4}-\d{2}(-\d{2})?([T ]|$)/.test(text) && !Number.isNaN(Date.parse(text))) return Date.parse(text);
+  if (!text.startsWith("-")) {
+    try {
+      const out = execFileSync("git", ["log", "-1", "--format=%cI", text, "--"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+      if (out && !Number.isNaN(Date.parse(out))) return Date.parse(out);
+    } catch {}
+  }
+  const t = Date.parse(text);
+  if (Number.isNaN(t)) throw new Error(`--since ${s}: use 24h, 7d, a date, or a git commit sha or ref (run in its repository)`);
   return t;
 };
 
@@ -255,13 +265,25 @@ export function report({ since = "7d" } = {}) {
     const next = asks.slice(i + 1).find((b) => b.session === a.session);
     if (next && !next.continued && Date.parse(next.ts) - Date.parse(a.ts) < 180_000) signals.push(next.backend !== a.backend ? "re-asked on another backend" : "re-asked");
     if (a.actionFellThrough) signals.push(`action ${a.actionFellThrough.action} fell through (${a.actionFellThrough.why})`);
-    return { ts: a.ts, domain: a.domain, backend: a.backend ?? (a.action ? `action ${a.action}` : a.shot ? "shot" : null), session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, shot: !!a.shot, ...(a.action ? { action: a.action } : {}), signals, journal: a.file };
+    if (a.citations?.failed) signals.push(`${a.citations.failed} of ${a.citations.checked} citations did not resolve${a.citations.failedList?.length ? `: ${a.citations.failedList.join(", ")}` : ""}`);
+    return { ts: a.ts, domain: a.domain, backend: a.backend ?? (a.action ? `action ${a.action}` : a.shot ? "shot" : null), session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, shot: !!a.shot, ...(a.citations ? { citations: a.citations } : {}), ...(a.action ? { action: a.action } : {}), signals, journal: a.file };
   });
   const flagged = rows.filter((r) => r.signals.length);
   const total = rows.reduce((s, r) => s + (r.costUsd ?? 0), 0);
   const noModel = rows.filter((r) => r.shot || r.action);
   const real = rows.filter((r) => realSession(r.session));
   const { actions, shadows } = actionsSummary(from);
+  // Citations the host checked after each answer (src/citations.mjs), by domain.
+  const citations = {};
+  for (const r of rows) {
+    if (!r.citations) continue;
+    const e = (citations[r.domain] ??= { asks: 0, checked: 0, failed: 0, asksWithFailures: 0 });
+    e.asks++;
+    e.checked += r.citations.checked;
+    e.failed += r.citations.failed;
+    if (r.citations.failed) e.asksWithFailures++;
+  }
+  for (const e of Object.values(citations)) e.failedRate = Math.round((e.failed / e.checked) * 100) / 100;
   return {
     since: new Date(from).toISOString(),
     asks: rows.length,
@@ -274,6 +296,7 @@ export function report({ since = "7d" } = {}) {
     costUsd: Math.round(total * 1e4) / 1e4,
     medianSeconds: rows.length ? Math.round([...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)].ms / 1000) : null,
     flaggedAsks: flagged,
+    citations,
     scripts: Object.entries(scripts).sort((a, b) => b[1].runs - a[1].runs).map(([name, s]) => ({ name, ...s })),
     worthAScript: Object.entries(handCells).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([shape, n]) => ({ shape, n })),
     // Routes the router chose itself (model, rules, pattern, timeout) and those that were wrong.

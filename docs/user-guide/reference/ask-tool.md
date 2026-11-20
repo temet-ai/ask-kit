@@ -134,6 +134,18 @@ The time, backend and cost of each ask go to the journal (`ask-kit report` shows
 the reply: agents repeat whatever the reply carries. A bracketed line is added only when the
 caller has something to do, such as `[not finished: ask again with continue: true]`.
 
+For `code` and `sessions`, the host also resolves the answer's citations with no model (`path:line`
+and `path:line-line` against the repository; `<source> <session> #<event>` against the
+transcripts, with `#<event>` chained after a comma or "and" taken as the same session). When some
+do not resolve, a line says which, and the caller should not rely on those:
+
+```
+[2 of 7 citations did not resolve: src/x.mjs:900, codex 5ca1ab1e #41]
+```
+
+At most 20 citations are checked, within 3 seconds. The counts go to the journal
+(`citations`), and `ask-kit report` shows the failed rate by domain.
+
 With `"footer": true` in the config, each answer also ends with a footer, and the router adds a
 line when it chose the domain itself:
 

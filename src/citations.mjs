@@ -1,0 +1,103 @@
+// Citation check: after an investigator answers, the citations in the answer are resolved with no
+// model, through the domain's own REPL globals (the same `repo` and `history` the investigator had).
+//
+//   code domain      `path:line` and `path:line-line`: the file exists and has that many lines
+//   sessions domain  `<source> <session id> #n` (what cite() prints), and `#m` chained after it
+//                    with a comma or "and" ("codex 5ca1ab1e #12, #19"): the session has that event
+//
+// A bare `#41` with no session before it, a path with no line, and a citation past the cap or the
+// time budget are not checked, and not counted. The answer is not changed here: the caller gets a
+// bracketed line only when something did not resolve (see `checkCitations`).
+
+export const MAX_CHECKED = 20;
+export const BUDGET_MS = 3000;
+const MAX_LISTED = 10;
+
+const SOURCES = "claude-code|codex|copilot-cli|gemini-cli|opencode";
+// host.tld:port is not a file: with no folder in it and a domain-like ending, it is left out.
+const HOSTLIKE = /^[\w-]+(\.[\w-]+)*\.(com|org|net|io|dev|ai|co|uk|local|invalid|test|example|localhost)$/i;
+
+/** The `path:line` citations in `text`: [{ key, file, from, to }], first mention of each only. */
+export function pathCitations(text) {
+  const re = /(?<![\w/.:@~-])((?:\.{0,2}\/)?[\w@.-]+(?:\/[\w@.+-]+)*\.[A-Za-z]\w{0,9}):(\d+)(?:-(\d+))?(?!\d)/g;
+  const out = new Map();
+  for (const m of String(text).matchAll(re)) {
+    if (!m[1].includes("/") && HOSTLIKE.test(m[1])) continue;
+    const from = Number(m[2]);
+    const to = m[3] ? Number(m[3]) : from;
+    const key = `${m[1]}:${m[2]}${m[3] ? `-${m[3]}` : ""}`;
+    if (!out.has(key)) out.set(key, { key, file: m[1], from: Math.min(from, to), to: Math.max(from, to) });
+  }
+  return [...out.values()];
+}
+
+/** The `<source> <session> #n` citations in `text`: [{ key, source, session, n }], with `#m` after a comma or "and" taken as the same session. */
+export function eventCitations(text) {
+  const re = new RegExp(`\\b(${SOURCES})\\s+([A-Za-z0-9][\\w.-]{3,})\\s+#(\\d+)((?:\\s*(?:,|and|&)\\s*#\\d+)*)`, "g");
+  const out = new Map();
+  for (const m of String(text).matchAll(re)) {
+    const ns = [m[3], ...[...m[4].matchAll(/#(\d+)/g)].map((x) => x[1])];
+    for (const n of ns) {
+      const key = `${m[1]} ${m[2]} #${n}`;
+      if (!out.has(key)) out.set(key, { key, source: m[1], session: m[2], n: Number(n) });
+    }
+  }
+  return [...out.values()];
+}
+
+// One citation against the globals: true when it resolves.
+async function resolves(c, g, eventsOf) {
+  try {
+    if (c.file) {
+      const r = await g.repo.read(c.file, { from: c.to, to: c.to });
+      if (c.to > r.lines) return false;
+      // A file that ends with a newline reports one more (empty) line than it has.
+      return !(c.to === r.lines && r.text.replace(/^\d+\t/, "") === "");
+    }
+    return (await eventsOf(c)).has(c.n);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check the citations in an answer. Returns null when the domain has nothing to check against or
+ * the answer cites nothing checkable; else `{ journal, line }`: `journal` is the ask row's
+ * `citations` field ({ checked, failed, failedList? }), `line` the bracketed line to add to the
+ * reply ("" when every checked citation resolved).
+ */
+export async function checkCitations(answer, domain, config, { max = MAX_CHECKED, budgetMs = BUDGET_MS } = {}) {
+  const text = String(answer ?? "");
+  if (!text || !["code", "sessions"].includes(domain?.name)) return null;
+  let g;
+  try {
+    g = domain.makeGlobals({ push: () => {}, config });
+  } catch {
+    return null;
+  }
+  const list = (g.repo?.read ? pathCitations(text) : g.history?.events ? eventCitations(text) : []).slice(0, max);
+  if (!list.length) return null;
+  const deadline = Date.now() + budgetMs;
+  const sessions = new Map(); // "source session" -> Promise<Set of event numbers>
+  const eventsOf = (c) => {
+    const k = `${c.source} ${c.session}`;
+    if (!sessions.has(k)) sessions.set(k, g.history.events(`${c.source}:${c.session}`).then((ev) => new Set(ev.map((e) => e.i))));
+    return sessions.get(k);
+  };
+  let checked = 0;
+  const failed = [];
+  for (const c of list) {
+    const left = deadline - Date.now();
+    if (left <= 0) break;
+    let timer;
+    const ok = await Promise.race([resolves(c, g, eventsOf), new Promise((r) => (timer = setTimeout(() => r(null), left)))]);
+    clearTimeout(timer);
+    if (ok === null) break; // out of time: this one and the rest are left unchecked
+    checked++;
+    if (!ok) failed.push(c.key);
+  }
+  if (!checked) return null;
+  const journal = { checked, failed: failed.length, ...(failed.length ? { failedList: failed.slice(0, MAX_LISTED) } : {}) };
+  const line = failed.length ? `\n\n[${failed.length} of ${checked} citation${checked === 1 ? "" : "s"} did not resolve: ${failed.slice(0, MAX_LISTED).join(", ")}${failed.length > MAX_LISTED ? ", ..." : ""}]` : "";
+  return { journal, line };
+}

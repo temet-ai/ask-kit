@@ -140,7 +140,9 @@ including the clipped prompts `ask-kit gaps` caches from your transcripts, a dig
 session `find-sessions` matched (title, first prompt, top words), a lookup counter per
 Claude Code session and a log of the nudges the plugin's hook gave (time, session id, kind of
 lookup; no commands or prompts) and, for the one in 20
-action answers that a model checks in the background, both answers.
+action answers that a model checks in the background, both answers. Each ask's journal row
+holds how many of the answer's citations resolved, and the ones that did not (a path and line,
+or a session and event); the check reads local files and transcripts only.
 [What it stores and sends](docs/user-guide/privacy.md) has the full list.
 
 ## Contributing

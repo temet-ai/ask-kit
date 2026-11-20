@@ -9,7 +9,7 @@
 //   ask-kit doctor               check the config: sources, backends, tools
 //   ask-kit ask "<question>" [--domain d] [--backend b] [--continue]   ask from the shell
 //   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
-//   ask-kit report [--since 7d]  how ask is doing: flagged asks, scripts used, routes worth a script
+//   ask-kit report [--since 7d|<date>|<git sha or ref>]  how ask is doing: flagged asks, scripts used, routes worth a script
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
@@ -87,6 +87,8 @@ async function main() {
       const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d" });
       if (flag("json")) return print(r);
       console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, ${r.shots} shots, ${r.actionAnswers} answered by actions (${Math.round((r.noModelShare ?? 0) * 100)}% with no model; ${r.realNoModelShare == null ? "-" : `${Math.round(r.realNoModelShare * 100)}%`} on real use), $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
+      const cites = Object.entries(r.citations);
+      if (cites.length) console.log(`Citations that did not resolve: ${cites.map(([d, c]) => `${d} ${c.failed} of ${c.checked} (${Math.round(c.failedRate * 100)}%, ${c.asksWithFailures} of ${c.asks} asks)`).join(", ")}`);
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);
       if (r.scripts.length) console.log(`\nScripts: ${r.scripts.map((s) => `${s.name} ${s.runs}${s.failed ? ` (${s.failed} failed)` : ""}`).join(", ")}`);
       if (r.worthAScript.length) console.log(`\nWritten by hand 3+ times (worth a script):\n${r.worthAScript.map((w) => `  ${w.n}×  ${w.shape}`).join("\n")}`);
