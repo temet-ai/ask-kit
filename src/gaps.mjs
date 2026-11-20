@@ -667,7 +667,9 @@ export function report(sc) {
 }
 
 export async function gaps(o = {}) {
-  return report(await scan(o));
+  const sc = await scan(o);
+  const { nudgesSince } = await import("./nudge.mjs");
+  return { ...report(sc), nudges: nudgesSince(Date.parse(sc.since)) };
 }
 
 const fmtTok = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}G` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
@@ -682,6 +684,7 @@ export function formatReport(r) {
     "",
     `Coverage: ${c.asks} asks against ${c.byHand} lookup chains answered by hand: ${pct(c.share)} of the digging went to ask, ${pct(c.tokenShare)} by tokens.`,
     `By hand: ${c.handSessions} sessions, ${fmtTok(c.handTokens)} tokens${c.handUsd ? `, $${c.handUsd} at list price` : ""}.`,
+    ...(r.nudges ? [r.nudges.count ? `Nudges: the plugin's hook pointed ${r.nudges.count} lookup chains at ask in ${r.nudges.sessions} sessions (${Object.entries(r.nudges.by).map(([k, v]) => `${k} ${v}`).join(", ")}), the first on ${r.nudges.first.slice(0, 10)}; compare coverage before and after that date.` : "Nudges: none logged in this window."] : []),
     `Not a typed question: ${r.excluded.mailOrFleet} chains started from mail or a fleet brief, ${r.excluded.other} from a short or interrupted prompt; no example prompts come from them, and "No kit" leaves them out.`,
     "",
     "Installed but skipped:",

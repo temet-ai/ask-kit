@@ -60,7 +60,7 @@ It prints three sections:
 
 | Section | What it lists |
 |---|---|
-| Coverage | How many asks there were against chains answered by hand, as a share of the count and of the tokens. |
+| Coverage | How many asks there were against chains answered by hand, as a share of the count and of the tokens. Under it, how many chains the Claude Code plugin's hook nudged toward `ask` in the same window, and the date of the first (see below). |
 | Installed but skipped | For each kit you have, the chains that went to its sources by hand: how many, in how many sessions, their tokens, the areas they read and three prompts that started them. |
 | No kit | Sources no installed kit covers, ranked by sessions times tokens, with the prompts; the terminal shows the first 12. |
 
@@ -81,6 +81,29 @@ are not read.
 The first run over 30 days of a busy machine takes about half a minute. Results per session are
 kept in `<state>/index/gaps.json`, so a second run takes under a second. `--json` prints the
 whole report as JSON.
+
+### Nudges from the Claude Code plugin
+
+The plugin has a PostToolUse hook (`ask-kit plugin tool`) that counts an agent's lookups in a row,
+using the same classification as the chains above. After the third lookup that `ask` could have
+answered it adds one line to the agent's context and does not repeat it within that chain:
+
+```
+ask-kit: that is 3 lookups in a row. `ask` (about: "code") answers a question like this outside your context in one call; give it the whole question, and use continue: true to follow up.
+```
+
+The `about` is `code`, `sessions` (a transcript path), `github` (`gh`), `postgres`, `docker`,
+`systemd`, `ops` (other machine lookups) or `mike`. Web pages and other MCP reads neither count nor
+reset the chain. A call to `ask`, an edit or write, or a command that changes something resets it.
+The hook never blocks a call, runs no model and makes no network call, and prints nothing when its
+input or state file is broken. A subagent's tool calls fire the same hook with their own counter.
+
+Each nudge is one line in `<state>/nudges/nudges.jsonl`, which the `Nudges:` line of `ask-kit gaps`
+counts. To see whether nudging raised coverage, compare `ask-kit gaps --since <the day of the
+first nudge>` with the same window before it.
+
+A second hook, SubagentStart (`ask-kit plugin subagent`), adds a short form of the `ask` rule to
+each subagent's context, because the SessionStart rule reaches only the main conversation.
 
 ## ask-kit mine
 
