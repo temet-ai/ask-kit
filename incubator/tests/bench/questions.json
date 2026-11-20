@@ -1,0 +1,52 @@
+{
+  "questions": [
+    {
+      "id": "commands",
+      "do": "commands",
+      "params": { "dir": "bench/fixture/watch" },
+      "expect": ["\"name\": \"test\"", "npm run test:clacks", "\"name\": \"lint\"", "it does not end", "it changes things"]
+    },
+    {
+      "id": "run-test",
+      "do": "run",
+      "params": { "dir": "bench/fixture/watch", "check": "test" },
+      "expect": ["test failed: 2 of 5 tests", "Cable Street has two officers", "roster\\.test\\.mjs", "\"line\": 10", "Nobby is missing from Cable Street"]
+    },
+    {
+      "id": "run-lint",
+      "do": "run",
+      "params": { "dir": "bench/fixture/watch", "check": "lint" },
+      "expect": ["lint failed: 2 errors", "roster\\.mjs", "throw a WatchError"]
+    },
+    {
+      "id": "run-build",
+      "do": "run",
+      "params": { "dir": "bench/fixture/watch", "check": "build" },
+      "expect": ["build passed", "\"ok\": true"]
+    },
+    {
+      "id": "all",
+      "do": "all",
+      "params": { "dir": "bench/fixture/watch" },
+      "expect": ["2 of 3 checks failed", "lint \\(2 failures\\)", "test \\(2 failures\\)"]
+    },
+    {
+      "id": "last",
+      "do": "last",
+      "params": { "dir": "bench/fixture/watch", "check": "test" },
+      "expect": ["test failed \\(2\\)", "Cable Street has two officers"]
+    },
+    {
+      "id": "failure",
+      "do": "failure",
+      "params": { "dir": "bench/fixture/watch", "find": "Nobby is on the roster" },
+      "expect": ["TypeError", "Nobby is missing from Cable Street", "roster\\.test\\.mjs:22"]
+    },
+    {
+      "id": "flaky",
+      "do": "flaky",
+      "params": { "dir": "bench/fixture/watch", "check": "test:clacks", "times": 2 },
+      "expect": ["flaky: 1 failed in some of 2 runs", "the clacks message arrives 1/2"]
+    }
+  ]
+}
