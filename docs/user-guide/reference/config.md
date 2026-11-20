@@ -185,7 +185,7 @@ These are constants in the code. Change them by editing the source.
 
 | Value | Where | Meaning |
 |---|---|---|
-| 20 steps | `MAX_STEPS` in `src/ask.mjs` | Model calls in an `api` investigation. |
+| 30 s | `WRAP_MS` | With less time left than this, each cell result tells the investigator to answer. |
 | 60 s | `CELL_MAX_S` | The longest one REPL cell may run for an `api` investigator. |
 | 15 s | `RESERVE_MS` | Time kept back for the closing "what I found" call, and subtracted from `MCP_TOOL_TIMEOUT`. |
 | 300 s | `askClaude`, `askCodex` | Time allowed to warm an agent CLI session. |

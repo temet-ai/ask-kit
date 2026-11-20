@@ -178,14 +178,14 @@ through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-f
    every ask lands on the same provider and its cache.
 3. **Inner REPL.** `openInnerRepl` starts `src/server.mjs` as a child with `ASK_KIT_INNER=1` and
    `ASK_KIT_SESSION=ask-<askId>`, and connects as an MCP client. It is closed in a `finally`.
-4. **The loop.** Up to `MAX_STEPS` (20) times: check cancellation, stop if under 3 seconds are
-   left, post the chat request (`temperature: 0`, `max_tokens: 4000`), then handle the reply.
+4. **The loop.** Until it has an answer: check cancellation, stop if under 3 seconds are
+   left (time is the only budget; the repeat guard below can end it sooner), post the chat request (`temperature: 0`, `max_tokens: 4000`), then handle the reply.
 5. **Native tools** (default; `be.nativeTools !== false`). The request offers one tool, `repl`
    (`REPL_TOOL`), with `parallel_tool_calls: false`. Calls with the name `repl`, or any call whose
    arguments contain a `"code"` key, count as REPL calls, because small models misname the tool.
    A reply with no tool call and no text, or with tool-call markup in the text, is a misstep: the
    loop adds "Call the `repl` tool to run code, or reply with the final answer as plain text." and
-   goes round again, still using a step. A reply with plain text is the answer.
+   goes round again. A reply with plain text is the answer.
 6. **Code-block mode** (`nativeTools: false`). The model writes one fenced `js` block per turn.
    Only the first block runs, and the stored assistant message is cut at its end, so a result the
    model wrote itself never enters the history. The result comes back as a user message. A reply
@@ -195,27 +195,30 @@ through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-f
    least 1). A cell that does not finish returns text telling the model to narrow it, and the loop
    continues.
 
-#### Call budget and the "calls left" text
+#### Time budget and the repeat guard
 
-After each cell the result gets a suffix: `N calls left.` and, at 2 or fewer, `N call(s) left.
-Answer now with what you have, saying what you could not confirm.` `left` is
-`MAX_STEPS - step - 1`. If the answer arrives while `left <= 2`, `atLimit` is set and the answer
-gets `[answered at the step limit: if something is missing, ask again with continue: true]`.
+There is no step limit. After each cell the result gets a suffix: `About Ns left.` and, when under
+`WRAP_MS` (30 s) are left, `Answer now with what you have, saying what you could not confirm.`
+When the REPL reports a cell that repeats an earlier one with the same result for the third time,
+the result also says to stop searching, and the loop is allowed two more model calls (`stopAt`),
+both of which get the "Answer now" suffix. If the answer arrives with under 30 s left,
+or within those two calls, `atLimit` is set and the answer gets `[answered near the time limit:
+if something is missing, ask again with continue: true]`.
 
-#### Running out of steps or time
+#### Running out of time, or repeating
 
-If the loop ends with no answer (out of steps, or under 3 seconds left, or a request timed out),
-`askApi` makes one more call with no tools: "You are out of time/steps. Reply now in plain text ...".
+If the loop ends with no answer (under 3 seconds left, or the repeat guard's two calls used up),
+`askApi` makes one more call with no tools: "You are out of time" ("out of steps" after a repeat). "Reply now in plain text ...".
 That call's timeout is `max(1000, leftMs() + RESERVE_MS - 2000)`, which is where the reserve is
 spent. Its text becomes the answer, prefixed `[stopped at the 300s time limit; this is what it
-found]` (or the step limit). With no text, the answer says it stopped after N cells with nothing to
+found]` (or `[stopped at a search that kept repeating; ...]`). With no text, the answer says it stopped after N cells with nothing to
 report. A partial answer ends with
 `[not finished: ask again with continue: true to carry on from here]`. If a reply had
 `finish_reason: "length"`, `cutAtLength` adds a note that the reply may be cut off.
 
 ### What the CLI backends limit
 
-The CLI backends have no step counter in ask-kit. They stop at their own end of turn, or when
+The CLI backends have no budget in ask-kit but the process timeout. They stop at their own end of turn, or when
 `runCli` kills them at the timeout. Codex reports the number of REPL calls in `cells`, Copilot
 counts `tool.execution_start` events, Claude reports `num_turns` as `turns`.
 [Backends](backends.md#how-the-cli-investigators-are-limited) lists the flags that stop a CLI
@@ -266,7 +269,7 @@ router          picks the domain: about, follow-up, only one, model, rules
 router          ── ask(question, backend?, continue?) ────────────▶ domain server (registerAsk)
 domain server   ── askClaude / askCodex / askCopilot / askApi ────▶ investigator
 investigator    ── repl(code) ───▶ inner REPL (server.mjs, ASK_KIT_INNER=1)
-                ◀── result text ─┘   repeated, one cell per step (up to MAX_STEPS for an API)
+                ◀── result text ─┘   repeated, one cell per step (until the time limit for an API)
 investigator    ── answer ────────────────────────────────────────▶ domain server
 domain server   writes the journal entry (type: ask)
 domain server   ── answer + footer ───────────────────────────────▶ router
@@ -278,8 +281,8 @@ router          ── answer (+ [routed to ...]) ──────────
 - Adding a routing rule or changing how the router asks: `RULES`, `byRules` and `byModel` in
   `src/router.mjs`. The `says` line of each domain is what the router model reads, so a better
   `says` often fixes a mis-route with no code change.
-- Changing a limit: `MAX_STEPS`, `CELL_MAX_S`, `RESERVE_MS` at the top of `src/ask.mjs`. The text
-  of the "calls left" nudge is in `askApi` (`nudge`). Check the effect on the benchmark first; see
+- Changing a limit: `CELL_MAX_S`, `RESERVE_MS`, `WRAP_MS` at the top of `src/ask.mjs`. The text
+  of the "About Ns left" nudge is in `askApi` (`nudge`). Check the effect on the benchmark first; see
   [Run the benchmark](../guides/run-the-benchmark.md).
 - Changing what the investigator is told: the domain's `instructions.md`, `prime`, `answerRules`
   and `openWith`. `answerRules` is appended to every question, so a change there applies to every

@@ -105,8 +105,9 @@ The time limit is the smaller of `timeoutSeconds` and the calling agent's own to
 the environment variable `MCP_TOOL_TIMEOUT` when the agent sets it. This keeps the answer from
 arriving after the agent has already dropped the call.
 
-For an `api` backend the investigation stops at the limit, or after 20 steps, and the model gets
-one more call to say what it found. For the agent CLIs the limit is the process timeout, with
+An `api` investigation has no step limit; the time limit is its budget. With under 30 seconds left
+each cell result tells the model to answer. When the limit arrives, or when the same cell has
+returned the same result three times, the model gets one more call to say what it found. For the agent CLIs the limit is the process timeout, with
 13 seconds added for the CLI to finish.
 
 ### Follow-ups
@@ -155,11 +156,11 @@ of the answer, and `isError` stays `false`.
 
 | Text | Meaning |
 |---|---|
-| `[stopped at the 20-step limit; this is what it found]` or `[stopped at the <N>s time limit; ...]` | It ran out of steps or time and was asked for what it had. |
+| `[stopped at the <N>s time limit; this is what it found]` or `[stopped at a search that kept repeating; this is what it found]` | It ran out of time, or kept getting the same result, and was asked for what it had. |
 | `[stopped at ... after <N> cells, with nothing it could report]` | It ran out and the closing call returned nothing. |
 | `[the reply hit the length limit and may be cut off]` | The model's reply was cut at `max_tokens`. |
 | `[not finished: ask again with continue: true to carry on from here]` | Added to every partial answer. |
-| `[answered at the step limit: if something is missing, ask again with continue: true]` | It answered with two or fewer steps left. |
+| `[answered near the time limit: if something is missing, ask again with continue: true]` | It answered with under 30 seconds left, or within two calls of the repeat stop. |
 
 ## Errors
 

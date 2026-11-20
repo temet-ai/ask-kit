@@ -272,7 +272,7 @@ starts the MCP server. The skills and the rule point agents at this file through
   cell; `shapeOf` blanks string and number literals, `const` names and whitespace, keeps 90
   characters, and counts equal shapes.
 - Each ask gets signals: `failed: <error>` or `cancelled`; `cut off` or `out of steps or time`
-  (`partial`); `answered at the step limit` (`atLimit`); `slow` over 90 s; `costly` over $0.02;
+  (`partial`); `answered near the time limit` (`atLimit`); `slow` over 90 s; `costly` over $0.02;
   `missteps` over 2; `empty answer`; and `re-asked` when the same session asks again within 3
   minutes without `continue` (`re-asked on another backend` when the backend differs).
 - The result: totals, `medianSeconds`, `flaggedAsks`, `scripts` by runs, and `worthAScript`, the

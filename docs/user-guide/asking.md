@@ -65,7 +65,7 @@ you:  follow up: and did anyone test that change?
 ```
 
 Say "follow up" and the agent passes `continue: true`. If the answer ends with
-`[answered at the step limit ...]`, follow up with `carry on`.
+`[answered near the time limit ...]`, follow up with `carry on`.
 
 For an unrelated question, start a new ask.
 

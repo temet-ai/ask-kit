@@ -62,9 +62,9 @@ The rest depend on the kind. A field that a kind does not produce is absent.
 | `turns` | `api`, `claude-cli` | Model calls in the ask. |
 | `cells` | `api`, `codex-cli`, `copilot-cli` | REPL cells run (tool calls, for Copilot). |
 | `warm` | `claude-cli`, `codex-cli` | `{ reused }`, and `warmCostUsd` for `claude-cli`: whether the warm session was reused, and what a fresh warm-up cost. |
-| `partial` | `api` | The ask ran out of steps or time, or was cut at the length limit. |
+| `partial` | `api` | The ask ran out of time, stopped on a repeating search, or was cut at the length limit. |
 | `cutAtLength` | `api` | A reply hit the length limit. |
-| `atLimit` | `api` | The answer came with two or fewer steps left. |
+| `atLimit` | `api` | The answer came with under 30 seconds left, or within two calls of the repeat stop. |
 | `providers` | `api` | The providers that served the calls, where the API says (OpenRouter does). |
 | `missteps` | `api` | Replies that were empty or held tool-call markup instead of a tool call. |
 | `premiumRequests` | `copilot-cli` | Premium requests used. |
@@ -158,7 +158,7 @@ Each `ask` record gets zero or more signals. An ask with any signal is listed.
 | `cancelled` | `ok` is `false` and `cancelled` is true. |
 | `out of steps or time` | `partial` is true. |
 | `cut off` | `partial` is true because of `cutAtLength`. |
-| `answered at the step limit` | `atLimit` is true. |
+| `answered near the time limit` | `atLimit` is true. |
 | `slow (<n>s)` | `ms` over 90 000. |
 | `costly ($<n>)` | `costUsd` over 0.02. |
 | `<n> missteps` | `missteps` over 2. |
