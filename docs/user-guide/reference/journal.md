@@ -50,6 +50,7 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `noData` | boolean | The domain provides a capability and its answer ended with the line `[no data]`: it held nothing for the question. The line is cut from the answer, and the router asks the next provider. |
 | `action` | string | The kit's action that answered with no model. The row has `do` (the script), `params`, `ms` and `cells: 1`, and no backend, model or cost. See [Actions](../kits.md#actions). |
 | `actionFellThrough` | object | On a model ask: `{ action, why }` for the action that matched first and fell through (`why` is `error`, `empty` or `expect`), with `turnedOff` when that run turned the action off. |
+| `citations` | object | `{ checked, failed, failedList? }`: the host resolved the answer's citations with no model (`code`: `path:line` or `path:line-line`, the file exists and has that line; `sessions`: `<source> <session> #<event>`, the session has that event). At most 20 are checked, within 3 seconds; those not reached are not counted. `failedList` holds up to 10 that did not resolve. Absent when the answer cites nothing checkable. When `failed` is above 0 the reply ends with `[<failed> of <checked> citations did not resolve: ...]`. |
 | `askId` | string | `api` asks: the investigator's REPL session is `ask-<askId>`, so `report` finds the ask's cells. |
 
 The rest depend on the kind. A field that a kind does not produce is absent.
@@ -140,11 +141,13 @@ The report counts the routes the router decided and lists the misroutes.
 ## `ask-kit report`
 
 ```sh
-ask-kit report [--since 7d] [--json]
+ask-kit report [--since 7d|<date>|<sha or ref>] [--json]
 ```
 
-`--since` takes `<n>h`, `<n>d` or a date. The default is `7d`. Any other value stops with
-`--since <value>: use 24h, 7d or a date`. The command reads every journal in the state folder
+`--since` takes `<n>h`, `<n>d`, a date, or a git commit sha or ref, which it turns into the
+commit's date (`git log -1 --format=%cI`, in the repository of the current folder), so
+`ask-kit report --since <sha>` shows real use after that change. The default is `7d`. Any other value stops with
+`--since <value>: use 24h, 7d, a date, or a git commit sha or ref (run in its repository)`. The command reads every journal in the state folder
 (folders `warm`, `drafts`, `gallery`, `index` and `actions` are skipped), keeps records whose `ts` is in
 range, and builds the sections below. The action sections read `<state>/actions/` separately.
 
@@ -166,6 +169,7 @@ Each `ask` record gets zero or more signals. An ask with any signal is listed.
 | `re-asked` | The same calling session asked again within three minutes, and not as a follow-up. A sign the first answer fell short. |
 | `re-asked on another backend` | Same, and the second ask used a different backend. |
 | `action <name> fell through (<why>)` | The ask has `actionFellThrough`. |
+| `<n> of <m> citations did not resolve: <list>` | `citations.failed` is above 0. |
 
 ### Scripts
 
@@ -208,6 +212,7 @@ Since 2026-11-11T09:27:08.327Z: 12 asks, 2 flagged, $0.0341, median 18 s
 <ts>  <domain> · <backend> · <seconds>s  <signals joined by "; ">
   <question, cut at 140 characters>
   <journal file>
+Citations that did not resolve: code 2 of 14 (14%, 1 of 6 asks), sessions 0 of 9 (0%, 0 of 4 asks)
 Scripts: code/where 9, sessions/grep 4 (1 failed)
 Written by hand 3+ times (worth a script):
   4×  <shape>
@@ -226,6 +231,7 @@ Misroutes: 1 of 9 routed by the router (router bench rows: <state>/router/bench.
 | `costUsd` | Sum of `costUsd`. |
 | `medianSeconds` | Median duration in seconds, or `null` with no asks. |
 | `flaggedAsks` | `[{ ts, domain, backend, session, question, ms, costUsd, cells, signals, journal }]`. `cells` is `cells` or else `turns`. |
+| `citations` | By domain, from the asks that have a `citations` field: `{ <domain>: { asks, checked, failed, failedRate, asksWithFailures } }`. `failedRate` is `failed / checked`. |
 | `scripts` | `[{ name, runs, failed }]`, most used first. |
 | `worthAScript` | `[{ shape, n }]`. |
 | `routed` | Routes the router decided itself (`action`, `pattern`, `model`, `timeout`, `rules`) in range. |
