@@ -27,6 +27,8 @@ interface Event {
 
 interface Hit { source: Source; session: string; project: string | null; title: string | null; i: number; ts?: string; role: string; tool?: string; snippet: string }
 
+interface Digest { title: string | null; firstPrompt: string | null; project: string | null; startedAt: string | null; updatedAt: string | null; prompts: number; terms: string[] }
+
 // `since` / `until`: hours ago (number) or an ISO date. `project` matches project or cwd (substring).
 interface Window { since?: number | string; until?: number | string; source?: Source | Source[]; project?: string; cwd?: string }
 
@@ -42,8 +44,12 @@ declare const history: {
   usage(ref: string | Session): Promise<Record<string, { calls?: number; input: number; cacheRead: number; cacheWrite: number; output: number; premiumRequests?: number; costUsd?: number }>>;
   // Words (all must appear in one event, any case) or a RegExp. Default roles: user, assistant, tool_call, tool_result.
   // Narrow with a window: an unbounded search reads every transcript. Stops at a 40 s budget.
+  // Files are pre-filtered by the rarest word (or a literal the RegExp requires); `.prefilter` says which.
+  // Parsed events stay in memory between cells, so a repeat search over the same sessions parses nothing.
   grep(query: string | RegExp, o?: Window & { session?: string; roles?: string | string[]; max?: number; snippet?: number; budgetMs?: number }):
-    Promise<Hit[] & { total: number; complete: boolean; scanned: number; stoppedEarly?: string }>;
+    Promise<Hit[] & { total: number; complete: boolean; scanned: number; prefilter: { needle: string | null; listed: number | null; kept: number }; stoppedEarly?: string }>;
+  // A digest per session, built once per file version and kept on disk. `refs` are sessions or {source, id}.
+  digests(refs: (Session | { source: Source; id: string })[]): Promise<(Digest | null)[] & { built: number; reused: number }>;
 };
 
 // "codex 5ca1ab1e #42" from a Hit, or from {source, session|id, i}.

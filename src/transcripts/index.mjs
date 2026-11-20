@@ -5,8 +5,58 @@ import { adapter as codex } from "./codex.mjs";
 import { adapter as copilotCli } from "./copilot-cli.mjs";
 import { adapter as geminiCli } from "./gemini-cli.mjs";
 import { adapter as opencode } from "./opencode.mjs";
-import { clip, filesMayMatch } from "./common.mjs";
+import fs from "node:fs";
+import { clip, filesMayMatch, literalOf } from "./common.mjs";
+import { buildDigest, loadDigests, saveDigests, stampOf } from "./digest.mjs";
 import { STATE_ROOT } from "../config.mjs";
+
+// Parsed events kept in this process (the REPL server, so later cells of an ask and follow-ups
+// reuse them), keyed by source, session id, path, mtime and size. The cost of an entry is the
+// length of its event texts; the least recently used go first once the total passes the cap
+// (ASK_KIT_PARSE_CACHE_MB, default 256; 0 turns the cache off). `parseStats.parses` counts
+// adapter parses, `hits` the calls the cache answered.
+export const parseStats = { parses: 0, hits: 0 };
+const parsedCache = new Map();
+let parsedBytes = 0;
+const capBytes = () => (process.env.ASK_KIT_PARSE_CACHE_MB != null ? Number(process.env.ASK_KIT_PARSE_CACHE_MB) : 256) * 1024 * 1024;
+
+export function clearParsed() {
+  parsedCache.clear();
+  parsedBytes = 0;
+}
+
+async function parsed(s) {
+  let key = null;
+  try {
+    const st = fs.statSync(s.file);
+    key = `${s.source}:${s.id}|${s.file}|${st.mtimeMs}|${st.size}`;
+  } catch {}
+  const hit = key && parsedCache.get(key);
+  if (hit) {
+    parsedCache.delete(key);
+    parsedCache.set(key, hit);
+    parseStats.hits++;
+    return hit.events;
+  }
+  parseStats.parses++;
+  const events = await ADAPTERS[s.source].events(s);
+  if (!key) return events;
+  const cost = events.reduce((n, e) => n + (e.text?.length ?? 0) + 200, 0);
+  const cap = capBytes();
+  if (cost <= cap / 2) {
+    // A newer version of the same session replaces the old one.
+    const prefix = key.slice(0, key.indexOf("|", key.indexOf("|") + 1) + 1);
+    for (const [k, v] of parsedCache) if (k.startsWith(prefix)) { parsedCache.delete(k); parsedBytes -= v.cost; }
+    parsedCache.set(key, { events, cost });
+    parsedBytes += cost;
+    for (const [k, v] of parsedCache) {
+      if (parsedBytes <= cap) break;
+      parsedCache.delete(k);
+      parsedBytes -= v.cost;
+    }
+  }
+  return events;
+}
 
 export const ADAPTERS = Object.fromEntries([claudeCode, codex, copilotCli, geminiCli, opencode].map((a) => [a.name, a]));
 
@@ -90,7 +140,7 @@ export function makeHistory({ sources, push = () => {} }) {
     async events(ref, o = {}) {
       const started = Date.now();
       const s = await find(ref);
-      let ev = await ADAPTERS[s.source].events(s);
+      let ev = [...(await parsed(s))]; // a copy: the result gets properties, and the cached array stays as parsed
       const total = ev.length;
       if (o.roles) ev = ev.filter((e) => [].concat(o.roles).includes(e.role));
       if (o.from != null) ev = ev.filter((e) => e.i >= o.from);
@@ -106,8 +156,45 @@ export function makeHistory({ sources, push = () => {} }) {
     },
 
     /**
+     * A digest per session (title or first prompt, project, dates, top terms), built once per file
+     * version and kept in STATE_ROOT/index/digests.json. `refs` are sessions or {source, id}.
+     * Returns the digests in order (null for a session that is gone), with `.built` and `.reused`.
+     */
+    async digests(refs) {
+      const stored = loadDigests();
+      const out = [];
+      let built = 0;
+      let reused = 0;
+      for (const ref of refs) {
+        let s;
+        let st;
+        try {
+          s = await find(ref);
+          st = fs.statSync(s.file);
+        } catch {
+          out.push(null);
+          continue;
+        }
+        const id = `${s.source}:${s.id}`;
+        const stamp = stampOf(s, st);
+        if (stored[id]?.stamp === stamp) {
+          reused++;
+          out.push(stored[id].d);
+          continue;
+        }
+        built++;
+        const d = buildDigest(s, await parsed(s));
+        stored[id] = { stamp, d };
+        out.push(d);
+      }
+      if (built) saveDigests(stored);
+      return Object.assign(out, { built, reused });
+    },
+
+    /**
      * Search text across sessions. `query` is words (all must appear in one event, any case) or a
-     * RegExp. Files that cannot hold every word are skipped before parsing.
+     * RegExp. Files that cannot hold every word are skipped before parsing: for words by their
+     * rarest word, for a RegExp by the longest literal it requires (none: no pre-filter).
      */
     async grep(query, o = {}) {
       const started = Date.now();
@@ -121,11 +208,15 @@ export function makeHistory({ sources, push = () => {} }) {
       const hits = [];
       let scanned = 0;
       let total = 0;
-      const maybe = await filesMayMatch(list.filter((s) => !ADAPTERS[s.source].noPrefilter).map((s) => s.file), words);
+      const lit = re ? literalOf(re) : null;
+      const needles = re ? (lit ? [lit] : []) : words;
+      const maybe = await filesMayMatch(list.filter((s) => !ADAPTERS[s.source].noPrefilter).map((s) => s.file), needles);
+      // What the pre-filter used: the word it searched files for and how many files held it.
+      const prefilter = { needle: maybe.needle ?? needles[0] ?? null, listed: maybe.listed ?? null, kept: maybe.size };
       for (const s of list) {
         if (!ADAPTERS[s.source].noPrefilter && !maybe.has(s.file)) continue;
         scanned++;
-        for (const e of await ADAPTERS[s.source].events(s)) {
+        for (const e of await parsed(s)) {
           if (!roles.includes(e.role) || !e.text || !test(e.text)) continue;
           total++;
           if (hits.length < max) {
@@ -135,11 +226,11 @@ export function makeHistory({ sources, push = () => {} }) {
         }
         if (Date.now() - started > (o.budgetMs ?? 40_000)) {
           note("grep", String(query), started, total);
-          return Object.assign(hits, { total, complete: false, scanned, stoppedEarly: "time budget: narrow with since/project/source" });
+          return Object.assign(hits, { total, complete: false, scanned, prefilter, stoppedEarly: "time budget: narrow with since/project/source" });
         }
       }
       note("grep", String(query), started, total);
-      return Object.assign(hits, { total, complete: total <= max, scanned });
+      return Object.assign(hits, { total, complete: total <= max, scanned, prefilter });
     },
   };
 }

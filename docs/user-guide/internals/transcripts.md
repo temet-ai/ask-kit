@@ -8,8 +8,9 @@ proxy and no database of ask-kit's own, except a small cache of session metadata
 
 | File | What is in it |
 |---|---|
-| [src/transcripts/index.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/index.mjs) | `ADAPTERS` (the five adapters by name), `listSessions(sources)` (every session without ask-kit's own investigators), `makeHistory({sources, push})` (the `history` API: `sources`, `sessions`, `session`, `events`, `usage`, `grep`), `cite`. |
-| [src/transcripts/common.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/common.mjs) | The event shape (header comment), `indexed` (the cache), `fileMayMatch` (the search pre-filter), `head`, `parseLines`, `walk`, `textOf`, `titleOf`, `clip`. |
+| [src/transcripts/index.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/index.mjs) | `ADAPTERS` (the five adapters by name), `listSessions(sources)` (every session without ask-kit's own investigators), `makeHistory({sources, push})` (the `history` API: `sources`, `sessions`, `session`, `events`, `usage`, `digests`, `grep`), the parsed-events cache (`parseStats`, `clearParsed`), `cite`. |
+| [src/transcripts/digest.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/digest.mjs) | `buildDigest`, `topTerms` and the digest store (`index/digests.json`). |
+| [src/transcripts/common.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/common.mjs) | The event shape (header comment), `indexed` (the cache), `filesMayMatch`/`fileMayMatch` (the search pre-filter), `rarestFirst`, `literalOf`, `head`, `parseLines`, `walk`, `textOf`, `titleOf`, `clip`. |
 | [src/transcripts/claude-code.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/claude-code.mjs) | `adapter` for Claude Code. |
 | [src/transcripts/codex.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/codex.mjs) | `adapter` for Codex. |
 | [src/transcripts/copilot-cli.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/copilot-cli.mjs) | `adapter` for GitHub Copilot CLI. |
@@ -98,16 +99,31 @@ all call `sessions()`, so they write this cache too.
   compares against `updatedAt`, `until` against `startedAt`.
 - `session(ref)` and the `ref` of `events` and `usage` accept an id, an id prefix or
   `source:id`. A prefix matching several sessions throws, unless one of them equals it exactly.
-- `events(ref, {roles, from, to, maxText})` calls the adapter, which parses the whole file
-  again on every call, then filters.
+- `events(ref, {roles, from, to, maxText})` filters the parsed events of the session. The adapter
+  parses a file once per version: `parsed()` in `index.mjs` keeps the parsed events in the REPL
+  process, keyed by source, session id, path, mtime and size, so a later cell, a follow-up or
+  `grep` over the same session parses nothing. An entry costs the length of its event texts; the
+  least recently used go first above `ASK_KIT_PARSE_CACHE_MB` (default 256; `0` keeps nothing),
+  and a session too big for half the cap is not kept. `parseStats` counts `parses` and `hits`.
+  The result is a copy, so a caller changing it leaves the cache alone.
+- `digests(refs)` returns a digest per session: title or first prompt, project, dates and the
+  twelve most used terms of what the person typed (`digest.mjs`). It is built once per file
+  version (path, mtime, size) and kept in `STATE_ROOT/index/digests.json`, the way `ask-kit gaps`
+  keeps `index/gaps.json`; the result has `.built` and `.reused`. Deleting the file is safe.
+  `find-sessions` asks for the digests of the sessions it found, not of every session.
 - `grep(query, opts)` takes words (all must appear in one event, any case) or a `RegExp`. For each
-  session in the window it first asks `filesMayMatch(files, words)`, which runs one `rg -l -i -F`
-  (bundled ripgrep) for the first word, in its JSON-escaped form, over all candidate files, in
-  batches that fit a command line. With several words, each file ripgrep lists goes through
-  `fileMayMatch(file, words)`, which lower-cases the file and looks for one raw line that holds
-  every word. Without ripgrep, with `ASK_KIT_NO_RG=1`, or when a batch fails, `fileMayMatch` runs
-  on every file. A file that fails is skipped. It is not used for a `RegExp` (no words) or for an adapter with
-  `noPrefilter`. Otherwise the adapter parses the file and each event of the wanted roles is
+  session in the window it first asks `filesMayMatch(files, needles)`, which runs one `rg -l -i -F`
+  (bundled ripgrep) for the rarest needle, in its JSON-escaped form, over all candidate files, in
+  batches that fit a command line. `rarestFirst` picks it: the longest, with two extra for a
+  word holding a digit, dot, dash, slash or underscore; ties keep the caller's order. For words
+  the needles are the words; for a `RegExp` the one needle is `literalOf(re)`, the longest plain
+  run the pattern requires (outside groups and classes, at least 3 characters, none with a
+  top-level `|`). With several needles, each file ripgrep lists goes through
+  `fileMayMatch(file, needles)`, which lower-cases the file and looks for one raw line that holds
+  every needle. Without ripgrep, with `ASK_KIT_NO_RG=1`, or when a batch fails, `fileMayMatch` runs
+  on every file. A file that fails is skipped. A `RegExp` with no literal, or an adapter with
+  `noPrefilter`, skips it. The result's `.prefilter` is `{needle, listed, kept}`. Otherwise the
+  adapter parses the file (or the cache answers) and each event of the wanted roles is
   tested. The default roles are `user`, `assistant`, `tool_call` and `tool_result`; `system` is
   searched only when asked for.
 
