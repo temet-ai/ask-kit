@@ -319,7 +319,7 @@ What each field does:
 | `name` | The domain's name. Match the folder name. |
 | `says` | One line the router reads to decide whether a question belongs here. Make it say what the domain answers, in the words people use. |
 | `scriptsDir`, `apiDoc`, `instructions` | Paths to the scripts folder, `api.d.ts` and `instructions.md`. |
-| `makeGlobals({ push, config })` | Returns the REPL's globals. `push(call)` journals a call. `config` is the whole `config.json`, so a domain can read its own keys under `domains.<name>`. Here that is `dir`. |
+| `makeGlobals({ push, config, act })` | Returns the REPL's globals. `push(call)` journals a call. `config` is the whole `config.json`, so a domain can read its own keys under `domains.<name>`. Here that is `dir`. `act` is true only when the caller asked for a change; leave out the globals that change things when it is false. |
 | `prime` | The first prompt of a warm session (used for the `claude-cli` and `codex-cli` backends). It makes the model call `help` and run a cell, so the session holds the instructions and API before the first real question. |
 | `answerRules` | Added to every question: how to cite. |
 | `openWith` | Tells an `api` model which script to start from. |

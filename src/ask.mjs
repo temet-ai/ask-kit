@@ -26,7 +26,7 @@ import { parseDo, runShot, shotFooter } from "./shots.mjs";
 import { checkCitations } from "./citations.mjs";
 import { NO_DATA_META } from "./capabilities.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { ACTION_META, SHADOW_EVERY, logRun, logShadow, matchAction, noteQuestion, openerFor, runCount, shapeProblem, statusOf } from "./actions.mjs";
+import { ACTION_META, SHADOW_EVERY, asksForChange, logRun, logShadow, matchAction, noteQuestion, openerFor, runCount, shapeProblem, statusOf } from "./actions.mjs";
 import { kitProfile } from "./report.mjs";
 
 // Set while a run goes on in the background (a shadow run or a hedge): `true`, or `{ last }` to
@@ -37,6 +37,11 @@ const shadowing = new AsyncLocalStorage();
 const USUAL_MIN_ASKS = 5;
 const USUAL_FALLBACK_MS = 60_000;
 const USUAL_TTL_MS = 600_000;
+// Each ask's { act }: whether its caller asked for a change. replEnv reads it when it starts the
+// investigator's REPL, which builds its globals read-only without it (src/kits.mjs, "act").
+const acting = new AsyncLocalStorage();
+const withActing = (handler) => (input, extra) => acting.run({ act: false }, () => handler(input, extra));
+const ACT_KEY = "__act";
 
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
@@ -107,7 +112,7 @@ export function registerAsk(server, ctx) {
   // Child processes never get this session's id, which would make them write into its REPL state.
   const childEnv = (extra = {}) => {
     const env = { ...process.env, ASK_KIT_DOMAIN: domainName, ...(D.childEnv?.() ?? {}) };
-    for (const k of ["ASK_KIT_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "COPILOT_SESSION_ID", "ASK_KIT_INNER", "ASK_KIT_CALLER", "ASK_KIT_INHERIT"]) delete env[k];
+    for (const k of ["ASK_KIT_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "COPILOT_SESSION_ID", "ASK_KIT_INNER", "ASK_KIT_CALLER", "ASK_KIT_INHERIT", "ASK_KIT_ACT"]) delete env[k];
     return { ...env, ...extra };
   };
   // The REPL server's environment for an investigator: inner mode, acting for `caller`, starting
@@ -122,7 +127,12 @@ export function registerAsk(server, ctx) {
     // Acting for the caller: a kit's tools that act (send mail, answer) do it in the caller's name.
     ...(inherit || ownId ? { ASK_KIT_CALLER: SESSION } : {}),
     ...(ownId ? { ASK_KIT_SESSION: ownId } : {}),
+    // Acting calls only for an ask whose caller asked for a change; never for the warm session.
+    ASK_KIT_ACT: (inherit || ownId) && acting.getStore()?.act ? "1" : "0",
   });
+  // Every ask row says whether the ask could change things.
+  const keepRow = ctx.keep;
+  ctx.keep = (entry) => keepRow({ ...entry, act: acting.getStore()?.act === true });
 
   // The last investigator each backend ran for this calling session, so a follow-up can continue it.
   const lastFile = path.join(WARM_DIR, `last-${SESSION.replace(/[^A-Za-z0-9._-]/g, "-")}.json`);
@@ -691,7 +701,7 @@ export function registerAsk(server, ctx) {
       const limit = outOfTime ? `the ${Math.round(timeoutMs / 1000)}s time limit` : escError ? `a hand-over to ${escTo} that failed` : "a search that kept repeating";
       messages.push({
         role: "user",
-        content: `You are out of ${outOfTime ? "time" : "steps"}. Reply now in plain text, with no tool call: what you found (with its evidence), what you tried, and what is still missing.`,
+        content: `${outOfTime ? "You are out of time." : "Your search keeps repeating the same result."} Reply now in plain text, with no tool call: what you found (with its evidence), what you tried, and what is still missing.`,
       });
       try {
         const res = await post({ model: be.model, messages, temperature: 0, max_tokens: 4000, ...ep.extra, ...be.body }, Math.max(1000, leftMs() + RESERVE_MS - 2000));
@@ -829,6 +839,8 @@ export function registerAsk(server, ctx) {
       description:
         `${D.askDescription} For a follow-up, pass continue: true: the same investigator answers, keeping what it found. ` +
         `To run one of this kit's scripts with no model, pass do: "<script>" and params: the result comes back at once and stays in the REPL as shots.<script> for a follow-up. ` +
+        `The investigator only reads unless the ask may change things: pass act: true for a request to change something (edit, run, send, restart); ` +
+        `a request that opens with what to do ("fix ...", "restart ...") sets it, and a follow-up keeps it. ` +
         `backend: ${NAMES.join(", ")} (default ${DEFAULT}).`,
       inputSchema: {
         question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
@@ -840,11 +852,17 @@ export function registerAsk(server, ctx) {
         continue: z.boolean().optional().describe("Ask the same investigator as your last question on this backend, so it keeps what it found"),
         early: z.boolean().optional().describe("Let the investigator send the main fact before it finishes (default true); continue: true then collects the rest"),
         timeoutSeconds: z.number().int().min(30).max(900).optional().describe("Default 300"),
+        act: z.boolean().optional().describe("true: this request asks for a change, so the investigator gets its acting calls (write, edit, run, a kit's acts). Left out, it is true when the request opens with what to do, or continues an ask that could act; false keeps it read-only"),
       },
     },
-    async ({ question: q, request, prompt, do: doWhat, params = {}, backend = DEFAULT, continue: cont = false, early = true, timeoutSeconds = 300 }, extra) => {
+    withActing(async ({ question: q, request, prompt, do: doWhat, params = {}, backend = DEFAULT, continue: cont = false, early = true, timeoutSeconds = 300, act }, extra) => {
       const question = [q, request, prompt].find((v) => typeof v === "string" && v.trim());
       const started = Date.now();
+      // Only the caller's words decide: act as given, else the request itself (or the ask it continues).
+      // A shot runs the script the caller named, with no model, so it may act unless act is false.
+      const state = acting.getStore();
+      state.act = doWhat ? act !== false : act ?? (asksForChange(question) || (cont && readLast()[ACT_KEY] === true));
+      if (!doWhat && question) writeLast(ACT_KEY, state.act);
       if (doWhat) {
         let target;
         try {
@@ -869,6 +887,8 @@ export function registerAsk(server, ctx) {
         noteQuestion(domainName, SESSION, hit);
         if (hit) {
           const { action, params: p } = hit;
+          // An acting action the config turned on, matching the whole request, is the caller asking for that change.
+          if (action.acts) state.act = true;
           let r;
           try {
             r = await shoot(backend, action.script, p, Math.min(timeoutSeconds, 120));
@@ -960,7 +980,7 @@ export function registerAsk(server, ctx) {
       pending.set(backend, run);
       ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text, ...(fell ? { actionFellThrough: fell } : {}) });
       return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + (config.footer ? `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` : "") }] };
-    },
+    }),
   );
 }
 

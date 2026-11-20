@@ -80,7 +80,7 @@ ask-kit ask --domain code --backend qwen3-coder "where is the config file read?"
 
 A model that fails here usually fails in one of three ways, which the [journal](../reference/journal.md)
 and `ask-kit report` show: `missteps` (it wrote tool-call markup instead of calling the tool),
-`cut off` (replies hit the length limit), or `out of steps or time`. For missteps, try
+`cut off` (replies hit the length limit), or `stopped short`. For missteps, try
 `"nativeTools": false` in the entry, which has the model write fenced `js` blocks instead of calling
 a tool.
 

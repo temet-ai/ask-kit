@@ -28,6 +28,32 @@ its sources, the calls that change things (`acts`) and the commands it runs at i
 | [claude-code-docs](https://github.com/temet-ai/ask-kit-claude-code-docs) | how Claude Code works, from its docs and changelog | a folder, downloaded at install |
 | fleet (needs [mike](https://github.com/temet-ai/mike)) | how a fleet of sessions is doing, what needs you, why a task is stuck; answers and mails seats | mike's MCP tools and inspect API |
 
+## Who can make a kit change something
+
+A kit's code runs as you, with no sandbox; you decide that at install from the preview. What the
+investigator does with it is a separate question, because a cheap model reads text nobody vouched
+for: files in a folder, issue bodies through the github kit, tool output inside transcripts. So
+the calls that change things are in its REPL only when the caller's own words asked for a change.
+Text the investigator reads during the ask never grants them.
+
+An ask can change things (`act`) when the caller passed `act: true`, when the request opens with
+what to do ("fix ...", "restart ...", "send ..."), when it continues an ask that could, or when an
+acting [action](#actions-that-change-something) you turned on matched it. Otherwise:
+
+- a `folder` source reads only: `write`, `edit` and `run` throw, and `git` runs only commands that read;
+- an `acts` entry written `<source>.<function>` (`dotfiles.edit`, `mike.define_fleet`,
+  `inspect.start`) makes that function or MCP tool throw, also through a module's
+  `call(name, ...)` (`mcp.call("send_session_message")`);
+- an `acts` entry written as a command (`gh pr comment`, `systemctl restart`) refuses a `cli`
+  call, or a `module` function call, whose arguments hold it (`gh.run("pr", "comment", ...)`);
+- a `module` source's `make()` gets `act`, and holds back what the host cannot recognise in
+  `acts` ("any SQL the role may run"): build the acting functions only when `act` is true;
+- `ask.kit` asks the other kit with the same `act`, so a read-only ask cannot reach another kit's acting calls.
+
+A withheld call throws `... is off in this ask` or `not in this ask: ...`. The investigator then
+says that the change needs `ask` with `act: true`, and the caller can ask again with it. The
+[`ask` reference](reference/ask-tool.md#asking-for-a-change-act) has the full rules.
+
 ## Make one
 
 ```sh
@@ -58,14 +84,14 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `[[provides]]` `capability`, `covers`, `reach`, `priority` | What the kit answers that another kit or domain may answer too. `capability` names it (`session-history`), `covers` lists what of it the kit holds (agents: `claude-code`, `codex`, `copilot-cli`, `opencode`, `gemini-cli`; left out, all of it), `reach` says where from (`this-machine`, `all-machines`), and the highest `priority` wins. A question that names an agent goes to the best provider whose `covers` include it. A provider whose answer ends with the line `[no data]` hands the question to the next one, once. A kit that wins nothing is not offered. Two providers with overlapping `covers` at the same priority are an error in `doctor` and `kit install`; `domains.<kit>.priority` in the config settles it. The built-in `sessions` domain provides `session-history` for all five agents, `this-machine`, priority 10. |
 | `cite` | How answers cite evidence |
 | `requires`, `platforms` | Programs that must be on PATH, and the systems it runs on (`linux`, `macos`, `windows`). A kit whose programs, `required` settings or folders are missing is not offered on that machine; `kit list` says why. |
-| `acts` | What the kit can change; shown at install |
+| `acts` | What the kit can change; shown at install, and withheld from an ask that did not ask for a change. Write each as `<source>.<function>` or as the command (`gh pr comment`) so the host can hold it back. See [Who can make a kit change something](#who-can-make-a-kit-change-something). |
 | `[[actions]]` `name`, `title`, `script`, `match`, `params`, `expect`, `acts` | A question one of `match`'s regexes matches as a whole is answered by `script` with no model; named captures fill its params, `params` gives defaults, and output that does not match `expect` goes to the model instead. An action whose script is in `acts`, or that sets `acts = true`, is off until you turn it on. See [Actions](#actions). |
 | `[[settings]]` `key`, `about`, `default`, `detect`, `secret`, `required` | A value the kit needs, with `about` saying what it is (shown by `kit list` when it is missing, in the install preview and on the kits page): from the environment, then `domains.<kit>.settings` in the config, then `detect` (a command run in the agent's folder when the kit is first used, never when the router starts), then `default`. `${KEY}` uses it in a path or command; `${KIT_DIR}` is the kit's folder. A `secret` one leaves the investigator's environment once the sources hold it. |
 | `state_key` | One state folder per value (the github kit keeps one per repository) |
 | `[[sources]]` `kind = "folder"` | `path`, `exclude` (globs never searched or read: what the investigator reads goes to a model) |
 | `[[sources]]` `kind = "cli"` | `command`, `refuse` (argument strings refused, with why), `env`, `timeout_seconds` |
 | `[[sources]]` `kind = "mcp"` | `command` (the MCP server), `env`, `allow` (the tools it may call), `caller_args` (per tool, the argument set to the calling session, so actions are the caller's), `caller_env`, `by_name_above` (default 30). Each tool becomes a function: `mike.get_fleet({ fleet })`. A server with more than `by_name_above` allowed tools is documented by name: the API lists the tool names and `find(word)`, `describe(name)` and `call(name, args)`, and the investigator reads a signature with `describe` when it needs one. A server of 131 tools made a 145 KB API, which cost a model its pass on the bench and 12 times the price. Set `by_name_above` higher to list every signature, or lower to switch earlier. |
-| `[[sources]]` `kind = "module"` | `module` (exports `make({ settings, push, config, kitDir, cwd })`), `api` (its `api.d.ts`) |
+| `[[sources]]` `kind = "module"` | `module` (exports `make({ settings, push, config, kitDir, cwd, act })`; `act` is true only when the caller asked for a change), `api` (its `api.d.ts`) |
 | `instructions`, `scripts` | Your own instructions file and scripts folder (default `scripts/`) |
 | `skills` | A folder of Markdown playbooks (default `skills/`). A file's name is the skill's name and its first line the purpose. See [Skills and roles](#skills-and-roles). |
 | `[[roles]]` `name`, `when`, `instructions`, `patterns` | A playbook for one kind of question: `when` in plain words, `instructions` a file in the kit, `patterns` (regexes; checked when the manifest loads, not yet used to pick a role) |
@@ -176,7 +202,9 @@ ask-kit kit actions watch --enable dismiss
 ```
 
 That writes `domains.watch.actions.dismiss = true` to the config. Setting it to `false` turns any
-action off; `--disable <name>` does that.
+action off; `--disable <name>` does that. A request an acting action you turned on matches counts
+as asking for a change: its script, and the investigator if the action falls through, get the
+kit's acting calls.
 
 ### How an action is turned off for you
 
@@ -286,7 +314,8 @@ The call starts the other kit's server as the router does and passes the calling
 through, so `{ continue: true }` follows up on that kit's last answer. Only one level is
 allowed: a kit started by `ask.kit` that calls `ask.kit` gets an error naming the limit. An
 unknown kit, or one that is disabled or cannot run, is refused with the list of kits that can,
-and a kit cannot ask itself. Each call is journaled as a call of kind `ask.kit` with the target
+and a kit cannot ask itself. The other kit is asked with this ask's `act`: from a read-only ask
+it reads only, whatever the question says. Each call is journaled as a call of kind `ask.kit` with the target
 kit and seconds, and with the cost and backend when the answer carries a footer
 (`footer: true`); the other kit's own journal has them either way:
 

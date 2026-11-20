@@ -4,6 +4,12 @@
 
 - Your question, and the transcript and code excerpts the investigator reads, to the model you
   chose: an API provider, an agent CLI's own service, or a local model server.
+- In transcript excerpts (everything `history` returns: events, tool inputs, grep snippets,
+  session titles), keys and tokens are masked first: `sk-...`, `ghp_...`, `github_pat_...`,
+  `xox...`, `AKIA...`, `AIza...`, `Bearer` and `Basic` values, `NAME=value` where the name holds
+  KEY, TOKEN, SECRET or PASSWORD, `"apiKey": "..."`, the password in a `postgres://user:pass@`
+  URL and private key blocks ([`src/transcripts/scrub.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/scrub.mjs)).
+  Code excerpts are sent as they are; a kit's folder `exclude` keeps credential files out.
 - When a router model is set, picking the domain is one more short call to it, with the question,
   the working directory and what each enabled domain answers.
 - When you set `escalate` or `hedge` in the config, a slow ask also goes to that second backend:
@@ -19,8 +25,9 @@ that CLI's service under its own terms, and the sessions appear in its history.
 ## What it stores
 
 - Under `~/.config/ask-kit/`: the config, the guide for agents and `keys.env`.
-- Under `~/.local/state/ask-kit/`: the journals of every ask and cell, REPL snapshots, warm
-  investigator sessions and the transcript index. The router keeps each routed question, and in
+- Under `~/.local/state/ask-kit/`: the journals of every ask and cell (each ask's record says
+  whether it could change things, `act`), REPL snapshots, warm investigator sessions and the
+  transcript index. The router keeps each routed question, and in
   `router/bench.jsonl` every misrouted question with where it went and where it should have gone.
   An ask's row also holds how many of the answer's citations resolved and up to ten that did not
   (`path:line`, or source, session and event). The check reads local files and transcripts, and

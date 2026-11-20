@@ -1,6 +1,6 @@
 ---
 name: ask-kit-improve
-description: Improve ask-kit's `ask` from its own usage - read the journal for asks that failed, ran out of steps, were slow, costly or wrong, find the layer that caused it (instructions, a script, the backend), fix it there and prove the fix by asking the same question again. Use when asked to improve, tune or speed up ask, when an ask answer was wrong or slow, or to turn a repeated investigation into a script.
+description: Improve ask-kit's `ask` from its own usage - read the journal for asks that failed, stopped short, were slow, costly or wrong, find the layer that caused it (instructions, a script, the backend), fix it there and prove the fix by asking the same question again. Use when asked to improve, tune or speed up ask, when an ask answer was wrong or slow, or to turn a repeated investigation into a script.
 ---
 
 # Improving ask from its journal
@@ -10,7 +10,7 @@ is {{AGENTS_MD}}: read it first.
 
 ## 1. Find what went wrong
 
-`ask-kit report --since 7d` lists every ask with its signals: failed, out of steps or time, cut
+`ask-kit report --since 7d` lists every ask with its signals: failed, stopped short (out of time or repeating), cut
 off, slow, costly, many missteps (the model wrote markup instead of calling the tool), and
 re-asked (the same session asked again soon after, often a sign the first answer fell short). It
 ends with which scripts were used and the cells that ran most often without a script: routes

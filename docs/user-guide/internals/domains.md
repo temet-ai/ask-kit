@@ -86,7 +86,7 @@ this table is complete for the code on `main`, with the file that reads each one
 | `scriptsDir` | `server.mjs` | Folder of scripts. |
 | `apiDoc` | `server.mjs` (`helpText`) | Path of the typed API. `help` returns it after the script list. |
 | `instructions` | `ask.mjs`, `server.mjs` | Path of the system prompt. |
-| `makeGlobals({push, config})` | `server.mjs` | Returns the REPL's service globals. `push(call)` records a call in the cell's journal entry. `config` is the parsed `config.json`. |
+| `makeGlobals({push, config, act})` | `server.mjs` | Returns the REPL's service globals. `push(call)` records a call in the cell's journal entry. `config` is the parsed `config.json`. `act` is true only when the caller asked for a change: build the globals that change things only then (`code` wraps `repo` in `readOnly`). |
 | `beforeCell(globals)` | `server.mjs` (`runCell`) | Optional. Runs before every cell. Neither built-in domain defines it. |
 | `prime` | `ask.mjs` | First prompt of the warm session. |
 | `answerRules` | `ask.mjs` | Appended to every question. |

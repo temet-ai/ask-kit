@@ -156,9 +156,10 @@ ask-kit sets most of these itself when it starts a server. You set them to run a
 | `ASK_KIT_INNER` | `1` starts the investigator's face of the server: the REPL tools, and no `ask`. |
 | `ASK_KIT_SESSION` | The calling session's id. `ask-kit ask` sets `shell-<pid>` when it is unset. The benchmark sets one per run. |
 | `ASK_KIT_CALLER` | In an investigator's server: the session it acts for, 1 to 120 characters of `A-Z a-z 0-9 . _ : -`. A snapshot made for a caller is restored only for that caller. |
+| `ASK_KIT_ACT` | In an investigator's server: `1` when the caller asked for a change, so the domain builds its acting globals. `ask` sets it for each investigator it starts; anything else is read-only. |
 | `ASK_KIT_INHERIT` | In an investigator's server: the session whose saved variables it starts from when it has none (a fork of a warm session). |
 | `ASK_KIT_CODE_ROOT` | The repository the `code` domain reads. Default: the git top level of the working directory. |
-| `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID`, `COPILOT_SESSION_ID` | Read as the calling session's id when `ASK_KIT_SESSION` is not set. Agents set them. ask-kit removes all of them, and `ASK_KIT_INNER`, `ASK_KIT_CALLER` and `ASK_KIT_INHERIT`, from the environment of the investigator CLIs it starts. |
+| `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID`, `COPILOT_SESSION_ID` | Read as the calling session's id when `ASK_KIT_SESSION` is not set. Agents set them. ask-kit removes all of them, and `ASK_KIT_INNER`, `ASK_KIT_CALLER`, `ASK_KIT_INHERIT` and `ASK_KIT_ACT`, from the environment of the investigator CLIs it starts. |
 
 If none of the session variables is set, the caller's id is `client-<pid of the parent process>`.
 

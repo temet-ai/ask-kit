@@ -208,7 +208,7 @@ if something is missing, ask again with continue: true]`.
 #### Running out of time, or repeating
 
 If the loop ends with no answer (under 3 seconds left, or the repeat guard's two calls used up),
-`askApi` makes one more call with no tools: "You are out of time" ("out of steps" after a repeat). "Reply now in plain text ...".
+`askApi` makes one more call with no tools: "You are out of time." (after a repeat: "Your search keeps repeating the same result."). "Reply now in plain text ...".
 That call's timeout is `max(1000, leftMs() + RESERVE_MS - 2000)`, which is where the reserve is
 spent. Its text becomes the answer, prefixed `[stopped at the 300s time limit; this is what it
 found]` (or `[stopped at a search that kept repeating; ...]`). With no text, the answer says it stopped after N cells with nothing to

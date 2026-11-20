@@ -21,6 +21,39 @@ function exec(cmd, args, { cwd, maxBuffer = 32 << 20, timeoutMs = 60_000 } = {})
   });
 }
 
+// What a repository client keeps in an ask that did not ask for a change (act: true): searches,
+// reads and the git commands that only read. write, edit and run throw, and say so.
+export const READ_GIT = new Set(["log", "show", "diff", "blame", "status", "ls-files", "ls-tree", "rev-parse", "rev-list", "grep", "shortlog", "describe", "cat-file", "merge-base", "name-rev", "for-each-ref", "whatchanged"]);
+// Options of those commands that write a file or start another program.
+const GIT_WRITES = /^(--output|--open-files-in-pager|-O|--ext-diff)/;
+
+/** The message an acting call gives in a read-only ask. */
+export const offInThisAsk = (what) =>
+  `${what} is off in this ask: the caller did not ask for a change (act: true), so nothing was changed. ` +
+  "Answer what you can, and say that the change needs `ask` with act: true. Do not look for another way to make it.";
+
+/** `repo` with no way to change anything: write, edit and run throw; git runs only commands that read. */
+export function readOnly(repo, name = "repo") {
+  return {
+    ...repo,
+    git(sub, ...args) {
+      if (!READ_GIT.has(String(sub))) return Promise.reject(new Error(offInThisAsk(`${name}.git("${sub}")`) + ` Read-only git here: ${[...READ_GIT].join(", ")}.`));
+      const bad = args.map(String).find((a) => GIT_WRITES.test(a));
+      if (bad) return Promise.reject(new Error(offInThisAsk(`git ${sub} ${bad}`)));
+      return repo.git(sub, ...args);
+    },
+    write: () => {
+      throw new Error(offInThisAsk(`${name}.write`));
+    },
+    edit: () => {
+      throw new Error(offInThisAsk(`${name}.edit`));
+    },
+    run: async () => {
+      throw new Error(offInThisAsk(`${name}.run`));
+    },
+  };
+}
+
 export function makeRepo({ root, push }) {
   const ROOT = fs.realpathSync(root);
   const inside = (p = ".") => {

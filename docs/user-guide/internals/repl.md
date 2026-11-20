@@ -30,9 +30,13 @@ stays in its session. It is the inner face of `src/server.mjs`.
 | `reset` | Builds a fresh context and deletes the snapshot. Drafts and the journal stay. |
 | `load` | Copies the saved variables of another session's REPL into this one, if `mayRestore` allows it. |
 
-At start-up the server calls `loadDomain(ASK_KIT_DOMAIN)`, then `DOMAIN.makeGlobals({ push, config })`.
+At start-up the server calls `loadDomain(ASK_KIT_DOMAIN)`, then `DOMAIN.makeGlobals({ push, config, act })`.
 `push` is how a domain global reports each call it makes (a ripgrep run, a transcript read) so it
-appears in the cell's journal entry. `newContext()` then builds the context.
+appears in the cell's journal entry. `act` is true only in an inner server started with
+`ASK_KIT_ACT=1`, which `ask` sets when the caller asked for a change; without it `repo` and a
+kit's folder sources read only and a kit's `acts` are withheld (see
+[Asking for a change](../reference/ask-tool.md#asking-for-a-change-act)). `ask.kit` passes the same
+`act` to the kit it asks. `newContext()` then builds the context.
 
 ## What a cell can see
 

@@ -10,7 +10,7 @@ import { ROOT } from "./config.mjs";
 
 export const MAX_DEPTH = 1;
 const SERVER = path.join(ROOT, "src", "server.mjs");
-const SESSION_VARS = ["ASK_KIT_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "COPILOT_SESSION_ID", "ASK_KIT_INNER", "ASK_KIT_CALLER", "ASK_KIT_INHERIT"];
+const SESSION_VARS = ["ASK_KIT_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "COPILOT_SESSION_ID", "ASK_KIT_INNER", "ASK_KIT_CALLER", "ASK_KIT_INHERIT", "ASK_KIT_ACT"];
 
 // "[kit · backend · 12s · $0.0031]" at the end of an ask's answer.
 export function parseFooter(text) {
@@ -27,7 +27,9 @@ async function runnable(config) {
 
 // from: this REPL's kit, to refuse a kit asking itself. session: the calling session, passed through
 // so `continue: true` finds the same investigator. connect/runnableKits are for tests.
-export function makeAskKit({ config, from, session, push, depth = Number(process.env.ASK_KIT_DEPTH) || 0, connect, runnableKits }) {
+// act: the calling ask's act, passed on as given (never inferred from the question, which the
+// investigator wrote after reading text nobody vouched for).
+export function makeAskKit({ config, from, session, push, act = false, depth = Number(process.env.ASK_KIT_DEPTH) || 0, connect, runnableKits }) {
   const children = new Map();
   const open = (name) => {
     if (children.has(name)) return children.get(name);
@@ -48,7 +50,7 @@ export function makeAskKit({ config, from, session, push, depth = Number(process
     let failed = null;
     try {
       const c = await open(name);
-      const out = await c.callTool({ name: "ask", arguments: { question, ...(opts.continue ? { continue: true } : {}) } }, undefined, { timeout: 300_000 });
+      const out = await c.callTool({ name: "ask", arguments: { question, act: !!act, ...(opts.continue ? { continue: true } : {}) } }, undefined, { timeout: 300_000 });
       text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
       if (out.isError) failed = text.slice(0, 300) || "the other kit's ask failed";
     } catch (e) {

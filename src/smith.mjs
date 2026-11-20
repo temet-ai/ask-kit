@@ -25,14 +25,13 @@ import { listSessions } from "./transcripts/index.mjs";
 import { draftsDir, readManifest, MANIFEST } from "./kits.mjs";
 import { mine } from "./mine.mjs";
 import { which } from "./platform.mjs";
+import { asksForChange } from "./actions.mjs";
 
 const NAME = /^[a-z][a-z0-9-]*$/;
 const SECRET = /TOKEN|SECRET|PASSWORD|PASSWD|KEY|CREDENTIAL|AUTH|COOKIE|SESSION|EMAIL/i;
 // A word in a tool's name that changes something (jira_add_comment, env_switch, k8s_port_forward).
 const WRITES = /^post[_-]|(^|[_-])(add|create|update|delete|remove|transition|merge|approve|send|set|switch|ensure|connect|forward|restart|stop|start|run|trigger|retry|cancel|close|reopen|edit|write|push|label|assign|unassign|upload|move|rename|kill|exec|apply|deploy|publish|submit|reply|comment|rebase|revert|lock|unlock|enable|disable|install|grant|revoke)([_-]|$)/i;
 
-// A prompt that asks for a change rather than an answer.
-const ACTING = /^(create|add|post|merge|approve|fix|implement|write|update|delete|remove|push|commit|make|build|deploy|move|rename|send|reply|comment|close|open|raise|file|log|set|change|apply)\b/i;
 
 /** Does an MCP tool only read? By its name: no word in it changes something. */
 export const readsOnly = (tool) => !WRITES.test(tool);
@@ -181,7 +180,7 @@ export async function scaffold(source, o = {}) {
 
   // A drafted kit only reads, so a mined task that asks it to change something can't be its test.
   const mined = await mine({ kit: source, scan: sc, n: (o.n ?? 12) * 2 });
-  const questions = mined.rows.filter((r) => r.found && !ACTING.test(r.q.replace(/^(okay|ok|so|now|then|please|pls),?\s+/i, ""))).slice(0, o.n ?? 12).map((r) => ({ id: r.id, q: r.q, reference: r.found, askedAt: r.source.split(" ").at(-1), source: r.source }));
+  const questions = mined.rows.filter((r) => r.found && !asksForChange(r.q)).slice(0, o.n ?? 12).map((r) => ({ id: r.id, q: r.q, reference: r.found, askedAt: r.source.split(" ").at(-1), source: r.source }));
   if (!questions.length) throw new Error(`${source}: no typed question with an answer to test against`);
 
   let offer = "";

@@ -44,7 +44,7 @@ finished. The signal it carries points at a likely cause:
 | Signal or field | Usual cause | Where to look |
 |---|---|---|
 | `failed: <error>` | The backend: a missing key, a provider error, a CLI that is not signed in | [`ask-tool` errors](../reference/ask-tool.md#errors); run `ask-kit doctor` |
-| `out of steps or time` (`partial`) | The investigator searched without converging | Its cells (step 4); a script that narrows the search |
+| `stopped short` (`partial`) | The investigator searched without converging | Its cells (step 4); a script that narrows the search |
 | `answered near the time limit` | It converged late | Same |
 | `cut off` (`cutAtLength`) | The model's replies hit the length limit | The instructions ask for long output, or the model is too small |
 | `<n> missteps` | The model wrote tool-call markup or an empty reply instead of calling the tool | The backend: try `nativeTools: false` or another model |

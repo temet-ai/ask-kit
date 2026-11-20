@@ -8,7 +8,8 @@
 //   name, says            name, and one line saying what it answers (the router reads it)
 //   stateKey?             a sub-folder of its state (code: one per repository)
 //   scriptsDir, apiDoc, instructions   paths
-//   makeGlobals({push, config})       the REPL's service globals; push(call) journals each call
+//   makeGlobals({push, config, act})  the REPL's service globals; push(call) journals each call;
+//                                     act: the caller asked for a change, so build the acting ones too
 //   prime                 the warm session's first prompt
 //   answerRules           appended to every question (how to cite)
 //   openWith              which script to start from, for the chat-API loop

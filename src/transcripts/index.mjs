@@ -8,6 +8,7 @@ import { adapter as opencode } from "./opencode.mjs";
 import fs from "node:fs";
 import { clip, filesMayMatch, literalOf } from "./common.mjs";
 import { buildDigest, loadDigests, saveDigests, stampOf } from "./digest.mjs";
+import { scrubDeep, scrubSecrets } from "./scrub.mjs";
 import { STATE_ROOT } from "../config.mjs";
 
 // Parsed events kept in this process (the REPL server, so later cells of an ask and follow-ups
@@ -118,7 +119,8 @@ export function makeHistory({ sources, push = () => {} }) {
     return hits.find((h) => h.id === id) ?? hits[0];
   }
 
-  const strip = ({ file, size, ...s }) => ({ ...s, kb: size != null ? Math.round(size / 1024) : undefined });
+  // Everything history returns has keys and tokens masked (scrub.mjs): it goes to a model.
+  const strip = ({ file, size, ...s }) => ({ ...scrubDeep(s), kb: size != null ? Math.round(size / 1024) : undefined });
 
   return {
     sources() {
@@ -145,7 +147,7 @@ export function makeHistory({ sources, push = () => {} }) {
       if (o.roles) ev = ev.filter((e) => [].concat(o.roles).includes(e.role));
       if (o.from != null) ev = ev.filter((e) => e.i >= o.from);
       if (o.to != null) ev = ev.filter((e) => e.i <= o.to);
-      if (o.maxText) ev = ev.map((e) => ({ ...e, text: clip(e.text, o.maxText), input: undefined }));
+      ev = o.maxText ? ev.map((e) => ({ ...scrubDeep({ ...e, input: undefined }), text: clip(scrubSecrets(e.text), o.maxText) })) : ev.map((e) => scrubDeep(e));
       note("events", `${s.source}:${s.id}`, started, ev.length);
       return Object.assign(ev, { total, session: strip(s) });
     },
@@ -220,8 +222,9 @@ export function makeHistory({ sources, push = () => {} }) {
           if (!roles.includes(e.role) || !e.text || !test(e.text)) continue;
           total++;
           if (hits.length < max) {
-            const at = re ? e.text.search(re) : e.text.toLowerCase().indexOf(words[0]);
-            hits.push({ source: s.source, session: s.id, project: s.project, title: s.title, i: e.i, ts: e.ts, role: e.role, tool: e.tool, snippet: clip(e.text.slice(Math.max(0, at - 120)), o.snippet ?? 300) });
+            const text = scrubSecrets(e.text);
+            const at = re ? text.search(re) : text.toLowerCase().indexOf(words[0]);
+            hits.push({ source: s.source, session: s.id, project: s.project, title: scrubSecrets(s.title), i: e.i, ts: e.ts, role: e.role, tool: e.tool, snippet: clip(text.slice(Math.max(0, at - 120)), o.snippet ?? 300) });
           }
         }
         if (Date.now() - started > (o.budgetMs ?? 40_000)) {

@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeRepo } from "./repo.mjs";
+import { makeRepo, readOnly } from "./repo.mjs";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,7 +30,12 @@ export const domain = {
   scriptsDir: path.join(DIR, "scripts"),
   apiDoc: path.join(DIR, "api.d.ts"),
   instructions: path.join(DIR, "instructions.md"),
-  makeGlobals: ({ push }) => ({ repo: makeRepo({ root: ROOT, push }) }),
+  // Writing, editing, running programs and git commands that change things only in an ask whose
+  // caller asked for a change (act: true); otherwise `repo` reads only.
+  makeGlobals: ({ push, act = false }) => {
+    const repo = makeRepo({ root: ROOT, push });
+    return { repo: act ? repo : readOnly(repo) };
+  },
   prime:
     "Get ready to answer questions about a codebase. Call the `help` tool, then run one repl cell: " +
     '`(await scripts.run("overview")).dirs.length`. Then reply with the single word: ready',
@@ -50,7 +55,8 @@ export const domain = {
     "A cheap model explores the code outside your context (ripgrep, reads, git history, ready-made scripts), so you pay for one call " +
     "and the answer, not for the searching. Good for: where is X defined or used, is there a setting/flag/env var for Y, how does Z work, " +
     "what calls this, when and why did this change, which files would a change to W touch. It can also make a change you ask for " +
-    "(edit files, run a program, commit).",
+    "(edit files, run a program, commit) when you pass act: true; a request that opens with what to do (\"fix ...\", \"add ...\", \"run the tests\") sets it. " +
+    "Without it the investigator only reads.",
   serverInstructions:
     "`ask` answers questions about this repository's code. Call it before a run of grep/rg/cat/read calls whose purpose " +
     "is to answer a question (where, how, is there, what calls, why changed); read files yourself when you are about to edit them.",

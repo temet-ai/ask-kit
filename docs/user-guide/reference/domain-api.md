@@ -101,10 +101,14 @@ and paths in results are relative to it (absolute when outside it).
 | `repo.rg(pattern, o)` | Runs ripgrep with `--json`, lines cut at 300 columns. `pattern` is a regex. Options: `fixed` (literal), `ignoreCase`, `word`, `context` (lines around each match), `glob` (string or array), `type` (ripgrep type, string or array), `path` (folder inside the repository), `hidden`, `max` (default 200). Returns `[{ file, line, text, context? }]` with `.total` (matches, context lines excluded) and `.complete` (`total <= max`). Context lines have `context: true`. |
 | `repo.files(glob, o)` | The files ripgrep would search (`rg --files`), sorted. Options: `path`, `hidden`, `max` (default 2000). Returns paths with `.total` and `.complete`. |
 | `repo.read(file, { from, to })` | Lines `from` to `to`, 1-based and inclusive, at most 400 lines (`to` defaults to `from + 399`). Returns `{ file, from, to, lines, text }`; `text` has each line as `N<tab>line`, and `lines` is the file's length. |
-| `repo.git(sub, ...args)` | Runs `git --no-pager -c core.pager=cat <sub> <args>` in the root and returns stdout; any subcommand. Throws on a non-zero exit. |
+| `repo.git(sub, ...args)` | Runs `git --no-pager -c core.pager=cat <sub> <args>` in the root and returns stdout; any subcommand with `act`, else only those that read (`READ_GIT` in `repo.mjs`: `log`, `show`, `diff`, `blame`, `status`, `ls-files`, `grep` and a few more, without `--output`). Throws on a non-zero exit. |
 | `repo.write(file, text)` | Writes the whole file, creating its folders. Returns `{ file, bytes }`. |
 | `repo.edit(file, from, to, { all })` | Replaces `from` with `to`. Without `all`, the text must occur exactly once; it throws when it is missing or occurs more often. Returns `{ file, replaced }`. |
 | `repo.run(cmd, ...args)` | Runs any program in the root without a shell (120 second timeout). Returns `{ code, out, err }`; never throws on a non-zero exit. |
+
+`write`, `edit` and `run` work only in an ask whose caller asked for a change (`act`, see
+[Asking for a change](ask-tool.md#asking-for-a-change-act)); otherwise they throw
+`repo.write is off in this ask: ...`.
 
 ripgrep is the system's `rg` when there is one, else the copy that came with `@vscode/ripgrep`.
 Each command runs without a shell, with a 60 second timeout and 32 MB of output.

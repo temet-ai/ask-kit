@@ -22,7 +22,7 @@ question again once at the end and shows you the before and after. It changes no
 ask-kit report --since 7d
 ```
 
-It marks each question that failed, ran out of steps or time, was cut off, was slow or costly,
+It marks each question that failed, ran out of time or kept repeating a search, was cut off, was slow or costly,
 or was asked again soon after (a sign the first answer wasn't enough). At the end it lists the
 searches the investigator kept writing by hand. Each of those could be a script.
 
