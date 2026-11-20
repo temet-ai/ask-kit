@@ -15,7 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ask-kit-traj-"));
 const kit = path.join(tmp, "config", "kits", "watch");
 fs.mkdirSync(kit, { recursive: true });
-fs.writeFileSync(path.join(kit, "ask-kit.toml"), `name = "watch"\nsays = "the Night Watch roster"\n[[sources]]\nkind = "folder"\nname = "roster"\npath = "${tmp}"\n`);
+fs.writeFileSync(path.join(kit, "ask-kit.toml"), `name = "watch"\nsays = "the Night Watch roster"\n[[sources]]\nkind = "folder"\nname = "roster"\npath = '${tmp}'\n`);
 
 const ANSWER = "Sam Vimes holds the keys to the Treasure House.";
 const steps = [{ code: '"Carrot Ironfoundersson reports to Sam Vimes. " + "x".repeat(5000)' }, { answer: ANSWER }];

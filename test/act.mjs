@@ -39,7 +39,7 @@ acts = ["post.dismiss", "post.promote", "post run bell", "clock ring"]
 [[sources]]
 kind = "folder"
 name = "roster"
-path = "${roster}"
+path = '${roster}'
 
 [[sources]]
 kind = "module"
