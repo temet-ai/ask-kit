@@ -80,15 +80,31 @@ export function compileActions(m) {
 // A captured number or boolean is passed as one; anything else as the text captured.
 const value = (s) => (/^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s === "true" ? true : s === "false" ? false : s);
 
+const paramsOf = (a, m) => ({ ...a.params, ...Object.fromEntries(Object.entries(m.groups ?? {}).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, value(v.trim())])) });
+
 /** The first action one of whose patterns matches the whole question, with its params, or null. */
 export function matchAction(actions, question) {
   const q = String(question ?? "");
   for (const a of actions) {
     for (const re of a.match) {
       const m = re.exec(q);
-      if (!m) continue;
-      const captured = Object.fromEntries(Object.entries(m.groups ?? {}).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, value(v.trim())]));
-      return { action: a, params: { ...a.params, ...captured } };
+      if (m) return { action: a, params: paramsOf(a, m) };
+    }
+  }
+  return null;
+}
+
+/**
+ * The first action one of whose patterns is found inside the question without matching all of
+ * it, with its params, or null. Its script opens the investigation and the model finishes it.
+ */
+export function openerFor(actions, question) {
+  const q = String(question ?? "");
+  if (matchAction(actions, q)) return null;
+  for (const a of actions) {
+    for (const p of a.patterns) {
+      const m = new RegExp(p, "i").exec(q);
+      if (m) return { action: a, params: paramsOf(a, m) };
     }
   }
   return null;

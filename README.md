@@ -131,8 +131,8 @@ general version. It needs no mike and no server.
 
 ## What it stores and sends
 
-It sends your question, and the excerpts the investigator reads, to the model you chose. There's
-no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
+It sends your question, and the excerpts the investigator reads, to the model you chose (and, for
+a slow ask, to the second backend you set with `escalate` or `hedge`). There's no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
 including the clipped prompts `ask-kit gaps` caches from your transcripts and, for the one in 20
 action answers that a model checks in the background, both answers.
 [What it stores and sends](docs/user-guide/privacy.md) has the full list.

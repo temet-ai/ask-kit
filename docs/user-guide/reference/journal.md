@@ -67,6 +67,9 @@ The rest depend on the kind. A field that a kind does not produce is absent.
 | `atLimit` | `api` | The answer came with two or fewer steps left. |
 | `providers` | `api` | The providers that served the calls, where the API says (OpenRouter does). |
 | `missteps` | `api` | Replies that were empty or held tool-call markup instead of a tool call. |
+| `opened` | `api` | A kit action's pattern was found inside the question, and its script ran before the first model call: `{ action, script, params, ms }`. Counted in `cells`. |
+| `escalated` | `api` | The ask went to the `escalate` backend: `{ to, atMs, cells, model }`, where `atMs` is when it was handed over, `cells` how many the first backend had run and `model` the stronger backend's model. `turns`, `cells`, `usage` and `costUsd` are both backends' together; `model` stays the first backend's. When the hand-over failed: `{ to, atMs, error }`. |
+| `hedge` | all | A `hedge` backend was started: `{ backend, atMs, winner }`, where `atMs` is when it started and `winner` the backend whose answer was returned. The other fields are the winner's. |
 | `premiumRequests` | `copilot-cli` | Premium requests used. |
 
 ## Cell record
