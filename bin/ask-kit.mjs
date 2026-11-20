@@ -394,6 +394,7 @@ async function doctor() {
     } else status = "agent CLI (checked on first ask)";
     console.log(`  backend ${n}${n === c.backends.default ? " (default)" : ""}: ${b.kind} ${b.preset ?? ""} ${b.model ?? ""} → ${status}`);
   }
+  console.log(`  journal: ${c.journal?.trajectories === true ? "trajectories ON: cell results and answers are stored (journal.trajectories in the config), so journals hold excerpts of what was read" : "counts and code only; results and answers are not stored (journal.trajectories is off)"}`);
   console.log(`  domains: ${Object.keys(c.domains).join(", ")}; router: ${c.router?.backend ?? "keyword rules (no API backend)"}`);
   // Capabilities: who answers what more than one domain holds, and ties the config must settle.
   const { makeRouter } = await import("../src/router.mjs");

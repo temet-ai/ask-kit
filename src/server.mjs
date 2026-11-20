@@ -22,6 +22,10 @@ import { makeAskKit } from "./kitcall.mjs";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, slug } from "./config.mjs";
 
 const CONFIG = loadConfig();
+// `journal.trajectories: true` also keeps each cell's printed result and the answer on the ask row.
+const TRAJECTORIES = CONFIG.journal?.trajectories === true;
+const TRAJECTORY_RESULT_CHARS = 4000;
+const TRAJECTORY_ANSWER_CHARS = 8000;
 const DOMAIN_NAME = process.env.ASK_KIT_DOMAIN || "sessions";
 const DOMAIN = await loadDomain(DOMAIN_NAME);
 const STATE_DIR = path.join(STATE_ROOT, DOMAIN_NAME, ...(DOMAIN.stateKey ? [slug(DOMAIN.stateKey)] : []));
@@ -367,6 +371,7 @@ async function runCell(code, maxChars, timeoutSeconds) {
     code,
     declared,
     resultChars: resultText.length,
+    ...(TRAJECTORIES ? { result: resultText.slice(0, TRAJECTORY_RESULT_CHARS) } : {}),
     repeat,
     error: errorText,
     scripts: cellScripts,
@@ -482,7 +487,7 @@ if (!INNER) {
       ...(DOMAIN.fingerprintFiles?.() ?? []),
       ...SCRIPTS_DIRS.flatMap(dirStamp).map((x) => x.full),
     ],
-    keep: (entry) => journal({ ts: new Date().toISOString(), session: SESSION, type: "ask", ...entry, answer: undefined, answerChars: entry.answer?.length }),
+    keep: (entry) => journal({ ts: new Date().toISOString(), session: SESSION, type: "ask", ...entry, answer: TRAJECTORIES && entry.answer != null ? String(entry.answer).slice(0, TRAJECTORY_ANSWER_CHARS) : undefined, answerChars: entry.answer?.length }),
   });
 }
 

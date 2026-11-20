@@ -267,9 +267,30 @@ function makeMcpGlobal(src, tools, settings, push) {
     return parse(text);
   };
   const g = { call, tools: () => allowed.map((t) => ({ name: t.name, description: t.description.split("\n")[0].slice(0, 200) })), caller };
-  for (const t of allowed) if (/^[A-Za-z_$][\w$]*$/.test(t.name)) g[t.name] = (args) => call(t.name, args);
+  if (mcpByName(src, tools)) {
+    g.find = (word) => {
+      const w = String(word ?? "").toLowerCase();
+      return allowed
+        .filter((t) => !w || t.name.toLowerCase().includes(w) || t.description.toLowerCase().includes(w))
+        .map((t) => ({ name: t.name, does: (t.description.split(/(?<=\.)\s/)[0] ?? "").slice(0, 200) }));
+    };
+    g.describe = (name) => {
+      const t = allowed.find((x) => x.name === name);
+      if (!t) throw new Error(`${src.name} has no tool "${name}" this kit may use; ${src.name}.find(word) lists them`);
+      const field = callerArgs[name];
+      const props = t.inputSchema?.properties;
+      const input = field && props ? { ...t.inputSchema, properties: Object.fromEntries(Object.entries(props).filter(([k]) => k !== field)) } : t.inputSchema;
+      return { name: t.name, description: t.description, input, ...(field ? { note: `${field} is set to the caller` } : {}) };
+    };
+  }
+  for (const t of allowed) if (/^[A-Za-z_$][\w$]*$/.test(t.name) && !(t.name in g)) g[t.name] = (args) => call(t.name, args);
   return g;
 }
+
+// A server with more tools than this has only its names in the API; find, describe and call give the
+// rest on demand (mike's 131 tools made a 145 KB API). `by_name_above` in the source sets it per server.
+export const MCP_BY_NAME_ABOVE = 30;
+export const mcpByName = (src, tools) => (src.allow ? tools.filter((t) => src.allow.includes(t.name)) : tools).length > (src.by_name_above ?? MCP_BY_NAME_ABOVE);
 
 const tsType = (s) => {
   if (!s || typeof s !== "object") return "any";
@@ -286,6 +307,20 @@ const tsType = (s) => {
 function mcpApi(src, tools) {
   const allowed = src.allow ? tools.filter((t) => src.allow.includes(t.name)) : tools;
   const callerArgs = src.caller_args ?? {};
+  if (mcpByName(src, tools)) {
+    return [
+      `// ${src.name}: the MCP server \`${[].concat(src.command).join(" ")}\`${src.about ? ` (${src.about})` : ""}, ${allowed.length} tools. Signatures are not listed:`,
+      `// find(word) lists tools with a line each, describe(name) gives one tool's description and input schema, call(name, args)`,
+      `// runs it and returns its parsed result (it throws on a tool error). Read a tool's arguments with describe before calling it.`,
+      `declare const ${src.name}: {`,
+      `  caller: string | null; // the calling session's id: tools that act are done in its name`,
+      `  find(word?: string): { name: string; does: string }[];`,
+      `  describe(name: string): { name: string; description: string; input: unknown };`,
+      `  call(name: string, args?: Record<string, any>): Promise<any>;`,
+      `};`,
+      `// Tools: ${allowed.map((t) => t.name).join(", ")}`,
+    ].join("\n");
+  }
   const lines = [
     `// ${src.name}: the MCP server \`${[].concat(src.command).join(" ")}\`${src.about ? ` (${src.about})` : ""}. Each tool is a function taking one`,
     `// object of arguments and returning its parsed result; it throws on a tool error. ${src.name}.call(name, args) does the same.`,

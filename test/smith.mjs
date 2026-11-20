@@ -62,7 +62,11 @@ const asked = [];
 const chat = async ({ system, user }) => {
   asked.push({ system, user });
   return /improve a kit/.test(system)
-    ? { instructions: "Call owl.get_post with the letter id first; cite the id.", changed: "get_post first" }
+    ? { changed: "get_post first", edits: [
+        { op: "change", was: "Use owl.list_posts, then owl.get_post.", line: "Call owl.get_post with the letter id first; cite the id.", fixes: "the-wrong-letter" },
+        { op: "add", line: "When a letter has no sender, say so.", after: "Call owl.get_post with the letter id first; cite the id.", fixes: "the-wrong-letter" },
+        { op: "remove", was: "this line is not in the file", fixes: "the-wrong-letter" },
+      ] }
     : { says: "the owl post office: letters waiting, who sent what", keywords: ["letters?", "owl post"], route_hint: "letters and owls are owl", instructions: "Use owl.list_posts, then owl.get_post." };
 };
 const r = await smith.scaffold("mcp: owl", { since: "7d", chat });
@@ -108,7 +112,19 @@ assert.equal(asked.length, tunes + 1, "one rewrite");
 assert.equal(p.passed, 1);
 assert.deepEqual(p.failed, [bench[0].id]);
 assert.equal(p.tuned, "get_post first");
-assert.match(fs.readFileSync(path.join(r.dir, "instructions.md"), "utf8"), /get_post with the letter id first/);
+assert.equal(fs.readFileSync(path.join(r.dir, "instructions.md"), "utf8"), "Call owl.get_post with the letter id first; cite the id.\nWhen a letter has no sender, say so.\n", "the edits are applied to the file, not a rewrite of it");
+assert.match(asked.at(-1).system, /list only the lines to add, change or remove/);
+assert.match(asked.at(-1).user, new RegExp(`"id":"${bench[0].id}"`), "each failure carries its id for the edit to name");
+const changes = fs.readFileSync(path.join(r.dir, "instructions.changes.md"), "utf8");
+assert.match(changes, /^# Changes to instructions\.md/);
+assert.match(changes, /## \d{4}-\d\d-\d\dT.*: get_post first/);
+assert.ok(changes.includes("- changed (fixes the-wrong-letter): Use owl.list_posts, then owl.get_post. -> Call owl.get_post with the letter id first; cite the id."));
+assert.ok(changes.includes("- added (fixes the-wrong-letter): When a letter has no sender, say so."));
+assert.match(changes, /- not applied \(the line is not in the file\)/, "an edit that matches nothing is recorded, not applied");
+assert.deepEqual(JSON.parse(fs.readFileSync(path.join(r.dir, "smith.json"), "utf8")).proved.edits, { applied: 2, skipped: 1 });
+const direct = smith.applyEdits("a\nb\nc\n", [{ op: "remove", was: " b ", fixes: "q" }, { op: "add", line: "d", after: "zz" }, { op: "bogus" }]);
+assert.equal(direct.text, "a\nc\n");
+assert.equal(direct.skipped.length, 2);
 assert.equal(JSON.parse(fs.readFileSync(path.join(r.dir, "smith.json"), "utf8")).proved.changed, "get_post first");
 
 // A question judged "changed" is reported, not tuned for.
