@@ -32,6 +32,8 @@ Source: [`src/config.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/con
 | `footer` | boolean | `false` | `true` adds a last line to each answer with the domain, backend and seconds (`[code · glm-5.3-flash · 21s]`), and the router's `[routed to <domain> by <how>]` line. Off by default, because agents repeat whatever the reply carries. The journal records time, backend and cost either way. |
 | `journal` | object | `{ "trajectories": false }` | `trajectories: true` also stores each cell's printed result (clipped at 4,000 characters) and, on the ask row, the answer (clipped at 8,000), so a journal can be read back as what the investigator saw. Journals then hold excerpts of whatever it read: transcripts, files, command output. `ask-kit doctor` prints whether it is on. See [Journal reference](journal.md). |
 | `actions` | object | `{ "shadowEvery": 20 }` | `shadowEvery`: one answered run of an action in this many also runs the investigator in the background, for `ask-kit report` to show both answers. `0` turns shadow runs off. See [Actions](../kits.md#actions). |
+| `escalate` | object | none (off) | `{ "backend": "<name>", "after": <seconds> }`: an `api` ask with no answer at twice the kit's usual time goes to that stronger backend, in the same REPL. See [`escalate` and `hedge`](#escalate-and-hedge). |
+| `hedge` | object | none (off) | `{ "backend": "<name>", "after": <seconds> }`: a new ask with no answer at the kit's usual time also starts on that backend, and the first answer wins. See [`escalate` and `hedge`](#escalate-and-hedge). |
 | `setupAt` | string (ISO time) | time of setup | Written by `plan()`. Nothing reads it. |
 
 `loadConfig` throws `ask-kit is not set up yet` when the file is missing, and the server then
@@ -79,6 +81,7 @@ A backend entry always has a `kind`. The other keys depend on the kind.
 | `nativeTools` | boolean | `true` | `true`: the model is offered one tool, `repl`, and calls it. `false`: the model writes one fenced `js` block per turn and ask-kit runs the first block. Use `false` for a model that handles tool calls badly. |
 | `explicitCache` | boolean | `false` | Marks the system message with `cache_control: { type: "ephemeral" }`, for providers that need an explicit cache marker. |
 | `contextTokens` | number | `32768` | Ollama only (`preset: "ollama"`). The `num_ctx` ask-kit asks for through Ollama's own `/api/chat`. `ask-kit doctor` compares it with the model's limit. |
+| `body` | object | none | Extra fields merged into every request the investigator sends to this backend, after ask-kit's own, so a field here wins. For OpenRouter's provider routing: `"body": { "provider": { "order": ["DeepInfra"], "allow_fallbacks": false } }`. Changing it re-warms the backend, like any backend key. |
 
 OpenRouter backends also get `usage: { include: true }` in the request, and a `session_id`
 (`ask-kit-<domain>-<backend>-<fingerprint>`) that keeps a question on one provider so the prompt
@@ -141,12 +144,49 @@ A name with no folder fails the router when it starts (`no domain "<name>"`).
 | `backend` | string | none | A backend name from `backends.list` that answers this domain's asks. Beats `backends.default`. A name that is not in `list` is ignored. |
 | `priority` | number | the manifest's | Pins the priority of every capability the domain provides (`[[provides]]` in a kit, `provides` in a domain.mjs). The highest wins. Settles a tie that `ask-kit doctor` reports. |
 | `actions` | object | none | Per action of the kit's `[[actions]]`: `true` turns on one that changes something, `false` turns any off. Read on every ask, so no restart is needed. `ask-kit kit actions <kit> --enable` and `--disable` write it. |
+| `escalate` | object or `false` | the top-level `escalate` | This domain's escalation; `false` turns it off for the domain. See [`escalate` and `hedge`](#escalate-and-hedge). |
+| `hedge` | object or `false` | the top-level `hedge` | This domain's hedge; `false` turns it off for the domain. |
 | `from` | string | none | Written by `ask-kit add`: the repository or folder a domain came from. |
 | `commit` | string | none | Written by `ask-kit add`: the commit installed. |
 | any other key | any | none | Read by the domain itself. A domain's `makeGlobals({ push, config })` receives the whole config. The [notes domain in the how-to](../guides/write-a-domain.md) reads `domains.notes.dir`. |
 
 `ask-kit ask --domain <name>` and `ask-kit serve --domain <name>` start that domain's server
 whether or not the config lists it. The config decides only what the router offers.
+
+## `escalate` and `hedge`
+
+`escalate` hands a slow ask to a stronger backend; `hedge` starts the same question on a second
+backend and keeps the first answer. Both are off until set, at the top level for every domain or
+under `domains.<name>` for one (a domain's value, or its `false`, wins).
+
+```json
+"escalate": { "backend": "deepseek-v4.1" },
+"hedge": { "backend": "claude-haiku", "after": 40 }
+```
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `backend` | string | none, required | A name from `backends.list`. A name that is not there, or the backend the ask already runs on, leaves the feature off. |
+| `after` | number | from the journal | Seconds into the ask when the second backend comes in. Without it: twice the kit's usual time for `escalate`, the usual time for `hedge`. |
+
+The kit's usual time is the median time of its asks over the last 30 days, the figure
+`ask-kit kit profile` shows (kit-test and benchmark sessions left out). Until the kit has five
+journaled asks it is 60 seconds. The server reads it at most every ten minutes.
+
+**`escalate`** applies to `api` backends, and the stronger backend must be an `api` backend too.
+At the time it is due, the model call in flight is cut off and the stronger backend gets the
+question plus a short trace: how long the first one worked, and the last eight cells it ran with
+the start of each result. It works in the same REPL (`ask-<askId>`), so every variable the first
+backend set is there, and its answer is the ask's. A follow-up with `continue: true` continues the
+stronger backend's conversation. Escalation needs 30 seconds left in the ask; with less, the first
+backend carries on to the limit. If the stronger backend fails, the first one is asked for what it
+found, as at the time limit.
+
+**`hedge`** applies to new asks on any kind of backend (not follow-ups). At the time it is due, the
+same question starts on the hedge backend in the background, the way an action's shadow run does.
+The first good answer is returned and the other run is stopped. When the hedge wins and both
+backends are `api`, a follow-up continues the hedge's conversation. A hedge costs a second run
+only for the asks that pass the time; the journal row keeps the winner's time and cost.
 
 ## `router`
 

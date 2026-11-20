@@ -26,10 +26,17 @@ import { parseDo, runShot, shotFooter } from "./shots.mjs";
 import { checkCitations } from "./citations.mjs";
 import { NO_DATA_META } from "./capabilities.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { ACTION_META, SHADOW_EVERY, logRun, logShadow, matchAction, noteQuestion, runCount, shapeProblem, statusOf } from "./actions.mjs";
+import { ACTION_META, SHADOW_EVERY, logRun, logShadow, matchAction, noteQuestion, openerFor, runCount, shapeProblem, statusOf } from "./actions.mjs";
+import { kitProfile } from "./report.mjs";
 
-// Set while a shadow run is in progress.
+// Set while a run goes on in the background (a shadow run or a hedge): `true`, or `{ last }` to
+// collect what the run would have saved for a follow-up.
 const shadowing = new AsyncLocalStorage();
+// The kit's usual time is the median of its last 30 days of asks, once it has this many; before
+// that, USUAL_FALLBACK_MS. Read from the journal at most every USUAL_TTL_MS.
+const USUAL_MIN_ASKS = 5;
+const USUAL_FALLBACK_MS = 60_000;
+const USUAL_TTL_MS = 600_000;
 
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
@@ -128,7 +135,37 @@ export function registerAsk(server, ctx) {
   };
   // A shadow run (an action's answer checked by the model in the background) leaves the caller's
   // follow-up where the action put it.
-  const writeLast = (b, value) => shadowing.getStore() || fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
+  const writeLast = (b, value) => {
+    const bg = shadowing.getStore();
+    if (bg) return void (bg.last && (bg.last[b] = value));
+    fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
+  };
+  // Run `fn` in the background: what it saves for a follow-up goes to `last`, if given, not the file.
+  const inBackground = (fn, last) => shadowing.run(last ? { last } : true, fn);
+
+  // A second backend for a slow ask (`escalate` and `hedge`, per domain or at the top level).
+  const secondFor = (key) => {
+    const s = domainCfg[key] !== undefined ? domainCfg[key] : config[key];
+    return s?.backend && BACKENDS[s.backend] ? s : null;
+  };
+  let usual = null;
+  const usualMs = () => {
+    if (!usual || Date.now() - usual.at > USUAL_TTL_MS) {
+      let ms = USUAL_FALLBACK_MS;
+      try {
+        const k = kitProfile({ since: "30d" }).kits.find((x) => x.name === domainName);
+        if (k?.asks >= USUAL_MIN_ASKS && k.medianSeconds) ms = k.medianSeconds * 1000;
+      } catch {}
+      usual = { at: Date.now(), ms };
+    }
+    return usual.ms;
+  };
+  // Milliseconds into the ask when the second backend comes in: `after` seconds, else `times` the kit's usual time.
+  const secondAt = (s, times) => (s.after != null ? s.after * 1000 : usualMs() * times);
+  const clip = (s, n) => {
+    const t = String(s ?? "").replace(/\s+/g, " ").trim();
+    return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  };
   // Shots kept for this caller: the REPL they ran in (ask-<askId>) and the names a follow-up has not been told about.
   const SHOTS_KEY = "__shots";
   const readShots = () => readLast()[SHOTS_KEY] ?? null;
@@ -373,7 +410,8 @@ export function registerAsk(server, ctx) {
   };
   const EARLY_BLOCK = /```early\s*\n([\s\S]*?)```/;
 
-  async function askApi(b, question, timeoutMs, cont, signal, onStep, onEarly) {
+  // `opts.askId`: work in that REPL (an escalation's); `opts.escalated`: this run is the second backend, which does not escalate again.
+  async function askApi(b, question, timeoutMs, cont, signal, onStep, onEarly, opts = {}) {
     const be = BACKENDS[b];
     const native = be.nativeTools !== false;
     const ep = endpoint(be);
@@ -391,11 +429,13 @@ export function registerAsk(server, ctx) {
       const how = native
         ? "\n\nYou work by calling the `repl` tool with JavaScript; it runs in a persistent REPL (top-level await, " +
           "variables persist between calls) and the tool result is what it returned. Only a tool result is real: never write " +
-          "a result yourself. You have a limited time; each result says how much is left. " +
+          "a result yourself. Searches that do not depend on each other (`repo.rg`, `repo.sg`, `history.grep`) run together in one call " +
+          "with `await Promise.all([...])`. Each result says how much time is left. " +
           "When you have the answer, reply with the answer only and no tool call.\n\n"
         : "\n\nYou work by writing JavaScript cells. Put one cell in one ```js fenced block and stop: it runs in a persistent " +
           "REPL (top-level await, variables persist between cells) and the result comes back in the next message. Only that " +
-          "message is real: never write a result yourself. You have a limited time; each result says how much is left. " +
+          "message is real: never write a result yourself. Searches that do not depend on each other (`repo.rg`, `repo.sg`, " +
+          "`history.grep`) run together in one cell with `await Promise.all([...])`. Each result says how much time is left. " +
           "When you have the answer, reply with the answer only and no code block.\n\n";
       const early = !onEarly
         ? ""
@@ -403,7 +443,7 @@ export function registerAsk(server, ctx) {
           ? "When a tool result already holds the main fact and you still want to check the rest, call `early_answer` with it once: the caller gets it at once while you carry on.\n\n"
           : "When a result already holds the main fact and you still want to check the rest, put it once in an ```early fenced block: the caller gets it at once while you carry on.\n\n";
       const system = fs.readFileSync(INSTRUCTIONS, "utf8") + how + early + D.openWith + (await ctx.helpText());
-      askId = (cont && !prev && held?.askId) || crypto.randomUUID();
+      askId = opts.askId || (cont && !prev && held?.askId) || crypto.randomUUID();
       messages = [
         be.explicitCache ? { role: "system", content: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] } : { role: "system", content: system },
         { role: "user", content: question + rulesFor() },
@@ -421,6 +461,31 @@ export function registerAsk(server, ctx) {
     let outOfTime = false;
     let cutAtLength = false;
     let atLimit = false;
+    // A kit action's pattern found inside a longer question: its script runs before the first
+    // model call and its result goes in the first message, so the model starts with the data.
+    let opened = null;
+    const opener = !cont && !opts.askId ? openerFor((D.actions ?? []).filter((a) => !a.acts && domainCfg.actions?.[a.name] !== false), question) : null;
+    if (opener) {
+      const { action, params } = opener;
+      const o = await runShot(repl, { script: action.script, params, timeoutSeconds: Math.max(1, Math.min(CELL_MAX_S, Math.floor((timeoutMs - WRAP_MS) / 1000))) }).catch(() => null);
+      if (o?.ok && !shapeProblem(action, o.text)) {
+        cells++;
+        opened = { action: action.name, script: action.script, params, ms: o.ms };
+        const last = messages[messages.length - 1];
+        last.content =
+          question +
+          `\n\n(Run for you before this message, because the question matches the kit's \`${action.name}\` action: \`shots[${JSON.stringify(action.script)}] = await scripts.run(${JSON.stringify(action.script)}, ${JSON.stringify(params)})\`. ` +
+          `It is in that variable, and returned:\n\`\`\`\n${o.text}\n\`\`\`\nStart from it; run only what it leaves open.)` +
+          rulesFor();
+      }
+    }
+    // Escalation: past `escAt` with no answer, the ask goes to a stronger backend in this REPL.
+    const esc = opts.escalated ? null : secondFor("escalate");
+    const escTo = esc && esc.backend !== b && BACKENDS[esc.backend].kind === "api" ? esc.backend : null;
+    const escAt = escTo ? secondAt(esc, 2) : Infinity;
+    const tried = [];
+    let escalate = false;
+    let escError = null;
     const post = (body, ms) =>
       ep.ollama
         ? ollamaChat(ep.base, body, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms), numCtx: be.contextTokens ?? OLLAMA_DEFAULT_CTX })
@@ -450,6 +515,12 @@ export function registerAsk(server, ctx) {
           outOfTime = true;
           break;
         }
+        // The stronger backend needs time of its own to finish.
+        const escIn = escAt - (Date.now() - started);
+        if (escIn <= 0 && leftMs() > WRAP_MS) {
+          escalate = true;
+          break;
+        }
         let res;
         try {
           res = await post(
@@ -464,12 +535,14 @@ export function registerAsk(server, ctx) {
               // provider, so the shared prefix stays in its cache.
               ...(be.preset === "openrouter" ? { session_id: `ask-kit-${domainName}-${b}-${fp}` } : {}),
               ...(be.providerOrder ? { provider: { order: be.providerOrder, allow_fallbacks: true } } : {}),
+              ...be.body,
             },
-            leftMs(),
+            escIn > 0 && escIn < leftMs() - WRAP_MS ? escIn : leftMs(),
           );
         } catch (e) {
           if (e?.name !== "TimeoutError") throw e;
-          outOfTime = true;
+          if (escAt - (Date.now() - started) <= 0 && leftMs() > WRAP_MS) escalate = true;
+          else outOfTime = true;
           break;
         }
         const body = await res.json().catch(() => ({}));
@@ -493,6 +566,7 @@ export function registerAsk(server, ctx) {
           try {
             const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
             const text = out.content.map((c) => c.text).join("\n");
+            tried.push({ code, text });
             // The REPL says when a cell repeats an earlier one with the same result; on the third, stop searching.
             if (Number(/one you already ran \((\d+) times now/.exec(text)?.[1] ?? 0) >= 3) {
               totals.stuck = (totals.stuck ?? 0) + 1;
@@ -577,17 +651,50 @@ export function registerAsk(server, ctx) {
     } finally {
       await repl.close().catch(() => {});
     }
+    // Escalation: the stronger backend gets the question and what was tried, in the same REPL
+    // (ask-<askId>, so the variables are there), and its answer is the ask's.
+    if (escalate) {
+      const atMs = Date.now() - started;
+      const trace =
+        `\n\n(Another investigator worked on this for ${Math.round(atMs / 1000)}s without an answer, in this same REPL: its variables are yours. What it ran, last cells first:\n` +
+        (tried.slice(-8).reverse().map((t) => `- \`${clip(t.code, 240)}\` returned: ${clip(t.text, 240)}`).join("\n") || "- nothing yet") +
+        "\nCarry on from there and finish the answer.)";
+      try {
+        const r = await askApi(escTo, question + trace, leftMs(), false, signal, onStep, onEarly, { askId, escalated: true });
+        // A follow-up on this backend continues where the stronger one finished.
+        const theirs = (shadowing.getStore()?.last ?? readLast())[escTo];
+        if (theirs) writeLast(b, theirs);
+        const sum = (k) => totals[k] + (r.usage?.[k] ?? 0);
+        return {
+          ...r,
+          continued: !!prev,
+          turns: totals.calls + (r.turns ?? 0),
+          cells: cells + (r.cells ?? 0),
+          ms: Date.now() - started,
+          costUsd: ep.reportsCost || r.costUsd != null ? Math.round((totals.costUsd + (r.costUsd ?? 0)) * 1e6) / 1e6 : null,
+          usage: { input: sum("input"), cacheRead: sum("cacheRead"), cacheWrite: sum("cacheWrite"), output: sum("output") },
+          providers: [...new Set([...totals.providers, ...(r.providers ?? [])])],
+          missteps: totals.missteps + (r.missteps ?? 0),
+          ...(opened ? { opened } : {}),
+          escalated: { to: escTo, atMs, cells, model: r.model },
+          model: be.model,
+        };
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        escError = { to: escTo, atMs, error: String(e?.message ?? e).slice(0, 300) };
+      }
+    }
     // Out of steps or time: one more call, without tools, for what it found.
     let partial = false;
     if (answer == null) {
       partial = true;
-      const limit = outOfTime ? `the ${Math.round(timeoutMs / 1000)}s time limit` : "a search that kept repeating";
+      const limit = outOfTime ? `the ${Math.round(timeoutMs / 1000)}s time limit` : escError ? `a hand-over to ${escTo} that failed` : "a search that kept repeating";
       messages.push({
         role: "user",
         content: `You are out of ${outOfTime ? "time" : "steps"}. Reply now in plain text, with no tool call: what you found (with its evidence), what you tried, and what is still missing.`,
       });
       try {
-        const res = await post({ model: be.model, messages, temperature: 0, max_tokens: 4000, ...ep.extra }, Math.max(1000, leftMs() + RESERVE_MS - 2000));
+        const res = await post({ model: be.model, messages, temperature: 0, max_tokens: 4000, ...ep.extra, ...be.body }, Math.max(1000, leftMs() + RESERVE_MS - 2000));
         const body = await res.json().catch(() => ({}));
         account(body);
         const m = body.choices?.[0]?.message ?? {};
@@ -619,10 +726,54 @@ export function registerAsk(server, ctx) {
       usage: { input: totals.input, cacheRead: totals.cacheRead, cacheWrite: totals.cacheWrite, output: totals.output },
       providers: [...totals.providers],
       missteps: totals.missteps,
+      ...(opened ? { opened } : {}),
+      ...(escError ? { escalated: escError } : {}),
     };
   }
 
   const KINDS = { "claude-cli": askClaude, "codex-cli": askCodex, "copilot-cli": askCopilot, api: askApi };
+
+  // A hedge (config `hedge`): once a new ask passes the kit's usual time with no answer, a second
+  // backend takes the same question in the background, as a shadow run does; the first good answer
+  // wins and the other run is stopped.
+  async function hedged(kind, backend, question, timeoutMs, clientMs, cont, signal, onStep, onEarly) {
+    const limitFor = (k, ms) => (k === "api" ? ms : cliLimitMs(ms, clientMs));
+    const h = cont ? null : secondFor("hedge");
+    const hb = h && h.backend !== backend && KINDS[BACKENDS[h.backend].kind] ? h.backend : null;
+    const at = hb ? secondAt(h, 1) : Infinity;
+    if (!(at < timeoutMs - WRAP_MS)) return KINDS[kind](backend, question, limitFor(kind, timeoutMs), cont, signal, onStep, onEarly);
+    const started = Date.now();
+    const mine = new AbortController();
+    const theirs = new AbortController();
+    const last = {};
+    let timer;
+    let begun = false;
+    const first = KINDS[kind](backend, question, limitFor(kind, timeoutMs), cont, AbortSignal.any([signal, mine.signal]), onStep, onEarly).then((r) => ({ r, who: backend }), (e) => ({ e, who: backend }));
+    const second = new Promise((resolve) => (timer = setTimeout(resolve, at))).then(() => {
+      begun = true;
+      const hk = BACKENDS[hb].kind;
+      return inBackground(() => KINDS[hk](hb, question, limitFor(hk, timeoutMs - (Date.now() - started)), false, AbortSignal.any([signal, theirs.signal]), undefined, undefined, { escalated: true }), last).then(
+        (r) => ({ r, who: hb }),
+        (e) => ({ e, who: hb }),
+      );
+    });
+    const good = (x) => x.r && x.r.ok !== false;
+    let won = await Promise.race([first, second]);
+    if (!good(won) && begun) {
+      const other = await (won.who === backend ? second : first);
+      if (good(other)) won = other;
+    }
+    clearTimeout(timer);
+    (won.who === backend ? theirs : mine).abort();
+    if (won.e) throw won.e;
+    if (!begun) return won.r;
+    if (won.who === hb) {
+      for (const [k, v] of Object.entries(last)) writeLast(k, v);
+      // Both on the chat API: a follow-up on the caller's backend continues the winner's conversation.
+      if (kind === "api" && BACKENDS[hb].kind === "api" && last[hb]) writeLast(backend, last[hb]);
+    }
+    return { ...won.r, hedge: { backend: hb, atMs: Math.round(at), winner: won.who } };
+  }
 
   // A cell in one line for progress: its leading comment if it has one, else its first line.
   const cellLine = (code) => {
@@ -734,7 +885,7 @@ export function registerAsk(server, ctx) {
             const kind = BACKENDS[backend].kind;
             if (every > 0 && KINDS[kind] && runCount(domainName, action.name) % every === 0) {
               const base = { run: run.id, action: action.name, session: SESSION, question: question.slice(0, 500), actionAnswer: r.text.slice(0, 4000), backend };
-              shadowing.run(true, () =>
+              inBackground(() =>
                 KINDS[kind](backend, question, Math.min(timeoutSeconds, 300) * 1000, false)
                   .then((m) => logShadow(domainName, { ...base, ok: m.ok !== false, modelAnswer: String(m.answer ?? "").slice(0, 4000), ms: m.ms, costUsd: m.costUsd ?? null, cells: m.cells ?? null }))
                   .catch((e) => logShadow(domainName, { ...base, ok: false, error: String(e?.message ?? e).slice(0, 300) })),
@@ -783,7 +934,7 @@ export function registerAsk(server, ctx) {
       const run = (async () => {
         try {
           if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
-          const r = await KINDS[kind](backend, asked, kind === "api" ? timeoutMs : cliLimitMs(timeoutMs, clientMs), cont, ac.signal, onStep, onEarly);
+          const r = await hedged(kind, backend, asked, timeoutMs, clientMs, cont, ac.signal, onStep, onEarly);
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
           const cited = r.ok ? await checkCitations(r.answer, D, config).catch(() => null) : null; // src/citations.mjs

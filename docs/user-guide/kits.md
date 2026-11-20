@@ -159,6 +159,13 @@ The question goes to the investigator, as if the kit had no action, when no patt
 script throws, its output is empty (`null`, `undefined`, `[]`, `{}` or nothing), or the output
 does not match `expect`. The caller sees only the investigator's answer.
 
+When a pattern is found inside a longer question without matching all of it ("Who is on duty at
+Cable Street, and who else is on duty?"), the investigator still answers, but on an `api` backend
+its script runs first: the result goes in the first message, and stays in the REPL as
+`shots.<script>`, so the model starts with the data instead of spending a turn fetching it. Only
+an action that changes nothing and is not set to `false` in the config opens this way; an empty or
+failed result is left out. The ask row records it as `opened`.
+
 ### Actions that change something
 
 An action whose `script` is named in the kit's `acts`, or that sets `acts = true`, is off until

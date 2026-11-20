@@ -6,6 +6,9 @@
   chose: an API provider, an agent CLI's own service, or a local model server.
 - When a router model is set, picking the domain is one more short call to it, with the question,
   the working directory and what each enabled domain answers.
+- When you set `escalate` or `hedge` in the config, a slow ask also goes to that second backend:
+  the question, and for `escalate` the code of the cells already run with the start of each
+  result. A backend's `body` fields go with each of its requests.
 - `ask-kit gallery` queries GitHub's search API. `ask-kit doctor` lists each provider's models.
 
 Nothing else. There is no telemetry.
