@@ -44,7 +44,8 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `ok` | boolean | `false` when the ask failed. |
 | `continued` | boolean | A follow-up. |
 | `ms` | number | Duration of the ask. For the CLIs that warm a session it leaves out the warm-up. |
-| `answerChars` | number | Length of the answer text. The answer itself is not stored. |
+| `answerChars` | number | Length of the answer text. The answer itself is not stored unless `journal.trajectories` is on. |
+| `answer` | string | Only with `journal.trajectories: true`: the answer, cut at 8,000 characters. |
 | `error` | string | On failure: the message, cut at 300 characters. |
 | `cancelled` | boolean | On failure: the calling client cancelled the ask. |
 | `noData` | boolean | The domain provides a capability and its answer ended with the line `[no data]`: it held nothing for the question. The line is cut from the answer, and the router asks the next provider. |
@@ -83,6 +84,7 @@ Written after every REPL cell. It has `code` and no `type`.
 | `code` | string | The cell's code, as sent. |
 | `declared` | string[] | Names the cell declared at its top level. |
 | `resultChars` | number | Length of the text returned, after clipping. |
+| `result` | string | Only with `journal.trajectories: true`: the text the cell returned, cut at 4,000 characters. It can hold excerpts of what the cell read. |
 | `repeat` | number | Present when this cell, with its variable names blanked, has run before in this REPL: how many times now. |
 | `error` | string or `null` | The error's first lines. |
 | `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `params` when the run had any (as a string cut at 300 characters when longer) and `error` on failure. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. |

@@ -22,6 +22,9 @@ that CLI's service under its own terms, and the sessions appear in its history.
   An ask's row also holds how many of the answer's citations resolved and up to ten that did not
   (`path:line`, or source, session and event). The check reads local files and transcripts, and
   calls no model.
+- With `journal.trajectories: true` in the config (off by default), those journals also hold each
+  cell's printed result, cut at 4,000 characters, and each answer, cut at 8,000: excerpts of
+  what the investigator read. `ask-kit doctor` says whether it is on.
 - In `~/.local/state/ask-kit/actions/`: each question a kit's action answered or tried, with the
   params it ran the script with. For a shadow run (one action answer in 20), both answers are
   kept in full up to 4,000 characters each; this is the only place ask-kit keeps an answer's

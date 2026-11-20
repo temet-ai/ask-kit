@@ -164,8 +164,14 @@ agent found by hand at the time. A judge model grades each answer against its re
 
 - `correct`: the answer passes.
 - `partial` or `wrong`: the question failed. The failures go once to a model that rewrites
-  `instructions.md`. Nothing is asked again: once the kit is installed, its real use (the
-  journal, `ask-kit report`) is the next measure.
+  `instructions.md`. The model does not rewrite the file: it answers with the lines to add,
+  change or remove, each naming the failing question it fixes, and prove applies them. A line
+  it names that is not in the file is skipped. Each run appends an entry to
+  `instructions.changes.md` in the draft's folder (it moves with the kit on `smith install`): the
+  date, the lines changed and the question each fixes, and the edits not applied. The changelog
+  sits beside the instructions rather than in the journal because the journal holds asks, and a
+  later tune of the kit reads the file. Nothing is asked again: once the kit is installed, its
+  real use (the journal, `ask-kit report`) is the next measure.
 - `changed`: the answer cites evidence that the source has moved on since the reference was
   written. prove reports these for you to fix by hand, and doesn't count them as failures.
 

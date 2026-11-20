@@ -240,8 +240,59 @@ const TUNE =
   "You improve a kit's instructions for ask-kit, a cheap model that answers questions from a REPL over a source. You get the " +
   "instructions, what the source offers, and the questions the kit got wrong: each with the reference answer an agent found by " +
   "hand, the kit's answer and the judge's reason. Change the instructions so the investigator finds those answers: which call to " +
-  "make first, which fields hold the answer, what to cite, what to do when a call returns nothing. Keep what works. Reply with JSON " +
-  "only: {\"instructions\": the whole new markdown, under 80 lines, \"changed\": one sentence on what you changed}.";
+  "make first, which fields hold the answer, what to cite, what to do when a call returns nothing. Do not rewrite the file: keep " +
+  "every line that works and list only the lines to add, change or remove, each tied to the failing question (its id) that it fixes. " +
+  "Reply with JSON only: {\"edits\": [{\"op\": \"add\", \"line\": the new line, \"after\": an existing line to add it after (omit to append), \"fixes\": question id}, " +
+  "{\"op\": \"change\", \"was\": the existing line, exactly, \"line\": its replacement, \"fixes\": question id}, " +
+  "{\"op\": \"remove\", \"was\": the existing line, exactly, \"fixes\": question id}], \"changed\": one sentence on what you changed}.";
+
+/**
+ * Apply TUNE's edits to the instructions text. Lines match on their trimmed text. Returns the new
+ * text, the edits applied (each with its op, lines and the question it fixes) and the ones skipped
+ * with the reason (a `was` or `after` line that is not in the file, an unknown op, no line).
+ */
+export function applyEdits(text, edits) {
+  const lines = text.replace(/\n+$/, "").split("\n");
+  const find = (l) => lines.findIndex((x) => x.trim() === String(l ?? "").trim());
+  const applied = [];
+  const skipped = [];
+  for (const e of Array.isArray(edits) ? edits : []) {
+    const fixes = e?.fixes == null ? null : String(e.fixes);
+    const line = e?.line == null ? "" : String(e.line).replace(/\s*\n\s*/g, " ").trim();
+    if (e?.op === "add" && line) {
+      let at = lines.length;
+      if (e.after != null) {
+        const i = find(e.after);
+        if (i < 0) { skipped.push({ ...e, why: "the line to add after is not in the file" }); continue; }
+        at = i + 1;
+      }
+      lines.splice(at, 0, line);
+      applied.push({ op: "add", line, fixes });
+    } else if ((e?.op === "change" && line) || e?.op === "remove") {
+      const i = e.was == null ? -1 : find(e.was);
+      if (i < 0 || !String(e.was).trim()) { skipped.push({ ...e, why: "the line is not in the file" }); continue; }
+      const was = lines[i];
+      if (e.op === "change") lines[i] = line;
+      else lines.splice(i, 1);
+      applied.push({ op: e.op, was: was.trim(), ...(e.op === "change" ? { line } : {}), fixes });
+    } else {
+      skipped.push({ ...e, why: "not an add, change or remove with its line" });
+    }
+  }
+  return { text: `${lines.join("\n")}\n`, applied, skipped };
+}
+
+/** One changelog entry: a dated heading, then a line per applied edit (and per skipped one). */
+export function changelogEntry(at, applied, skipped, summary) {
+  const q = (e) => (e.fixes ? ` (fixes ${e.fixes})` : "");
+  return [
+    `## ${at}${summary ? `: ${summary}` : ""}`,
+    "",
+    ...applied.map((e) => (e.op === "add" ? `- added${q(e)}: ${e.line}` : e.op === "remove" ? `- removed${q(e)}: ${e.was}` : `- changed${q(e)}: ${e.was} -> ${e.line}`)),
+    ...skipped.map((e) => `- not applied (${e.why}): ${JSON.stringify(e).slice(0, 300)}`),
+    "",
+  ].join("\n");
+}
 
 /**
  * One kit test run on a draft, then act on it: when questions failed, a model rewrites
@@ -263,11 +314,20 @@ export async function prove(name, o = {}) {
   if (failed.length) {
     const byId = Object.fromEntries(readJson(path.join(dir, "bench", "questions.json")).questions.map((q) => [q.id, q]));
     const instructions = fs.readFileSync(path.join(dir, "instructions.md"), "utf8");
-    const user = `Instructions now:\n${instructions}\n\nWhat the source offers:\n${meta.offer ?? ""}\n\nWrong answers:\n${JSON.stringify(failed.map((x) => ({ question: byId[x.id]?.q, reference: byId[x.id]?.reference, answer: x.answer.slice(0, 1200), judge: x.reason ?? x.missing?.join("; ") })))}`;
+    const user = `Instructions now:\n${instructions}\n\nWhat the source offers:\n${meta.offer ?? ""}\n\nWrong answers:\n${JSON.stringify(failed.map((x) => ({ id: x.id, question: byId[x.id]?.q, reference: byId[x.id]?.reference, answer: x.answer.slice(0, 1200), judge: x.reason ?? x.missing?.join("; ") })))}`;
     const t = await chat({ system: TUNE, user, json: true, maxTokens: 4000 });
-    if (t.instructions) fs.writeFileSync(path.join(dir, "instructions.md"), `${String(t.instructions).trim()}\n`);
-    run.changed = t.changed ?? "rewritten";
-    log(`instructions: ${run.changed}`);
+    const { text, applied, skipped } = applyEdits(instructions, t.edits);
+    if (applied.length) {
+      fs.writeFileSync(path.join(dir, "instructions.md"), text);
+      // The changelog sits beside instructions.md, so it moves with the kit on install and a later
+      // rewrite can see what earlier ones changed and why; the journal holds asks, not kit edits.
+      const log_ = path.join(dir, "instructions.changes.md");
+      const prior = fs.existsSync(log_) ? `${fs.readFileSync(log_, "utf8").replace(/\n+$/, "")}\n\n` : "# Changes to instructions.md\n\nEach entry is one `smith prove` run: the lines it added, changed or removed, and the bench question each fixes.\n\n";
+      fs.writeFileSync(log_, prior + changelogEntry(run.at, applied, skipped, t.changed));
+    }
+    run.changed = applied.length ? (t.changed ?? `${applied.length} line edits`) : null;
+    run.edits = { applied: applied.length, skipped: skipped.length };
+    log(applied.length ? `instructions: ${run.changed} (${applied.length} edits${skipped.length ? `, ${skipped.length} not applied` : ""})` : `instructions: no edit applied${skipped.length ? ` (${skipped.length} did not match)` : ""}`);
   }
   meta.proved = run;
   fs.writeFileSync(path.join(dir, "smith.json"), JSON.stringify(meta, null, 2) + "\n");
