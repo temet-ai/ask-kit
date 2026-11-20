@@ -4,10 +4,11 @@ Most of a coding agent's context goes on finding things out: searching, opening 
 calls, checking what was tried before. All of it stays in the context and crowds out the work
 the agent was asked to do.
 
-ask-kit moves that work out of the agent's context. It gives the agent one tool, `ask`. The
-agent asks a question in plain words, and a cheap investigator works it out in its own context.
-The agent gets back a short answer with the evidence it's based on, and its own context stays
-free for the change it is making.
+ask-kit keeps your coding agent's context small by moving that work out of it. It gives the
+agent one tool, `ask`, that answers plain-language questions about the repository's code and
+searches past Claude Code, Codex, Copilot CLI, Gemini CLI and opencode sessions. A cheap investigator works it out in
+its own context, and the agent gets back a short answer with the evidence it's based on
+(`path:line`, or the agent, session and event).
 
 ```
 you:   add a CSV exporter like the other ones
@@ -46,8 +47,8 @@ language models and Claude Code subagents each do part of this;
 Each thing `ask` can answer about is a **domain**. ask-kit comes with two, as a starting point:
 
 - **code**: the repository the agent is working in, cited as `path:line`.
-- **sessions**: your past agent sessions, from the transcripts Claude Code, Codex, Copilot CLI,
-  Gemini CLI and opencode already save. It reads them where they are, with no proxy or database.
+- **sessions**: your past agent sessions, read from the transcripts each agent already saves,
+  where they are, with no proxy or database.
 
 [Add your own](docs/user-guide/domains.md) for anything else your agent keeps digging through.
 
