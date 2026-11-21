@@ -31,6 +31,12 @@ export async function listGallery() {
   return [...seen.values()].sort((a, b) => b.stars - a.stars);
 }
 
+/** A script's `meta.purpose`, read from its source text: a kit's code is never run here. */
+export function purposeOf(src) {
+  const m = /\bpurpose\s*:\s*(?:\r?\n\s*)?(["'`])((?:\\[\s\S]|(?!\1)[^\\])*)\1/.exec(src ?? "");
+  return m ? m[2].replace(/\\(["'`\\])/g, "$1").replace(/\s+/g, " ").trim().slice(0, 600) : "";
+}
+
 /** "github.com/o/r", "https://github.com/o/r(.git)", "o/r" or a local folder. */
 export function parseRef(ref) {
   const s = String(ref).trim();
