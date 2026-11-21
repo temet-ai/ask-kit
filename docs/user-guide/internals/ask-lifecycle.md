@@ -13,7 +13,7 @@ that enters your agent's context. This page follows that path through the code.
 | [bin/ask-kit.mjs](https://github.com/temet-ai/ask-kit/blob/main/bin/ask-kit.mjs) | The `serve` command: with `--domain` it imports `src/server.mjs`, without it it calls `serveRouter()`. |
 | [src/router.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/router.mjs) | `serveRouter` (the `ask` tool your agent sees), `makeRouter` (`byModel`, `byRules`), the `RULES` keyword table. |
 | [src/server.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/server.mjs) | One domain's MCP server. The outer face registers `ask` through `registerAsk`; the inner face (`ASK_KIT_INNER=1`) registers `repl`, `help`, `reset` and `load`. Also the `journal` function and `keep`. |
-| [src/ask.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/ask.mjs) | `registerAsk`: the domain's `ask` tool, the four backend functions `askClaude`, `askCodex`, `askCopilot`, `askApi`, the `KINDS` table, `RESERVE_MS`, `MAX_STEPS`, `CELL_MAX_S`. |
+| [src/ask.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/ask.mjs) | `registerAsk`: the domain's `ask` tool, the four backend functions `askClaude`, `askCodex`, `askCopilot`, `askApi`, the `KINDS` table, `RESERVE_MS`, `CELL_MAX_S`. |
 | [src/platform.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/platform.mjs) | `runCli`: starts a CLI investigator, kills it on timeout or abort. |
 | [src/config.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/config.mjs) | `callerSession` (which session is asking), `STATE_ROOT`, `slug`. |
 
