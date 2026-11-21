@@ -57,6 +57,9 @@ its sources, the calls that change things (`acts`) and the commands it runs at i
 | [crash](https://github.com/temet-ai/ask-kit-crash) | why a program crashed, from systemd-coredump: which crashed, one crash in detail, a backtrace, a report | `coredumpctl`, `journalctl` |
 | [phone](https://github.com/temet-ai/ask-kit-phone) | an Android phone over adb: what is on screen, installed apps, recent crashes; taps, types and opens apps | `adb` |
 | [taste](https://github.com/temet-ai/ask-kit-taste) | what a person's taste or style file says they accept and reject, and whether a piece of work breaks it | a file you point it at |
+| [python](https://github.com/temet-ai/ask-kit-python) | a Python project: which interpreter and virtualenv it uses, whether uv's lock and sync are current, why an import or `uv run` fails, what `pyproject.toml` declares; runs pytest, ruff and mypy | `python3`; `uv` for lock and sync |
+| [tmux](https://github.com/temet-ai/ask-kit-tmux) | tmux: sessions, windows and panes, what runs in a pane and what it shows, which pane has an error, the config; sends keys and manages panes when asked | `tmux` |
+| [omarchy](https://github.com/temet-ai/ask-kit-omarchy) | Omarchy: its version and updates, which `omarchy` command does a job, themes, which file to edit and what differs from the defaults, whether an app follows its conventions | Omarchy (Linux) |
 
 ## Who can make a kit change something
 
