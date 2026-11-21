@@ -59,9 +59,10 @@ question is cut to its first 2000 characters. If the reply is not an enabled dom
 call fails for any reason, `serveRouter` catches the error, uses `byRules`, and stores the error
 text (160 characters) as `routeError` in the router journal.
 
-`byRules` runs the `RULES` regular expressions in order (`sessions` first, then `code`) and
-returns the first domain whose words match and which is enabled. With no match it returns the
-first enabled domain. The rules are a fallback; setup writes `router.backend` whenever an API
+`byRules` checks past-work words first (`PAST_WORK`, which gives the session-history domain). Then
+it scores each kit by how many of its `keywords` the question holds and returns the highest; on a
+tie the longer matched text wins, then config order. With no keyword match it returns `code` when
+the question has `CODE_WORDS`, and the first enabled domain otherwise. The rules are a fallback; setup writes `router.backend` whenever an API
 backend is configured, so keyword routing is what you get with a CLI-only setup.
 
 The last domain is stored per calling session in `STATE_ROOT/router/last-<session>.json`, so a

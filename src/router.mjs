@@ -109,8 +109,25 @@ export async function makeRouter(config) {
   // An enabled action of a kit whose pattern matches the whole question claims it, ahead of the
   // kits' patterns and the router model: the kit's server then answers it with the action's script.
   const byAction = (q, cfg = config) => enabled.find((n) => DOMAINS[n].actions?.length && matchAction(DOMAINS[n].actions.filter((a) => statusOf(n, a, cfg).on), q)) ?? null;
-  const rules = [...(pastWork ? [[pastWork, PAST_WORK]] : []), ...kitRules, ...(DOMAINS.code ? [["code", CODE_WORDS]] : [])];
-  const byRules = (q) => rules.find(([, re]) => re.test(q))?.[0] ?? enabled[0];
+  // The fallback when no model routes: past-work words first, then the kit most of whose keywords
+  // the question holds (the longer matched text on a tie, each match counted to 25 characters so a
+  // wildcard keyword does not outweigh a plain one; config order after that), then code.
+  const kitWords = enabled
+    .filter((n) => DOMAINS[n].keywords?.length)
+    .map((n) => [n, DOMAINS[n].keywords.map((k) => new RegExp(`\\b(${k})\\b`, "i"))]);
+  const byKeywords = (q) => {
+    let top = null, best = 0;
+    for (const [n, res] of kitWords) {
+      let score = 0;
+      for (const re of res) {
+        const m = re.exec(q);
+        if (m) score += 100 + Math.min(m[0].length, 25);
+      }
+      if (score > best) (best = score), (top = n);
+    }
+    return top;
+  };
+  const byRules = (q) => (pastWork && PAST_WORK.test(q) ? pastWork : byKeywords(q) ?? (DOMAINS.code && CODE_WORDS.test(q) ? "code" : enabled[0]));
   // `aliases` in the config: other words a caller may give as `about` ({"docs": "claude-code-docs"}),
   // so a host keeps the names its callers already use. An alias of a domain not enabled here, or one
   // that is itself a domain's name, is left out.
