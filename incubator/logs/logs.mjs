@@ -15,7 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
-import { LEVELS, levelOf, ERR_WORD, context, timeOf, iso, redact, redactValue, SECRET_HINT, signature, exceptionLine, pathPattern, detect } from "./parse.mjs";
+import { LEVELS, levelOf, ERR_WORD, context, timeOf, iso, redact, redactValue, hasSecretHint, signature, exceptionLine, pathPattern, detect, standsAlone } from "./parse.mjs";
 
 const HEAD_BYTES = 64 << 10;
 const TAIL_BYTES = 256 << 10;
@@ -23,6 +23,7 @@ const MAX_LINE = 64 << 10;
 const MAX_EXTRA = 60;
 const MAX_SIGS = 5000;
 const TIME_LIMIT_MS = 100_000;
+const SEEK_MIN = 32 << 20;
 const DAY = 86_400_000;
 const SKIP_DIRS = new Set(["node_modules", "journal", "private", "__pycache__", "target", "vendor", "dist", "build"]);
 const CRED_FILE = /(^|[\\/])(\.env(\.[^\\/]*)?|\.npmrc|\.netrc|\.pgpass|\.my\.cnf|\.git-credentials|\.?htpasswd|shadow-?|gshadow-?|sudoers|id_(rsa|dsa|ecdsa|ed25519)[^\\/]*|[^\\/]*\.(pem|key|p12|pfx|jks|keystore|kdbx|asc|gpg)|credentials?(\.[^\\/]*)?|secrets?(\.[^\\/]*)?|\.[a-z_]*history)$|[\\/]\.(ssh|aws|gnupg|kube|docker)[\\/]/i;
@@ -32,6 +33,7 @@ const OTHER_PACK = /\.(xz|bz2|zst|zip|7z|lz4)$/i;
 const UNITS = { s: 1000, sec: 1000, secs: 1000, second: 1000, seconds: 1000, m: 60_000, min: 60_000, mins: 60_000, minute: 60_000, minutes: 60_000, h: 3_600_000, hr: 3_600_000, hrs: 3_600_000, hour: 3_600_000, hours: 3_600_000, d: DAY, day: DAY, days: DAY, w: 7 * DAY, week: 7 * DAY, weeks: 7 * DAY };
 const BUCKETS = [1000, 5000, 10_000, 30_000, 60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000, 3_600_000, 3 * 3_600_000, 6 * 3_600_000, 12 * 3_600_000, DAY, 7 * DAY];
 
+const CONTROL = /\x1b\[[0-9;?]*[A-Za-z]|[\x00-\x08\x0b-\x1f\x7f]/g;
 const clip = (s, n) => (s.length > n ? s.slice(0, n) + `… (+${s.length - n} chars)` : s);
 // A string of its own: a piece cut from a chunk of the file would keep the whole chunk in memory.
 const own = (s) => (typeof s === "string" && s.length > 12 ? Buffer.from(s, "utf8").toString("utf8") : s);
@@ -60,9 +62,11 @@ function isLogName(name) {
 
 export function make({ settings = {}, push = () => {} } = {}) {
   const workdir = path.resolve(settings.WORKDIR || process.env.WORKDIR || process.cwd());
+  // A path as the caller wrote it: ~ is the home folder, anything relative is under the working folder.
+  const abs = (s) => path.resolve(workdir, /^~(?=$|[\\/])/.test(s) ? path.join(os.homedir(), s.slice(1)) : s);
   const offset = parseOffset(settings.LOGS_UTC_OFFSET || process.env.LOGS_UTC_OFFSET);
   const dirsSetting = String(settings.LOGS_DIRS || process.env.LOGS_DIRS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const defaultDirs = dirsSetting.length ? dirsSetting.map((d) => path.resolve(workdir, d)) : [path.join(workdir, "logs"), path.join(workdir, "log"), ...(process.platform === "win32" ? [] : ["/var/log"])];
+  const defaultDirs = dirsSetting.length ? dirsSetting.map(abs) : [path.join(workdir, "logs"), path.join(workdir, "log"), ...(process.platform === "win32" ? [] : ["/var/log"])];
   const cache = new Map();
 
   function parseOffset(v) {
@@ -147,10 +151,10 @@ export function make({ settings = {}, push = () => {} } = {}) {
   }
 
   /** Every line of a file, in order: onLine(line, number). onLine returns false to stop. Never throws: {lines, bytes, error?, stopped?}. */
-  async function readLines(part, onLine, ctl) {
+  async function readLines(part, onLine, ctl, from) {
     const started = Date.now();
     const out = { lines: 0, bytes: 0 };
-    const raw = fs.createReadStream(part.path, { highWaterMark: 1 << 20 });
+    const raw = fs.createReadStream(part.path, { highWaterMark: 1 << 20, ...(from ? { start: from.start } : {}) });
     let src = raw;
     if (part.gz) {
       src = zlib.createGunzip();
@@ -159,15 +163,17 @@ export function make({ settings = {}, push = () => {} } = {}) {
     }
     const decoder = new StringDecoder(part.enc);
     let carry = "";
-    let n = 0;
+    let n = from ? from.line0 : 0;
     let skipping = false;
     let stop = false;
     try {
       for await (const chunk of src) {
         out.bytes += chunk.length;
         let s = decoder.write(chunk);
-        if (n === 0 && !carry && s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+        if (n === 0 && !from && !carry && s.charCodeAt(0) === 0xfeff) s = s.slice(1);
         if (carry) s = carry + s;
+        // Most chunks hold nothing that looks like a credential, and then no line in them is tested.
+        const hinted = hasSecretHint(s);
         let start = 0;
         for (let i; (i = s.indexOf("\n", start)) !== -1; start = i + 1) {
           n++;
@@ -176,9 +182,9 @@ export function make({ settings = {}, push = () => {} } = {}) {
             continue;
           }
           let end = i;
-          if (end > start && s.charCodeAt(end - 1) === 13) end--;
+          while (end > start && s.charCodeAt(end - 1) === 13) end--;
           if (end - start > MAX_LINE) end = start + MAX_LINE;
-          if (onLine(s.slice(start, end), n) === false) {
+          if (onLine(s.slice(start, end), n, hinted) === false) {
             stop = true;
             break;
           }
@@ -187,7 +193,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
         carry = start ? s.slice(start) : s;
         if (carry.length > 1 << 20) {
           // A line longer than 1 MB: its start is handed on, the rest is skipped.
-          if (!skipping && onLine(carry.slice(0, MAX_LINE), n + 1) === false) break;
+          if (!skipping && onLine(carry.slice(0, MAX_LINE), n + 1, true) === false) break;
           skipping = true;
           carry = "";
         }
@@ -201,7 +207,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
         carry += decoder.end();
         if (carry && !skipping) {
           n++;
-          onLine(carry.length > MAX_LINE ? carry.slice(0, MAX_LINE) : carry.replace(/\r$/, ""), n);
+          onLine(carry.length > MAX_LINE ? carry.slice(0, MAX_LINE) : carry.replace(/\r$/, ""), n, true);
         }
       }
     } catch (e) {
@@ -219,6 +225,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
   function assembler(part, onEntry) {
     const parse = part.det.make(context({ mtime: part.mtime, offset }));
     const json = part.det.format === "json";
+    const mixed = part.det.mixed === true;
     let cur = null;
     let lastT = null;
     const flush = () => {
@@ -227,9 +234,16 @@ export function make({ settings = {}, push = () => {} } = {}) {
       cur = null;
       return onEntry(e);
     };
-    const feed = (line, n) => {
+    let inKey = false;
+    const feed = (line, n, hinted) => {
       if (line === "") return;
-      if (SECRET_HINT.test(line)) {
+      if (inKey) {
+        // The lines of a private key block are dropped; its first line already reads <redacted private key>.
+        if (line.includes("-----END")) inKey = false;
+        return;
+      }
+      if (hinted && hasSecretHint(line)) {
+        if (!json && line.includes("-----BEGIN") && line.includes("PRIVATE KEY-----") && !line.includes("-----END")) inKey = true;
         if (json) {
           try {
             line = JSON.stringify(redactValue(JSON.parse(line)));
@@ -239,7 +253,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
         } else line = redact(line);
       }
       const e = parse(line);
-      if (e === null && cur) {
+      if (e === null && cur && !(mixed && standsAlone(line, cur))) {
         if (!cur.extra) cur.extra = [line];
         else if (cur.extra.length < MAX_EXTRA) cur.extra.push(line);
         else cur.more = (cur.more ?? 0) + 1;
@@ -260,7 +274,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
     return { feed, end: flush };
   }
 
-  async function walkPart(part, onEntry, ctl) {
+  async function walkPart(part, onEntry, ctl, from) {
     if (part.error) return { lines: 0, bytes: 0, error: part.error };
     let stopped = false;
     const a = assembler(part, (e) => {
@@ -269,9 +283,74 @@ export function make({ settings = {}, push = () => {} } = {}) {
         return false;
       }
     });
-    const r = await readLines(part, a.feed, ctl);
+    const r = await readLines(part, a.feed, ctl, from);
     if (!stopped && !r.stopped) a.end();
     return r;
+  }
+
+  /** The number of line ends in the first `end` bytes of a file. Raw bytes, so about a second per GB. */
+  async function countLines(fh, end) {
+    const chunk = Buffer.alloc(1 << 20);
+    let count = 0;
+    for (let pos = 0; pos < end; ) {
+      const { bytesRead } = await fh.read(chunk, 0, Math.min(chunk.length, end - pos), pos);
+      if (!bytesRead) break;
+      for (let j = chunk.indexOf(10); j !== -1 && j < bytesRead; j = chunk.indexOf(10, j + 1)) count++;
+      pos += bytesRead;
+    }
+    return count;
+  }
+
+  /**
+   * Where in a big plain file a window starts: a search by position, so the part before the window
+   * is not parsed. Returns {start, line0} or null when the file is small, has no times, or its
+   * times are not in order where it was probed (then it is read from the top).
+   */
+  async function seek(part, since) {
+    if (part.gz || part.enc !== "utf8" || !part.det.timed || part.det.mixed || part.size < SEEK_MIN || part.first == null || part.first >= since) return null;
+    const started = Date.now();
+    let fh;
+    try {
+      fh = await fs.promises.open(part.path, "r");
+      const parse = part.det.make(context({ mtime: part.mtime, offset }));
+      const buf = Buffer.alloc(HEAD_BYTES);
+      const probe = async (pos) => {
+        const { bytesRead } = await fh.read(buf, 0, buf.length, pos);
+        const lines = buf.toString("utf8", 0, bytesRead).split("\n");
+        lines.shift();
+        lines.pop();
+        for (const l of lines) {
+          const e = parse(l.endsWith("\r") ? l.slice(0, -1) : l);
+          if (e && e.t != null) return e.t;
+        }
+        return null;
+      };
+      let lo = 0;
+      let hi = part.size;
+      let lowT = part.first;
+      let highT = Infinity;
+      while (hi - lo > 4 << 20) {
+        const mid = Math.floor((lo + hi) / 2);
+        const t = await probe(mid);
+        if (t == null || t < lowT || t > highT) return null;
+        if (t < since) [lo, lowT] = [mid, t];
+        else [hi, highT] = [mid, t];
+      }
+      // A step back, for entries written a little out of order.
+      let start = lo - (2 << 20);
+      if (start <= 0) return null;
+      const { bytesRead } = await fh.read(buf, 0, buf.length, start);
+      const nl = buf.subarray(0, bytesRead).indexOf(10);
+      if (nl < 0) return null;
+      start += nl + 1;
+      const line0 = await countLines(fh, start);
+      push({ kind: "read", detail: `skipped to byte ${start} of ${part.show}`, ms: Date.now() - started, code: 0, size: 0 });
+      return { start, line0 };
+    } catch {
+      return null;
+    } finally {
+      await fh?.close();
+    }
   }
 
   // ---------------------------------------------------------------------------------------
@@ -308,7 +387,10 @@ export function make({ settings = {}, push = () => {} } = {}) {
     return [...new Set(found)];
   }
 
-  /** Files grouped into logs: the parts of a rotated set become one log, oldest part first. */
+  /**
+   * Files grouped into logs by name alone: the parts of a rotated set become one log. Nothing is
+   * opened here; `modified` and `size` come from stat. open(set) reads the heads of its files.
+   */
   function group(paths) {
     const sets = new Map();
     for (const p of paths) {
@@ -316,8 +398,21 @@ export function make({ settings = {}, push = () => {} } = {}) {
       if (!sets.has(key)) sets.set(key, []);
       sets.get(key).push(p);
     }
-    return [...sets.entries()].map(([key, ps]) => asLog(key, ps));
+    return [...sets.entries()].map(([key, ps]) => {
+      let modified = 0;
+      let size = 0;
+      for (const f of ps) {
+        try {
+          const st = fs.statSync(f);
+          modified = Math.max(modified, st.mtimeMs);
+          size += st.size;
+        } catch {}
+      }
+      return { key, paths: ps, name: show(ps.length > 1 ? key : ps[0]), modified, size };
+    });
   }
+  const open = (set) => asLog(set.key, set.paths);
+  const newestFirst = (a, b) => b.modified - a.modified || a.name.localeCompare(b.name);
 
   function asLog(key, paths) {
     const parts = paths.map(info).filter((p) => !p.error || paths.length === 1);
@@ -339,49 +434,53 @@ export function make({ settings = {}, push = () => {} } = {}) {
   }
 
   /** The logs a `file` argument names: a path, a folder, a name or part of one, a list, or nothing (the logs found in LOGS_DIRS). */
-  function resolve(spec, { max = 40 } = {}) {
+  function resolve(spec, { max = 40, rotated = true } = {}) {
     const notes = [];
     const specs = spec == null || spec === "" ? null : (Array.isArray(spec) ? spec : String(spec).split(",")).map((s) => String(s).trim()).filter(Boolean);
     if (!specs || !specs.length) {
-      const all = group(discover(defaultDirs)).filter((l) => l.parts.length && !l.parts[0].error && l.parts.some((p) => p.size > 0));
-      if (!all.length) return { error: `no log files found in ${defaultDirs.map(show).join(", ")}; name a file or a folder (file: "path/to/app.log"), or set LOGS_DIRS` };
-      all.sort((a, b) => b.parts.at(-1).mtime - a.parts.at(-1).mtime);
+      const all = group(discover(defaultDirs)).filter((l) => l.size > 0).sort(newestFirst);
+      const logs = all.slice(0, max).map(open).filter((l) => l.parts.length && !l.parts[0].error);
+      if (!logs.length) return { error: `no log files found in ${defaultDirs.map(show).join(", ")}; name a file or a folder (file: "path/to/app.log"), or set LOGS_DIRS` };
       if (all.length > max) notes.push(`${all.length} logs found; only the ${max} most recently written are read`);
-      notes.push(`no file was named: read ${plural(Math.min(all.length, max), "log")} found in ${defaultDirs.map(show).join(", ")}`);
-      return { logs: all.slice(0, max), notes };
+      notes.push(`no file was named: read ${plural(logs.length, "log")} found in ${defaultDirs.map(show).join(", ")}`);
+      return { logs, notes };
     }
     const logs = [];
     let pool = null;
     for (const s of specs) {
-      const p = path.resolve(workdir, s);
+      const p = abs(s);
       refuse(p);
       let st = null;
       try {
         st = fs.statSync(p);
       } catch {}
       if (st?.isFile()) {
-        const sib = siblings(p);
+        const sib = rotated === false ? [p] : siblings(p);
         logs.push(asLog(p, sib));
         if (sib.length > 1) notes.push(`${show(p)} is a rotated set of ${sib.length} files, read as one log, oldest first`);
         continue;
       }
       if (st?.isDirectory()) {
-        const inDir = group(discover([p])).filter((l) => l.parts.length && !l.parts[0].error);
+        const found = group(discover([p])).sort((a, b) => a.name.localeCompare(b.name));
+        const inDir = found.slice(0, max).map(open).filter((l) => l.parts.length && !l.parts[0].error);
         if (!inDir.length) return { error: `no log files in ${show(p)}` };
-        if (inDir.length > max) notes.push(`${inDir.length} logs in ${show(p)}; only the first ${max} are read`);
-        logs.push(...inDir.slice(0, max));
+        if (found.length > max) notes.push(`${found.length} logs in ${show(p)}; only the first ${max} by name are read`);
+        logs.push(...inDir);
         continue;
       }
-      pool ??= group(discover([...defaultDirs, workdir]));
+      // The working folder first, so a name there wins over one in /var/log.
+      pool ??= group(discover([workdir, ...defaultDirs]));
       const want = s.toLowerCase();
       const base = (l) => path.basename(l.name).toLowerCase();
       const hit = pool.find((l) => l.name.toLowerCase() === want || base(l) === want) ?? pool.find((l) => base(l).replace(/\.[a-z]+$/, "") === want) ?? pool.find((l) => l.name.toLowerCase().includes(want));
       if (!hit) {
-        const near = pool.slice(0, 20).map((l) => l.name);
-        return { error: `no log file ${s}${near.length ? `; have: ${near.join(", ")}${pool.length > 20 ? ` and ${pool.length - 20} more` : ""}` : `, and no log files under ${show(workdir)} or ${defaultDirs.map(show).join(", ")}`}` };
+        const beside = group(discover([path.dirname(p)], { depth: 0 })).map((l) => l.name);
+        const near = [...new Set([...beside, ...pool.map((l) => l.name)])].slice(0, 20);
+        return { error: `no log file ${s}${near.length ? `; have: ${near.join(", ")}${pool.length > near.length ? ` and ${pool.length - near.length} more` : ""}` : `, and no log files under ${show(workdir)} or ${defaultDirs.map(show).join(", ")}`}` };
       }
       notes.push(`"${s}" matched ${hit.name}`);
-      logs.push(hit);
+      const log = open(hit);
+      logs.push(rotated === false && log.parts.length > 1 ? asLog(log.parts.at(-1).path, [log.parts.at(-1).path]) : log);
     }
     for (const l of logs) for (const p of l.parts) if (p.error && l.parts.length === 1) return { error: `${p.show}: ${p.error}` };
     return { logs, notes };
@@ -478,14 +577,16 @@ export function make({ settings = {}, push = () => {} } = {}) {
   // ---------------------------------------------------------------------------------------
   // Filtering and showing
 
-  const isError = (e) => e.level >= 4 || (e.level === -1 && ERR_WORD.test(e.msg));
+  // A line without a level is an error when an error word is near its start.
+  const errWord = (m) => ERR_WORD.test(m.length > 300 ? m.slice(0, 300) : m);
+  const isError = (e) => e.level >= 4 || (e.level === -1 && errWord(e.msg));
   function minLevel(level) {
     if (level == null || level === "") return null;
     const l = levelOf(String(level));
     if (l < 0) throw new Error(`unknown level "${level}"; have: ${LEVELS.join(", ")}`);
     return l;
   }
-  const atLevel = (e, min) => (e.level >= 0 ? e.level >= min : min >= 4 ? ERR_WORD.test(e.msg) : min === 3 ? ERR_WORD.test(e.msg) || /warn/i.test(e.msg) : true);
+  const atLevel = (e, min) => (e.level >= 0 ? e.level >= min : min >= 4 ? errWord(e.msg) : min === 3 ? errWord(e.msg) || /warn/i.test(e.msg.slice(0, 300)) : true);
 
   function regex(grep, flags = "i") {
     if (grep == null || grep === "") return null;
@@ -549,8 +650,9 @@ export function make({ settings = {}, push = () => {} } = {}) {
       message += "\n" + lines.map((l) => clip(l, 200)).join("\n");
       if (ex.length <= keep && e.more) message += `\n… ${e.more} more lines`;
     }
-    const out = { time: e.untimed ? null : iso(e.t), level: LEVELS[e.level] ?? null, message: own(message) };
-    if (e.obj && o.fields !== false) {
+    const out = { time: e.untimed ? null : iso(e.t), level: LEVELS[e.level] ?? null, message: own(message.replace(CONTROL, "")) };
+    // An access log entry says its fields in its message already; they are shown only when asked for by name.
+    if (e.obj && o.fields !== false && !(e.access && o.fields == null)) {
       const want = Array.isArray(o.fields) ? o.fields : typeof o.fields === "string" ? o.fields.split(",").map((s) => s.trim()) : null;
       const f = {};
       let n = 0;
@@ -577,7 +679,9 @@ export function make({ settings = {}, push = () => {} } = {}) {
   /** The signature of an entry: its message, and for a stack trace the line that names the exception. */
   function sigOf(e, memo) {
     if (e.access) return `${e.obj.method ?? "-"} ${pathPattern(e.obj.path)} -> ${e.obj.status}`;
-    const exc = e.extra ? exceptionLine(e.extra) : null;
+    let exc = e.extra ? exceptionLine(e.extra) : null;
+    // A JSON entry often says its error in a field and again as the first line of its stack.
+    if (exc && e.msg.includes(exc.trim())) exc = null;
     const text = exc ? `${e.msg} | ${exc}` : e.msg;
     if (!memo) return signature(text);
     const key = text.length > 500 ? text.slice(0, 500).replace(/\d+/g, "0") : text.replace(/\d+/g, "0");
@@ -606,9 +710,12 @@ export function make({ settings = {}, push = () => {} } = {}) {
         if (!onBefore && q.since != null && next?.first != null && next.first <= q.since) continue;
         if (q.until != null && part.first != null && part.first > q.until) continue;
         let past = 0;
+        const from = !onBefore && q.since != null ? await seek(part, q.since) : null;
         const r = await walkPart(part, (e) => {
+          // Lines above the first time of a file that has times cannot be placed in a window.
+          if (e.t == null && part.det.timed && (from || q.since != null || q.until != null)) return;
           stats.scanned++;
-          if (!e.untimed || e.t != null) {
+          if (e.t != null) {
             if (q.until != null && e.t > q.until) {
               if (++past > 500) {
                 done = true;
@@ -630,7 +737,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
             halt = true;
             return false;
           }
-        }, ctl);
+        }, ctl, from);
         stats.lines += r.lines;
         stats.bytes += r.bytes;
         if (r.error) stats.notes.push(`${part.show}: ${r.error}`);
@@ -644,7 +751,10 @@ export function make({ settings = {}, push = () => {} } = {}) {
   }
 
   const newCtl = (o) => ({ deadline: Date.now() + Math.min(+(o?.timeoutMs ?? TIME_LIMIT_MS) || TIME_LIMIT_MS, 600_000) });
-  const describe = (logs) => logs.map((l) => (l.parts.length > 1 ? { log: l.name, parts: l.parts.map((p) => p.show), format: l.parts.at(-1).det.label } : { log: l.name, format: l.parts[0]?.det.label }));
+  const describe = (logs) => {
+    const rows = logs.slice(0, 30).map((l) => `${l.name} (${l.parts.at(-1)?.det.label}${l.parts.length > 1 ? `; ${l.parts.length} files, oldest first: ${l.parts.map((p) => path.basename(p.path)).join(", ")}` : ""})`);
+    return logs.length > 30 ? [...rows, `… ${logs.length - 30} more`] : rows;
+  };
   const names = (logs) => (logs.length === 1 ? logs[0].name : logs.length <= 3 ? logs.map((l) => l.name).join(", ") : `${logs.length} logs`);
   const windowText = (w) => ({ since: iso(w.since), until: iso(w.until) });
   const untimedNote = (logs, w) => (w.since != null || w.until != null) && logs.some((l) => l.parts.some((p) => !p.det.timed)) ? [`${logs.filter((l) => l.parts.some((p) => !p.det.timed)).map((l) => l.name).join(", ")}: no times in the lines, so since and until do not apply to it and every entry counts`] : [];
@@ -657,11 +767,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
     return null;
   }
 
-  function prepare(file, o) {
-    const r = resolve(file, o);
-    if (r.error) return r;
-    return r;
-  }
+  const prepare = (file, o) => resolve(file, { rotated: o?.rotated });
 
   // ---------------------------------------------------------------------------------------
   // The global
@@ -672,18 +778,18 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * {dirs, count, logs:[{log, parts?, size, bytes, modified, format, first, last}], leftOut?} or {error}.
      */
     async files(dir, o = {}) {
-      const dirs = dir ? [path.resolve(workdir, String(dir))] : defaultDirs;
+      const dirs = dir ? [abs(String(dir))] : defaultDirs;
       if (dir) refuse(dirs[0]);
       if (dir && !fs.existsSync(dirs[0])) return { error: `no folder or file ${show(dirs[0])}` };
       const ctl = newCtl(o);
-      const all = group(discover(dirs)).filter((l) => l.parts.length);
-      all.sort((a, b) => (b.parts.at(-1).mtime ?? 0) - (a.parts.at(-1).mtime ?? 0));
+      const all = group(discover(dirs)).sort(newestFirst);
       const max = Math.min(o.max ?? 60, 200);
       const out = [];
-      for (const l of all.slice(0, max)) {
+      for (const l of all.slice(0, max).map(open)) {
+        if (!l.parts.length) continue;
         const size = l.parts.reduce((a, p) => a + (p.size ?? 0), 0);
         const b = l.parts[0].error ? { first: null, last: null } : await bounds([l], ctl);
-        out.push({ log: l.name, ...(l.parts.length > 1 ? { parts: l.parts.map((p) => p.show) } : {}), size: human(size), bytes: size, modified: iso(Math.round(l.parts.at(-1).mtime)), format: l.parts.at(-1).det.label, first: iso(b.first), last: iso(b.last), ...(l.parts[0].error ? { error: l.parts[0].error } : {}) });
+        out.push({ log: l.name, ...(l.parts.length > 1 ? { parts: l.parts.map((p) => p.show) } : {}), size: human(size), bytes: size, modified: iso(Math.floor(l.parts.at(-1).mtime / 1000) * 1000), format: l.parts.at(-1).det.label, first: iso(b.first), last: iso(b.last), ...(l.parts[0].error ? { error: l.parts[0].error } : {}) });
       }
       return { dirs: dirs.map(show), count: all.length, logs: out, ...(all.length > max ? { leftOut: all.length - max } : {}) };
     },
@@ -693,7 +799,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * {logs, window, scanned, matched, entries, leftOut?, notes?} or {error}.
      */
     async scan(file, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const ctl = newCtl(o);
       const w = await windowOf(r.logs, o.since, o.until, ctl);
@@ -723,7 +829,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
     async each(file, o, fn) {
       if (typeof o === "function") [o, fn] = [{}, o];
       if (typeof fn !== "function") throw new Error("each needs a function: await logs.each(file, {level: 'error'}, (e) => { ... })");
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const ctl = newCtl(o);
       const w = await windowOf(r.logs, o.since, o.until, ctl);
@@ -735,7 +841,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
 
     /** The last n entries of a log (default 20, at most 200). {log, format, entries} or {error}. */
     async tail(file, n = 20, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       if (r.logs.length > 1) return { error: `tail reads one log; ${r.logs.length} match: ${r.logs.slice(0, 20).map((l) => l.name).join(", ")}` };
       const want = Math.max(1, Math.min(+n || 20, 200));
@@ -765,13 +871,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
               const buf = Buffer.alloc(part.size - start);
               await fh.read(buf, 0, buf.length, start);
               // The line numbers of the tail need the count of lines before it.
-              const chunk = Buffer.alloc(1 << 20);
-              for (let pos = 0; pos < start; ) {
-                const { bytesRead } = await fh.read(chunk, 0, Math.min(chunk.length, start - pos), pos);
-                if (!bytesRead) break;
-                for (let j = chunk.indexOf(10); j !== -1 && j < bytesRead; j = chunk.indexOf(10, j + 1)) before++;
-                pos += bytesRead;
-              }
+              before = await countLines(fh, start);
               text = buf.toString(part.enc);
             } finally {
               await fh.close();
@@ -787,7 +887,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
             const a = assembler(part, (e) => {
               got.push(e);
             });
-            for (const l of lines) a.feed(l.endsWith("\r") ? l.slice(0, -1) : l, no++);
+            for (const l of lines) a.feed(l.endsWith("\r") ? l.slice(0, -1) : l, no++, true);
             a.end();
             if (start > 0 && got.length) got.shift();
             if (got.length >= want || start === 0 || len >= 64 << 20) break;
@@ -805,7 +905,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * With several logs the entries are merged in time order. {logs, anchor, entries:[{..., hit?}], matches?} or {error}.
      */
     async around(file, at = {}, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const modes = ["time", "line", "grep", "id"].filter((k) => at[k] != null && at[k] !== "");
       if (modes.length !== 1) throw new Error('around needs exactly one of: time ("21:14", "last-5m", an ISO time), line (a line number), grep (a regex), id (a literal text such as a request id)');
@@ -822,7 +922,8 @@ export function make({ settings = {}, push = () => {} } = {}) {
       }
 
       // One pass over a log: the entries that hit, each with `before` entries above and `after` below.
-      const collect = async (log, isHit, maxHits) => {
+      // In time mode the first entry at or after the time is the first of the `after` entries.
+      const collect = async (log, isHit, maxHits, hitIsAfter = false) => {
         const out = [];
         let found = 0;
         let total = 0;
@@ -837,9 +938,18 @@ export function make({ settings = {}, push = () => {} } = {}) {
                 found++;
                 for (const b of ring) out.push(b);
                 ring = [];
-                e.hit = true;
-                out.push(e);
-                pending = after;
+                if (hitIsAfter) {
+                  if (after > 0) out.push(e);
+                  pending = Math.max(0, after - 1);
+                } else {
+                  e.hit = true;
+                  out.push(e);
+                  pending = after;
+                }
+                if (pending === 0 && found >= maxHits && !idMode) {
+                  stop = true;
+                  return false;
+                }
                 return;
               }
             }
@@ -871,10 +981,8 @@ export function make({ settings = {}, push = () => {} } = {}) {
       let matches;
       const timeAround = async (logs, t) => {
         for (const log of logs) {
-          const c = await collect(log, (e) => e.t != null && e.t >= t, 1);
-          const got = c.found ? c.out : c.ring;
-          if (c.found) for (const e of got) if (e.hit && e.t !== t) e.hit = false;
-          entries.push(...got);
+          const c = await collect(log, (e) => e.t != null && e.t >= t, 1, true);
+          entries.push(...(c.found ? c.out : c.ring));
         }
       };
       if (mode === "time") {
@@ -922,7 +1030,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * different details share a signature. {logs, window, entries, errors, kinds, new?, top:[{signature, count, first, last, levels, new?, example}], leftOut?, notes?}.
      */
     async errors(file, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const ctl = newCtl(o);
       const w = await windowOf(r.logs, o.since, o.until, ctl);
@@ -951,7 +1059,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
         if (!e.untimed) g.last = e.t;
         const lv = LEVELS[e.level] ?? "no level";
         g.levels[lv] = (g.levels[lv] ?? 0) + 1;
-      }, ctl, w.since == null ? null : (e) => {
+      }, ctl, w.since == null || o.new === false ? null : (e) => {
         entriesBefore++;
         if (atLevel(e, min) && beforeSigs.size < MAX_SIGS * 4) beforeSigs.add(sigOf(e, memo));
       });
@@ -962,7 +1070,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
       const fresh = canBeNew ? all.filter((g) => !beforeSigs.has(g.signature)) : [];
       const notes = [...r.notes, ...stats.notes, ...untimedNote(r.logs, w)];
       if (other) notes.push(`${other} errors belong to kinds beyond the first ${MAX_SIGS} and are not grouped`);
-      if (w.since != null && !entriesBefore) notes.push("the log holds nothing before the window, so whether a kind is new cannot be said");
+      if (w.since != null && !entriesBefore && o.new !== false) notes.push("the log holds nothing before the window, so whether a kind is new cannot be said");
       if (!stats.matched) {
         const hint = await emptyHint(r.logs, w, ctl);
         if (hint) notes.push(hint);
@@ -975,7 +1083,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * spike marked. The bucket size follows the window unless given ("1m", "1h").
      */
     async timeline(file, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const ctl = newCtl(o);
       const w = await windowOf(r.logs, o.since, o.until, ctl, true);
@@ -1005,21 +1113,24 @@ export function make({ settings = {}, push = () => {} } = {}) {
         if (isError(e)) errs[i]++;
         else if (e.level === 3) warns[i]++;
       }, ctl);
-      const median = (a) => {
-        const s = [...a].sort((x, y) => x - y);
-        return s[Math.floor(s.length / 2)] ?? 0;
-      };
-      const mt = median(total);
-      const me = median(errs);
-      const spike = (v, m) => v >= 3 * m && v - m >= 5;
+      // The usual level is the lower quartile, so a rise that lasts for half the window still shows.
+      const low = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 4)] ?? 0;
+      const mt = low(total);
+      const me = low(errs);
       const fmt = (t) => (size >= DAY ? iso(t).slice(0, 10) : size >= 60_000 ? iso(t).slice(0, 16) + "Z" : iso(t));
       const rows = [];
       const spikes = [];
       for (let i = 0; i < n; i++) {
-        const marks = [spike(total[i], mt) ? "entries" : null, spike(errs[i], me) ? "errors" : null].filter(Boolean);
-        if (marks.length) spikes.push({ at: fmt(start + i * size), entries: total[i], errors: errs[i], of: marks.join(" and ") });
-        rows.push(`${fmt(start + i * size)}  ${total[i]}${warns[i] ? `  warn ${warns[i]}` : ""}${errs[i] ? `  error ${errs[i]}` : ""}${marks.length ? `  << spike in ${marks.join(" and ")}` : ""}`);
+        const marks = [total[i] >= 3 * mt && total[i] - mt >= 5 ? "entries" : null, errs[i] >= 3 * me && errs[i] - me >= 3 ? "errors" : null].filter(Boolean);
+        if (marks.length) {
+          const of = marks.join(" and ");
+          const prev = spikes.at(-1);
+          if (prev && prev.end === i - 1 && prev.of === of) Object.assign(prev, { end: i, to: fmt(start + (i + 1) * size), buckets: prev.buckets + 1, entries: prev.entries + total[i], errors: prev.errors + errs[i] });
+          else spikes.push({ from: fmt(start + i * size), to: fmt(start + (i + 1) * size), end: i, buckets: 1, of, entries: total[i], errors: errs[i] });
+        }
+        rows.push(`${fmt(start + i * size)}  ${total[i]}${warns[i] ? `  warn ${warns[i]}` : ""}${errs[i] ? `  error ${errs[i]}` : ""}${marks.length ? `  << high in ${marks.join(" and ")}` : ""}`);
       }
+      for (const sp of spikes) delete sp.end;
       // Long runs of empty buckets are folded, and a long timeline keeps its busiest part visible.
       const folded = [];
       for (let i = 0; i < rows.length; ) {
@@ -1032,7 +1143,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
       }
       const notes = [...r.notes, ...stats.notes];
       const sum = (a) => a.reduce((x, y) => x + y, 0);
-      return { logs: describe(r.logs), window: { since: iso(from), until: iso(to) }, bucket: bucketName(size), entries: sum(total), errors: sum(errs), warnings: sum(warns), usual: { entries: mt, errors: me }, spikes: spikes.slice(0, 20), buckets: folded.length > 120 ? [...folded.slice(0, 120), `… ${folded.length - 120} more buckets`] : folded, ...(notes.length ? { notes } : {}) };
+      return { logs: describe(r.logs), window: { since: iso(from), until: iso(to) }, bucket: bucketName(size), entries: sum(total), errors: sum(errs), warnings: sum(warns), usual: { entries: mt, errors: me }, high: spikes.slice(0, 20), buckets: folded.length > 120 ? [...folded.slice(0, 120), `… ${folded.length - 120} more buckets`] : folded, ...(notes.length ? { notes } : {}) };
     },
 
     /**
@@ -1040,7 +1151,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * first one. o.text is literal (any case), o.regex a regular expression, o.signature a signature or part of one.
      */
     async firstSeen(file, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const given = ["text", "regex", "signature"].filter((k) => o[k] != null && o[k] !== "");
       if (given.length !== 1) throw new Error("firstSeen needs exactly one of: text (literal), regex, signature (as the errors script prints it, or a part of it)");
@@ -1092,12 +1203,13 @@ export function make({ settings = {}, push = () => {} } = {}) {
         return { logs: describe(r.logs), window: windowText(w), count: 0, verdict: `${what} does not appear in ${names(r.logs)}${w.since != null || w.until != null ? " in the window" : ""}`, ...(r.notes.length || hint ? { notes: [...r.notes, ...(hint ? [hint] : [])] } : {}) };
       }
       const hours = [...days.entries()];
-      const byHour = hours.length <= 36 ? hours.map(([h, c]) => `${h}:00Z  ${c}`) : (() => {
+      const perDay = last && first.t != null && last.t != null && last.t - first.t > 2 * DAY;
+      const byHour = !perDay && hours.length <= 48 ? hours.map(([h, c]) => `${h}:00Z  ${c}`) : (() => {
         const d = new Map();
         for (const [h, c] of hours) d.set(h.slice(0, 10), (d.get(h.slice(0, 10)) ?? 0) + c);
         return [...d.entries()].slice(0, 60).map(([k, c]) => `${k}  ${c}`);
       })();
-      return { logs: describe(r.logs), window: windowText(w), what, count, first: first.entry, signature: first.sig, last: last && count > 1 ? { time: last.time, file: last.file, line: last.line } : null, before: lead, over: hours.length > 36 ? "per day" : "per hour", counts: byHour, ...(perLog.length ? { perLog } : {}), ...(r.notes.length ? { notes: r.notes } : {}) };
+      return { logs: describe(r.logs), window: windowText(w), what, count, first: first.entry, signature: first.sig, last: last && count > 1 ? { time: last.time, file: last.file, line: last.line } : null, before: lead, over: perDay || hours.length > 48 ? "per day" : "per hour", counts: byHour, ...(perLog.length ? { perLog } : {}), ...(r.notes.length ? { notes: r.notes } : {}) };
     },
 
     /**
@@ -1105,7 +1217,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
      * the paths that fail most, the slowest paths, the error rate over time.
      */
     async requests(file, o = {}) {
-      const r = prepare(file);
+      const r = prepare(file, o);
       if (r.error) return r;
       const ctl = newCtl(o);
       const w = await windowOf(r.logs, o.since, o.until, ctl, true);
@@ -1180,8 +1292,8 @@ export function make({ settings = {}, push = () => {} } = {}) {
       const fmt = (t) => (size >= DAY ? iso(t).slice(0, 10) : size >= 60_000 ? iso(t).slice(0, 16) + "Z" : iso(t));
       const rate = [...buckets.entries()].sort((a, b) => a[0] - b[0]);
       const usual = total ? classes["5xx"] / total : 0;
-      const overTime = rate.map(([i, [n, e]]) => `${fmt(start + i * size)}  ${n} requests  ${e} 5xx (${pct(e, n)}%)${e >= 5 && e / n >= Math.max(0.2, 3 * usual) ? "  << failing" : ""}`);
-      const worst = rate.filter(([, [n, e]]) => e >= 5 && e / n >= Math.max(0.2, 3 * usual));
+      const overTime = rate.map(([i, [n, e]]) => `${fmt(start + i * size)}  ${n} requests  ${e} 5xx${e ? ` (${pct(e, n)}%)` : ""}${e >= 3 && e / n >= Math.max(0.2, 3 * usual) ? "  << failing" : ""}`);
+      const worst = rate.filter(([, [n, e]]) => e >= 3 && e / n >= Math.max(0.2, 3 * usual));
       return {
         logs: describe(r.logs),
         window: { since: iso(from), until: iso(to) },
@@ -1218,7 +1330,7 @@ export function make({ settings = {}, push = () => {} } = {}) {
       const min = o.all ? null : minLevel(o.level) ?? 3;
       const memo = new Map();
       const read = async (s) => {
-        const r = prepare(s.file ?? o.file);
+        const r = prepare(s.file ?? o.file, { rotated: s.rotated ?? o.rotated });
         if (r.error) return r;
         const w = await windowOf(r.logs, s.since, s.until, ctl);
         const counts = new Map();
@@ -1278,22 +1390,25 @@ export function make({ settings = {}, push = () => {} } = {}) {
      */
     async overview(dir, o = {}) {
       const ctl = newCtl(o);
+      const max = Math.min(+(o.max ?? 40) || 40, 100);
       let logs;
+      let count;
       const notes = [];
       if (dir) {
-        const r = prepare(dir);
+        const r = resolve(dir, { rotated: o.rotated, max });
         if (r.error) return r;
         logs = r.logs;
+        count = logs.length;
         notes.push(...r.notes);
       } else {
-        logs = group(discover(defaultDirs)).filter((l) => l.parts.length);
-        if (!logs.length) return { dirs: defaultDirs.map(show), count: 0, logs: [], notes: [`no log files in ${defaultDirs.map(show).join(", ")}; name a folder or a file, or set LOGS_DIRS`] };
+        const all = group(discover(defaultDirs)).sort(newestFirst);
+        if (!all.length) return { dirs: defaultDirs.map(show), count: 0, logs: [], notes: [`no log files in ${defaultDirs.map(show).join(", ")}; name a folder or a file, or set LOGS_DIRS`] };
+        count = all.length;
+        logs = all.slice(0, max).map(open).filter((l) => l.parts.length);
       }
-      logs.sort((a, b) => (b.parts.at(-1).mtime ?? 0) - (a.parts.at(-1).mtime ?? 0));
-      const max = Math.min(+(o.max ?? 40) || 40, 100);
       let budget = (+(o.budgetMB ?? 512) || 512) << 20;
       const out = [];
-      for (const l of logs.slice(0, max)) {
+      for (const l of logs) {
         const size = l.parts.reduce((x, p) => x + (p.size ?? 0), 0);
         const row = { log: l.name, ...(l.parts.length > 1 ? { parts: l.parts.length } : {}), size: human(size), format: l.parts.at(-1).det.label };
         if (l.parts[0].error) {
@@ -1325,14 +1440,14 @@ export function make({ settings = {}, push = () => {} } = {}) {
         out.push(row);
       }
       if (out.some((x) => x.counted === false)) notes.push("lines and errors were not counted for the logs marked counted: false (the reading budget ran out); run errors on one of them");
-      return { ...(dir ? {} : { dirs: defaultDirs.map(show) }), count: logs.length, logs: out, ...(logs.length > max ? { leftOut: logs.length - max } : {}), ...(notes.length ? { notes } : {}) };
+      return { ...(dir ? {} : { dirs: defaultDirs.map(show) }), count, logs: out, ...(count > out.length ? { leftOut: count - out.length } : {}), ...(notes.length ? { notes } : {}) };
     },
 
     /** The signature of a text, as errors and compare group by it. */
     signature: (text) => signature(redact(String(text ?? ""))),
 
-    /** The settings in use: {workdir, dirs, utcOffset}. */
-    where: () => ({ workdir, dirs: defaultDirs.map(show), utcOffsetMinutes: offset / 60000 }),
+    /** The settings in use: {workdir, dirs, utcOffsetMinutes}. */
+    config: () => ({ workdir, dirs: defaultDirs.map(show), utcOffsetMinutes: offset / 60000 }),
   };
   return api;
 }

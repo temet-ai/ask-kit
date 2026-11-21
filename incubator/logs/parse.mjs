@@ -138,9 +138,14 @@ export const iso = (t) => (t == null ? null : new Date(t).toISOString().replace(
 // ---------------------------------------------------------------------------------------------
 // Redaction. What the investigator reads goes to a cloud model.
 
-const SECRET_NAME = "(?:pass(?:word|wd|phrase)?|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credentials?|authorization|cookie|session[_-]?id|sessionid|signature)";
-/** A cheap test: only lines that pass it are looked at more closely. */
-export const SECRET_HINT = /pass|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential|authoriz|bearer|basic |cookie|session|signature|:\/\/[^\/\s:@]+:[^\/\s@]*@|-----BEGIN|eyJ[A-Za-z0-9]|gh[pousr]_|sk-|AKIA|xox[a-z]-/i;
+const SECRET_NAME = "(?:pass(?:word|wd|phrase)?|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|secret[_-]?key|credentials?|authorization|cookie|session[_-]?id|sessionid|signature)";
+// A cheap test: only text that passes it is looked at more closely. Three regexes, because one
+// with every alternative in it reads a chunk four times slower. Words are matched in lower case,
+// in upper case and with a first capital, which covers password, PASSWORD, Password, apiKey.
+const HINT_WORDS = /[pP](?:ass|ASS|wd|WD)|[sS](?:ecret|ECRET|ession|ESSION|ignature|IGNATURE)|[tT](?:oken|OKEN)|[kK](?:ey|EY)|[cC](?:redential|REDENTIAL|ookie|OOKIE)|[aA](?:uthoriz|UTHORIZ)|[bB](?:earer|EARER|asic |ASIC )/;
+const HINT_USERINFO = /:\/\/[^\/\s:@]{0,80}:[^\/\s@]{0,200}@/;
+const HINT_SHAPES = /-----BEGIN|eyJ[A-Za-z0-9]|gh[pousr]_|sk-|AKIA|xox[a-z]-/;
+export const hasSecretHint = (s) => HINT_WORDS.test(s) || HINT_USERINFO.test(s) || HINT_SHAPES.test(s);
 const SECRET_KEY = new RegExp(`${SECRET_NAME}`, "i");
 const R_PRIVATE = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*/g;
 const R_HEADER = /\b((?:proxy-)?authorization|(?:set-)?cookie|x-api-key|x-auth-token)(\\?["']?\s*[:=]\s*\\?["']?)([^"'\\\r\n]*)/gi;
@@ -151,7 +156,7 @@ const R_SHAPES = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}|\
 
 /** Text with the values of passwords, tokens, cookies and auth headers replaced by <redacted>. */
 export function redact(s) {
-  if (typeof s !== "string" || !SECRET_HINT.test(s)) return s;
+  if (typeof s !== "string" || !hasSecretHint(s)) return s;
   return s
     .replace(R_PRIVATE, "<redacted private key>")
     .replace(R_HEADER, (m, k, sep) => `${k}${sep}<redacted>`)
@@ -178,16 +183,19 @@ export function redactValue(v, depth = 0) {
 
 // Tokens with digits that name a thing and are kept as they are.
 const KEEP = new Set(
-  "http2 http1 http3 h2 h2c h3 ipv4 ipv6 utf8 utf16 utf32 sha1 sha2 sha224 sha256 sha384 sha512 md5 md4 base64 base32 x86 x64 amd64 arm64 aarch64 i386 i686 s3 ec2 oauth2 oauth1 e2e i18n l10n a11y k8s k3s ed25519 x509 p50 p90 p95 p99 tls1 ssl3 v1 v2 v3 v4 v5 v6 win32 win64 crc32 log4j log4j2 slf4j neo4j py3 python3 python2 node22 node20 node18 es6 es2015 web3 mp3 mp4 3d 2d 2fa".split(" "),
+  "http2 http1 http3 h2 h2c h3 ipv4 ipv6 utf8 utf16 utf32 sha1 sha2 sha224 sha256 sha384 sha512 md5 md4 base64 base32 x86 x64 amd64 arm64 aarch64 i386 i686 s3 ec2 oauth2 oauth1 e2e i18n l10n a11y ssh1 ssh2 k8s k3s ed25519 x509 p50 p90 p95 p99 tls1 ssl3 v1 v2 v3 v4 v5 v6 win32 win64 crc32 log4j log4j2 slf4j neo4j py3 python3 python2 node22 node20 node18 es6 es2015 web3 mp3 mp4 3d 2d 2fa".split(" "),
 );
-const BEFORE_CODE = /(?:status|code|errno|exit(?:ed)?(?: with)?(?: code)?|signal|returned|http\/|response|sqlstate|rc|err(?:or)?)\s*[=:#(]?\s*$/i;
+const BEFORE_CODE = /(?:(?:status|code|errno|exit(?:ed)?(?: with)?(?: code)?|signal|returned|http\/|response|sqlstate|rc|err(?:or)?)\s*[=:#(]?\s*|\b(?:ORA|PLS|TNS|SP2|DB2|RMAN|CVE)-)$/i;
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
+
+// A quoted value becomes a placeholder; a quoted sentence (four words or more) is the message itself and stays.
+const quoted = (m) => (m.length > 24 && (m.match(/ /g) ?? []).length >= 3 ? m : `${m[0]}<str>${m[0]}`);
 
 function tidyPath(p) {
   const sep = p.includes("\\") && !p.includes("/") ? "\\" : "/";
   return p
     .split(/[\\/]/)
-    .map((seg) => (seg === "" || (!/\d/.test(seg) && seg.length <= 40) ? seg : "<*>"))
+    .map((seg) => (seg === "" || (seg.length <= 40 && (!/\d/.test(seg) || /^v\d{1,2}$/.test(seg))) ? seg : "<*>"))
     .join(sep);
 }
 
@@ -196,7 +204,7 @@ export function pathPattern(p) {
   if (typeof p !== "string") return String(p);
   const q = p.search(/[?#]/);
   const s = (q >= 0 ? p.slice(0, q) : p).slice(0, 200);
-  return s.split("/").map((seg) => (/\d/.test(seg) || seg.length > 40 ? "<*>" : seg)).join("/") || "/";
+  return s.split("/").map((seg) => ((/\d/.test(seg) && !/^v\d{1,2}$/.test(seg)) || seg.length > 40 ? "<*>" : seg)).join("/") || "/";
 }
 
 /**
@@ -209,27 +217,27 @@ export function signature(text) {
   let s = String(text ?? "");
   const nl = s.indexOf("\n");
   if (nl >= 0) s = s.slice(0, nl);
-  s = s.slice(0, 500).replace(ANSI, "");
+  s = s.slice(0, 500).replace(ANSI, "").replaceAll("<redacted>", "\u0001");
   s = s
-    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<uuid>")
-    .replace(/\b\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d)?(?:[.,]\d+)?(?:Z|[+-]\d\d:?\d\d)?)?|\b\d{4}\/\d\d\/\d\d(?: \d\d:\d\d:\d\d(?:\.\d+)?)?|\b\d\d\/[A-Z][a-z]{2}\/\d{4}:\d\d:\d\d:\d\d(?: [+-]\d{4})?|\b\d\d:\d\d:\d\d(?:[.,]\d+)?\b/g, "<time>")
-    .replace(/"(?:[^"\\]|\\.){0,300}"/g, '"<str>"')
-    .replace(/(?<![\w])'[^'\n]{1,300}'(?![\w])/g, "'<str>'")
-    .replace(/`[^`\n]{1,300}`/g, "`<str>`")
-    .replace(/\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g, "<email>")
     .replace(/\b([a-z][a-z0-9+.-]{1,12}:\/\/)([^\s"'<>,;)\]]+)/gi, (m, scheme, rest) => {
       const cut = rest.search(/[\/?#]/);
       const host = (cut < 0 ? rest : rest.slice(0, cut)).replace(/^[^@]*@/, "").replace(/:\d+$/, "");
       const p = cut < 0 || rest[cut] !== "/" ? "" : pathPattern(rest.slice(cut));
       return scheme + (/^[\d.]+$|:/.test(host) ? "<ip>" : host) + (p === "/" ? "" : p);
     })
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<uuid>")
+    .replace(/\b\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d)?(?:[.,]\d+)?(?:Z|[+-]\d\d:?\d\d)?)?|\b\d{4}\/\d\d\/\d\d(?: \d\d:\d\d:\d\d(?:\.\d+)?)?|\b\d\d\/[A-Z][a-z]{2}\/\d{4}:\d\d:\d\d:\d\d(?: [+-]\d{4})?|\b\d\d:\d\d:\d\d(?:[.,]\d+)?\b/g, "<time>")
+    .replace(/"(?:[^"\\]|\\.){0,300}"/g, quoted)
+    .replace(/(?<![\w])'[^'\n]{1,300}'(?![\w])/g, quoted)
+    .replace(/`[^`\n]{1,300}`/g, quoted)
+    .replace(/\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g, "<email>")
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g, "<ip>")
     .replace(/(?<![\w:.<])(?=[0-9a-f:]*\d)(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?![\w:.>])/gi, "<ip>")
     .replace(/(?<![\w<>:])(?:[A-Za-z]:)?(?:[\\/][\w.@%+~-]+){2,}[\\/]?/g, tidyPath)
     .replace(/\b0x[0-9a-f]+\b/gi, "<hex>")
     .replace(/\b(?=[0-9a-f]*\d)(?=\d*[a-f])[0-9a-f]{8,}\b/gi, "<hex>")
     .replace(/\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{20,}\b/g, "<id>")
-    .replace(/\b\d+(?:\.\d+)?(?:ns|µs|us|ms|s|m|h|d)\b|\b\d+(?:\.\d+)? ?(?:nanoseconds?|microseconds?|milliseconds?|msecs?|secs?|seconds?|mins?|minutes?|hrs?|hours?|days?)\b/g, "<dur>")
+    .replace(/\b\d+(?:\.\d+)?(?:ns|µs|us|ms|s|m|h|d)\b|\b\d+(?:\.\d+)? (?:ms|s)\b|\b\d+(?:\.\d+)? ?(?:nanoseconds?|microseconds?|milliseconds?|msecs?|secs?|seconds?|mins?|minutes?|hrs?|hours?|days?)\b/g, "<dur>")
     .replace(/\b\d+(?:\.\d+)? ?(?:[KMGT]i?B|[kmg]b|bytes?)\b/g, "<size>")
     .replace(/\b((?:[A-Za-z][\w.-]*[_.-])?(?:id|uuid|guid|user|username|host|hostname|pid|tid|thread|session|trace|span|addr|peer|client|remote|ip|port|tenant|account|[a-z]+Id)\s*[=:]\s*)(?!<)("[^"]*"|[^\s,;)\]}]+)/g, "$1<*>")
     .replace(/[A-Za-z0-9]*\d[A-Za-z0-9]*(?:\.\d+)*/g, (tok, at, all) => {
@@ -239,8 +247,18 @@ export function signature(text) {
     })
     .replace(/\s+/g, " ")
     .replace(/(?:<n>[, ]+){3,}<n>/g, "<n>, ...")
+    .replaceAll("\u0001", "<redacted>")
     .trim();
   return s.length > 240 ? s.slice(0, 240) + "…" : s;
+}
+
+const TRACE_LINE = /^(?:Traceback \(|Caused by:|During handling of|The above exception|Exception in thread|\.\.\. \d+ more|[\w.$]+(?:Error|Exception)\b|[})\]])/;
+/** In a log where most lines have no time: is this line one of its own, and not part of the entry above? */
+export function standsAlone(line, cur) {
+  const c = line.charCodeAt(0);
+  if (c === 32 || c === 9 || TRACE_LINE.test(line)) return false;
+  const prev = cur.extra ? cur.extra[cur.extra.length - 1] : null;
+  return !(prev && /^\s/.test(prev) && /^[\w.$]+(?::|$)/.test(line));
 }
 
 /** The line of a stack trace that names the exception: the last line of a Python traceback, the first exception line otherwise. */
@@ -361,12 +379,12 @@ function syslog5424Parser(ctx) {
     const o = { host: m[3], app: m[4] };
     if (m[5] !== "-") o.pid = m[5];
     if (m[6] !== "-") o.msgid = m[6];
-    return { t: timeOf(m[2], ctx), level: levelOf(+m[1] & 7), msg: m[8].replace(/^\uFEFF/, ""), obj: o };
+    return { t: timeOf(m[2], ctx), level: levelOf(+m[1] & 7), msg: `${m[4]}: ${m[8].replace(/^\uFEFF/, "")}`, obj: o, skip: ["app"] };
   };
 }
 
 const UPPER_LEVEL = /(?:^|[\s\[<(|=:\/-])(TRACE|DEBUG|DBG|INFO|INF|NOTICE|WARN|WARNING|WRN|ERROR|ERR|CRITICAL|CRIT|FATAL|PANIC|SEVERE|ALERT|EMERG|LOG|STATEMENT)(?=$|[\s\]>)|:,\/-])/;
-const LOWER_LEVEL = /^[\[<(]?(trace|debug|info|notice|warn|warning|error|err|crit|critical|fatal|panic|alert|emerg|verbose|silly)[\]>)]?(?=[\s:|]|$)|[\[<(](trace|debug|info|notice|warn|warning|error|err|crit|critical|fatal|panic|alert|emerg)[\]>)]|\blevel=(\w+)/i;
+const LOWER_LEVEL = /^[\[<(]?(trace|debug|info|notice|warn|warning|error|err|crit|critical|fatal|panic|alert|emerg|verbose|silly)[\]>)]?(?=[\s:|]|$)|[\[<(](?:\w+:)?(trace|debug|info|notice|warn|warning|error|err|crit|critical|fatal|panic|alert|emerg)[\]>)]|\blevel=(\w+)/i;
 const HEAD_LEVEL = /^[\[<(]?(?:TRACE|DEBUG|DBG|INFO|INF|NOTICE|WARN|WARNING|WRN|ERROR|ERR|CRITICAL|CRIT|FATAL|PANIC|SEVERE|ALERT|EMERG|trace|debug|info|notice|warn|warning|error|err|crit|critical|fatal|panic)[\]>)]?[\s:|-]+/;
 
 function levelIn(rest) {
@@ -397,7 +415,7 @@ function syslogParser(ctx) {
     if (!m) return { t, level: pri >= 0 ? levelOf(pri) : levelIn(rest), msg: rest };
     const o = { host: m[1], app: m[2] };
     if (m[3]) o.pid = m[3];
-    return { t, level: pri >= 0 ? levelOf(pri) : levelIn(m[4]), msg: m[4], obj: o };
+    return { t, level: pri >= 0 ? levelOf(pri) : levelIn(m[4]), msg: `${m[2]}: ${m[4]}`, obj: o, skip: ["app"] };
   };
 }
 
@@ -448,8 +466,8 @@ function plainParser() {
 
 function flavour(lines, kind) {
   const all = lines.join("\n");
+  if (/^\s+at [\w.$<>]+\([\w.]+(?::\d+)?\)|^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[.,]\d{3} +(?:\[[^\]]+\] +[A-Z]+ |[A-Z]+ +\d+ --- \[)/m.test(all)) return "java, log4j style";
   if (/^Traceback \(most recent call last\)|^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} /m.test(all)) return "python logging";
-  if (/^\s+at [\w.$<>]+\([\w.]+(?::\d+)?\)|^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[.,]\d{3} +(?:\[[^\]]+\] +)?[A-Z]+ +(?:\d+ --- )?\[?[\w.$-]+\]? [-:] /m.test(all)) return "java, log4j style";
   if (kind === "slash" && /^\d{4}\/\d\d\/\d\d \d\d:\d\d:\d\d \[\w+\] \d+#\d+: /m.test(all)) return "nginx error log";
   if (kind === "slash") return "go log";
   if (/^\d{4}-\d\d-\d\dT[\d:.]+Z +[A-Z]+ +[\w:]+(?:\{[^}]*\})?: /m.test(all)) return "rust tracing";
@@ -496,9 +514,11 @@ export function detect(lines, ctx) {
   if (best && (best[1] / n >= 0.2 || best[0] === first)) {
     const kind = best[0];
     const withKind = (c) => Object.assign(c, { kind });
-    if (kind === "syslog") return { format: "syslog", label: "syslog, RFC 3164", timed: true, make: (c) => syslogParser(withKind(c)) };
+    // Fewer than half the lines start with a time: the others are lines of their own, not all one stack trace.
+    const mixed = best[1] / n < 0.5 && share((l) => /^\s/.test(l)) < 0.4;
+    if (kind === "syslog") return { format: "syslog", label: "syslog, RFC 3164", timed: true, mixed, make: (c) => syslogParser(withKind(c)) };
     if (kind === "iso" && half((l) => /^(?:<\d+>)?\d{4}-\d\d-\d\dT\S+ \S+ [^\s:\[]+(?:\[\d+\])?: /.test(l))) return { format: "syslog", label: "syslog with ISO time", timed: true, make: (c) => syslogParser(withKind(c)) };
-    return { format: "text", label: flavour(sample, kind), timed: true, make: (c) => textParser(withKind(c), false) };
+    return { format: "text", label: flavour(sample, kind) + (mixed ? ", and lines without a time" : ""), timed: true, mixed, make: (c) => textParser(withKind(c), false) };
   }
   if (half((l) => PY_BASIC.test(l))) return { format: "text", label: "python logging, basicConfig (no time)", timed: false, make: () => pyBasicParser() };
   if (half((l) => NPM.test(l))) return { format: "text", label: "npm debug log (no time)", timed: false, make: () => npmParser() };

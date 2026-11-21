@@ -1,0 +1,362 @@
+{"time":"2026-11-08T20:00:00.000Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-8e87","ms":33}
+{"time":"2026-11-08T20:00:20.786Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-8c37","ms":21}
+{"time":"2026-11-08T20:00:41.500Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-8f75","ms":26}
+{"time":"2026-11-08T20:01:00.652Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-f609","ms":14}
+{"time":"2026-11-08T20:01:19.904Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-7b71","ms":33}
+{"time":"2026-11-08T20:01:40.117Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-66e9","ms":10}
+{"time":"2026-11-08T20:01:59.619Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-5c4b","ms":23}
+{"time":"2026-11-08T20:02:19.053Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-ccb6","ms":32}
+{"time":"2026-11-08T20:02:39.171Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-a740","ms":29}
+{"time":"2026-11-08T20:02:57.274Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-fa9a","ms":18}
+{"time":"2026-11-08T20:03:16.730Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-db41","ms":23}
+{"time":"2026-11-08T20:03:37.120Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-eb64","ms":18}
+{"time":"2026-11-08T20:03:55.830Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-a02f","ms":5}
+{"time":"2026-11-08T20:04:16.626Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-da6a","ms":28}
+{"time":"2026-11-08T20:04:38.151Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-41f7","ms":32}
+{"time":"2026-11-08T20:04:58.055Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-ae02","ms":36}
+{"time":"2026-11-08T20:05:17.959Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-65f6","ms":32}
+{"time":"2026-11-08T20:05:37.998Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-95c9","ms":34}
+{"time":"2026-11-08T20:05:59.872Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-b346","ms":17}
+{"time":"2026-11-08T20:06:20.519Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-c977","ms":4}
+{"time":"2026-11-08T20:06:42.250Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-d5be","ms":12}
+{"time":"2026-11-08T20:07:02.360Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-43aa","ms":36}
+{"time":"2026-11-08T20:07:22.254Z","level":"warn","msg":"queue depth high","depth":339,"tower":"tower-2"}
+{"time":"2026-11-08T20:07:41.291Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-27fc","ms":7}
+{"time":"2026-11-08T20:08:00.643Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-2eb9","ms":36}
+{"time":"2026-11-08T20:08:21.728Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d838","ms":27}
+{"time":"2026-11-08T20:08:43.514Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-8eed","ms":28}
+{"time":"2026-11-08T20:09:02.364Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-19af","ms":6}
+{"time":"2026-11-08T20:09:23.923Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-16d2","ms":7}
+{"time":"2026-11-08T20:09:44.493Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-ff8d","ms":12}
+{"time":"2026-11-08T20:10:05.514Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-48b4","ms":37}
+{"time":"2026-11-08T20:10:24.977Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-b889","ms":36}
+{"time":"2026-11-08T20:10:46.263Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-9018","ms":20}
+{"time":"2026-11-08T20:11:06.295Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-de21","ms":30}
+{"time":"2026-11-08T20:11:24.752Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-ec80","ms":30}
+{"time":"2026-11-08T20:11:44.962Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-e403","ms":7}
+{"time":"2026-11-08T20:12:04.509Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-9f5c","ms":23}
+{"time":"2026-11-08T20:12:23.799Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-ae91","ms":18}
+{"time":"2026-11-08T20:12:42.824Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-456f","ms":16}
+{"time":"2026-11-08T20:13:04.545Z","level":"error","msg":"relay failed","err":"checksum mismatch on frame 9127 from tower-5","tower":"tower-5","request_id":"req-bd62"}
+{"time":"2026-11-08T20:13:22.594Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-ed1f","ms":36}
+{"time":"2026-11-08T20:13:43.515Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-ec75","ms":20}
+{"time":"2026-11-08T20:14:02.473Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-e9ca","ms":7}
+{"time":"2026-11-08T20:14:20.760Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-6ee2","ms":28}
+{"time":"2026-11-08T20:14:41.760Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-14b2","ms":29}
+{"time":"2026-11-08T20:15:02.573Z","level":"warn","msg":"queue depth high","depth":330,"tower":"tower-7"}
+{"time":"2026-11-08T20:15:22.958Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-d8b3","ms":25}
+{"time":"2026-11-08T20:15:40.968Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-e266","ms":16}
+{"time":"2026-11-08T20:16:02.858Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-27c6","ms":14}
+{"time":"2026-11-08T20:16:21.166Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-d3b5","ms":9}
+{"time":"2026-11-08T20:16:40.885Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-b895","ms":30}
+{"time":"2026-11-08T20:17:02.541Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-80fa","ms":32}
+{"time":"2026-11-08T20:17:21.158Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-9a80","ms":6}
+{"time":"2026-11-08T20:17:40.732Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-5e3a","ms":27}
+{"time":"2026-11-08T20:18:02.023Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-eac1","ms":15}
+{"time":"2026-11-08T20:18:20.561Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-7fbc","ms":6}
+{"time":"2026-11-08T20:18:39.215Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-f657","ms":38}
+{"time":"2026-11-08T20:18:59.704Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-a3f4","ms":10}
+{"time":"2026-11-08T20:19:20.536Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-4992","ms":27}
+{"time":"2026-11-08T20:19:42.302Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-8ac2","ms":31}
+{"time":"2026-11-08T20:20:01.903Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-b755","ms":36}
+{"time":"2026-11-08T20:20:23.357Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-4111","ms":30}
+{"time":"2026-11-08T20:20:43.976Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-c669","ms":20}
+{"time":"2026-11-08T20:21:02.244Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-93eb","ms":4}
+{"time":"2026-11-08T20:21:21.980Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-a51f","ms":29}
+{"time":"2026-11-08T20:21:40.361Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-f9ff","ms":10}
+{"time":"2026-11-08T20:21:59.649Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-0444","ms":13}
+{"time":"2026-11-08T20:22:19.497Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-552d","ms":21}
+{"time":"2026-11-08T20:22:40.289Z","level":"warn","msg":"queue depth high","depth":265,"tower":"tower-7"}
+{"time":"2026-11-08T20:23:01.661Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-1aa6","ms":8}
+{"time":"2026-11-08T20:23:20.737Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-3c14","ms":19}
+{"time":"2026-11-08T20:23:38.912Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-1841","ms":21}
+{"time":"2026-11-08T20:23:59.229Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-e2e6","ms":9}
+{"time":"2026-11-08T20:24:18.170Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-088e","ms":9}
+{"time":"2026-11-08T20:24:37.722Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-34bd","ms":4}
+{"time":"2026-11-08T20:24:59.454Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-e942","ms":17}
+{"time":"2026-11-08T20:25:18.064Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-e0f1","ms":29}
+{"time":"2026-11-08T20:25:37.105Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-ae68","ms":29}
+{"time":"2026-11-08T20:25:56.991Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-a2a2","ms":5}
+{"time":"2026-11-08T20:26:16.556Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-2d6b","ms":32}
+{"time":"2026-11-08T20:26:35.062Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-0423","ms":4}
+{"time":"2026-11-08T20:26:54.838Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-a278","ms":27}
+{"time":"2026-11-08T20:27:14.015Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-c88a","ms":36}
+{"time":"2026-11-08T20:27:35.615Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-3ce1","ms":6}
+{"time":"2026-11-08T20:27:56.915Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-b8df","ms":26}
+{"time":"2026-11-08T20:28:17.931Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-ff96","ms":28}
+{"time":"2026-11-08T20:28:39.290Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-a51a","ms":17}
+{"time":"2026-11-08T20:29:00.830Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-3a26","ms":30}
+{"time":"2026-11-08T20:29:20.321Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-6e7c","ms":15}
+{"time":"2026-11-08T20:29:38.569Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-99cf","ms":26}
+{"time":"2026-11-08T20:29:57.393Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-c08f","ms":9}
+{"time":"2026-11-08T20:30:17.142Z","level":"warn","msg":"queue depth high","depth":345,"tower":"tower-1"}
+{"time":"2026-11-08T20:30:36.924Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-080f","ms":9}
+{"time":"2026-11-08T20:30:55.897Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-6393","ms":20}
+{"time":"2026-11-08T20:31:14.631Z","level":"error","msg":"relay failed","err":"checksum mismatch on frame 8194 from tower-2","tower":"tower-2","request_id":"req-0463"}
+{"time":"2026-11-08T20:31:35.431Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-e8da","ms":11}
+{"time":"2026-11-08T20:31:55.964Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-8dc4","ms":4}
+{"time":"2026-11-08T20:32:16.665Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-861e","ms":36}
+{"time":"2026-11-08T20:32:38.610Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-cd9b","ms":4}
+{"time":"2026-11-08T20:32:57.656Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-08ec","ms":13}
+{"time":"2026-11-08T20:33:18.730Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-c76b","ms":38}
+{"time":"2026-11-08T20:33:36.901Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-fa2f","ms":25}
+{"time":"2026-11-08T20:33:56.662Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-b774","ms":30}
+{"time":"2026-11-08T20:34:16.201Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-587d","ms":21}
+{"time":"2026-11-08T20:34:37.098Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-eae8","ms":22}
+{"time":"2026-11-08T20:34:57.256Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-2a4a","ms":13}
+{"time":"2026-11-08T20:35:17.965Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-e16c","ms":31}
+{"time":"2026-11-08T20:35:39.182Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-2264","ms":38}
+{"time":"2026-11-08T20:35:57.190Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-8994","ms":33}
+{"time":"2026-11-08T20:36:16.344Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-a488","ms":30}
+{"time":"2026-11-08T20:36:38.110Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-16dd","ms":38}
+{"time":"2026-11-08T20:36:59.710Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-25f3","ms":19}
+{"time":"2026-11-08T20:37:21.479Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-d3c3","ms":24}
+{"time":"2026-11-08T20:37:40.940Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-05d6","ms":26}
+{"time":"2026-11-08T20:38:02.327Z","level":"warn","msg":"queue depth high","depth":326,"tower":"tower-7"}
+{"time":"2026-11-08T20:38:21.702Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-bf78","ms":22}
+{"time":"2026-11-08T20:38:41.099Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-119e","ms":13}
+{"time":"2026-11-08T20:39:02.851Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-c5d4","ms":19}
+{"time":"2026-11-08T20:39:22.712Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-29a3","ms":29}
+{"time":"2026-11-08T20:39:40.839Z","level":"info","msg":"operator login","user":"adora.dearheart","password":"gnu-terry-pratchett","authorization":"Bearer clacks-operator-token-0042"}
+{"time":"2026-11-08T20:40:02.211Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-81bd","ms":19}
+{"time":"2026-11-08T20:40:22.940Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-7de8","ms":17}
+{"time":"2026-11-08T20:40:41.701Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-7df1","ms":33}
+{"time":"2026-11-08T20:41:01.810Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-a0d4","ms":36}
+{"time":"2026-11-08T20:41:20.350Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-e092","ms":25}
+{"time":"2026-11-08T20:41:39.414Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-db89","ms":23}
+{"time":"2026-11-08T20:41:59.383Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-5a64","ms":26}
+{"time":"2026-11-08T20:42:21.112Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-402e","ms":28}
+{"time":"2026-11-08T20:42:40.487Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-289b","ms":5}
+{"time":"2026-11-08T20:42:58.820Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-76fa","ms":29}
+{"time":"2026-11-08T20:43:18.428Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-62a7","ms":28}
+{"time":"2026-11-08T20:43:37.222Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-dd5c","ms":13}
+{"time":"2026-11-08T20:43:59.149Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-62c2","ms":24}
+{"time":"2026-11-08T20:44:17.276Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-49ba","ms":6}
+{"time":"2026-11-08T20:44:37.722Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-0bfc","ms":29}
+{"time":"2026-11-08T20:44:56.142Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-6683","ms":15}
+{"time":"2026-11-08T20:45:17.492Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-9ab8","ms":21}
+{"time":"2026-11-08T20:45:38.074Z","level":"warn","msg":"queue depth high","depth":327,"tower":"tower-1"}
+{"time":"2026-11-08T20:46:00.047Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-ab38","ms":32}
+{"time":"2026-11-08T20:46:18.241Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-2fbf","ms":18}
+{"time":"2026-11-08T20:46:40.046Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-2a54","ms":15}
+{"time":"2026-11-08T20:46:59.616Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-c184","ms":9}
+{"time":"2026-11-08T20:47:18.813Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-49fd","ms":35}
+{"time":"2026-11-08T20:47:38.215Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-6821","ms":13}
+{"time":"2026-11-08T20:47:57.495Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-6194","ms":6}
+{"time":"2026-11-08T20:48:15.766Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-efa9","ms":31}
+{"time":"2026-11-08T20:48:34.781Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-393b","ms":5}
+{"time":"2026-11-08T20:48:53.630Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-e026","ms":28}
+{"time":"2026-11-08T20:49:12.943Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-f2cd","ms":38}
+{"time":"2026-11-08T20:49:32.508Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-2c25","ms":22}
+{"time":"2026-11-08T20:49:51.007Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-7c06","ms":26}
+{"time":"2026-11-08T20:50:12.990Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-d4b0","ms":30}
+{"time":"2026-11-08T20:50:34.133Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-0383","ms":29}
+{"time":"2026-11-08T20:50:54.195Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-dcc8","ms":23}
+{"time":"2026-11-08T20:51:13.526Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-b2b4","ms":16}
+{"time":"2026-11-08T20:51:34.208Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-9bb3","ms":23}
+{"time":"2026-11-08T20:51:53.521Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-31c2","ms":29}
+{"time":"2026-11-08T20:52:13.883Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-8390","ms":5}
+{"time":"2026-11-08T20:52:32.244Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-aa81","ms":20}
+{"time":"2026-11-08T20:52:51.664Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-c86a","ms":11}
+{"time":"2026-11-08T20:53:13.026Z","level":"warn","msg":"queue depth high","depth":281,"tower":"tower-5"}
+{"time":"2026-11-08T20:53:33.600Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-946b","ms":34}
+{"time":"2026-11-08T20:53:52.714Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-7d74","ms":21}
+{"time":"2026-11-08T20:54:10.800Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-cf31","ms":11}
+{"time":"2026-11-08T20:54:30.655Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-e01a","ms":33}
+{"time":"2026-11-08T20:54:49.905Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-dc7b","ms":31}
+{"time":"2026-11-08T20:55:09.225Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d40d","ms":6}
+{"time":"2026-11-08T20:55:28.258Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-daa6","ms":37}
+{"time":"2026-11-08T20:55:46.767Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-32eb","ms":21}
+{"time":"2026-11-08T20:56:08.300Z","level":"error","msg":"relay failed","err":"checksum mismatch on frame 4427 from tower-7","tower":"tower-7","request_id":"req-b943"}
+{"time":"2026-11-08T20:56:27.333Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-fbcc","ms":17}
+{"time":"2026-11-08T20:56:49.266Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-cef3","ms":5}
+{"time":"2026-11-08T20:57:09.902Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-3a35","ms":37}
+{"time":"2026-11-08T20:57:28.620Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-f436","ms":31}
+{"time":"2026-11-08T20:57:46.969Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-78d5","ms":16}
+{"time":"2026-11-08T20:58:05.453Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-04fb","ms":7}
+{"time":"2026-11-08T20:58:27.286Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-5b48","ms":13}
+{"time":"2026-11-08T20:58:48.866Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-7a4e","ms":28}
+{"time":"2026-11-08T20:59:08.705Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-7392","ms":18}
+{"time":"2026-11-08T20:59:29.234Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-ea32","ms":37}
+{"time":"2026-11-08T20:59:49.841Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-2de2","ms":37}
+{"time":"2026-11-08T21:00:09.185Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-f8c7","ms":18}
+{"time":"2026-11-08T21:00:28.013Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-2da6","ms":5}
+{"time":"2026-11-08T21:00:47.716Z","level":"warn","msg":"queue depth high","depth":144,"tower":"tower-5"}
+{"time":"2026-11-08T21:01:08.676Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-b532","ms":12}
+{"time":"2026-11-08T21:01:28.213Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-4034","ms":30}
+{"time":"2026-11-08T21:01:47.936Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-735f","ms":17}
+{"time":"2026-11-08T21:02:06.047Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-8c05","ms":26}
+{"time":"2026-11-08T21:02:27.492Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-e770","ms":4}
+{"time":"2026-11-08T21:02:45.563Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d0d7","ms":8}
+{"time":"2026-11-08T21:03:06.150Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-f1eb","ms":31}
+{"time":"2026-11-08T21:03:27.093Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-9743","ms":37}
+{"time":"2026-11-08T21:03:47.585Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-9d85","ms":30}
+{"time":"2026-11-08T21:04:09.062Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-63b9","ms":18}
+{"time":"2026-11-08T21:04:29.050Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-4102","ms":27}
+{"time":"2026-11-08T21:04:48.438Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-74b8","ms":24}
+{"time":"2026-11-08T21:05:09.280Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d52d","ms":19}
+{"time":"2026-11-08T21:05:30.456Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-306c","ms":18}
+{"time":"2026-11-08T21:05:49.517Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-6faa","ms":9}
+{"time":"2026-11-08T21:06:10.168Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-4b89","ms":12}
+{"time":"2026-11-08T21:06:29.092Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-d03a","ms":15}
+{"time":"2026-11-08T21:06:50.896Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-d496","ms":14}
+{"time":"2026-11-08T21:07:11.045Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-60ae","ms":32}
+{"time":"2026-11-08T21:07:29.233Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-538e","ms":6}
+{"time":"2026-11-08T21:07:47.324Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-38f2","ms":35}
+{"time":"2026-11-08T21:08:06.573Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-8165","ms":10}
+{"time":"2026-11-08T21:08:24.931Z","level":"warn","msg":"queue depth high","depth":405,"tower":"tower-3"}
+{"time":"2026-11-08T21:08:46.832Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-b85f","ms":10}
+{"time":"2026-11-08T21:09:05.641Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-2ca0","ms":31}
+{"time":"2026-11-08T21:09:24.581Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-4c05","ms":35}
+{"time":"2026-11-08T21:09:45.809Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-b917","ms":24}
+{"time":"2026-11-08T21:10:06.663Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-fe2f","ms":5}
+{"time":"2026-11-08T21:10:27.056Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-440b","ms":33}
+{"time":"2026-11-08T21:10:46.808Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-9fa3","ms":8}
+{"time":"2026-11-08T21:11:07.441Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-5edf","ms":36}
+{"time":"2026-11-08T21:11:29.056Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-0007","ms":8}
+{"time":"2026-11-08T21:11:50.428Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-4ab4","ms":4}
+{"time":"2026-11-08T21:12:10.186Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-a796","ms":17}
+{"time":"2026-11-08T21:12:31.750Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-f428","ms":4}
+{"time":"2026-11-08T21:12:52.172Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-06fc","ms":7}
+{"time":"2026-11-08T21:13:11.893Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-46a6","ms":36}
+{"time":"2026-11-08T21:13:33.199Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-1de7","ms":30}
+{"time":"2026-11-08T21:13:52.687Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-69a2","ms":4}
+{"time":"2026-11-08T21:14:14.414Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-eb0c","ms":13}
+{"time":"2026-11-08T21:14:34.059Z","level":"error","msg":"relay failed","err":"timeout after 3023ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-1d98"}
+{"time":"2026-11-08T21:14:55.060Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-c150","ms":22}
+{"time":"2026-11-08T21:15:15.623Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-4888","ms":13}
+{"time":"2026-11-08T21:15:34.110Z","level":"error","msg":"relay failed","err":"timeout after 3013ms calling 10.0.0.7:4000","tower":"tower-1","request_id":"req-7c5c"}
+{"time":"2026-11-08T21:15:54.947Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-63a0","ms":6}
+{"time":"2026-11-08T21:16:15.011Z","level":"warn","msg":"queue depth high","depth":421,"tower":"tower-3"}
+{"time":"2026-11-08T21:16:35.743Z","level":"error","msg":"relay failed","err":"timeout after 3028ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-0e75"}
+{"time":"2026-11-08T21:16:54.732Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-3296","ms":26}
+{"time":"2026-11-08T21:17:16.124Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-0bae","ms":9}
+{"time":"2026-11-08T21:17:36.739Z","level":"error","msg":"relay failed","err":"timeout after 3008ms calling 10.0.0.7:4000","tower":"tower-1","request_id":"req-ec96"}
+{"time":"2026-11-08T21:17:55.855Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-e1b1","ms":24}
+{"time":"2026-11-08T21:18:17.289Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-33d4","ms":7}
+{"time":"2026-11-08T21:18:35.928Z","level":"error","msg":"relay failed","err":"timeout after 3036ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-f0e0"}
+{"time":"2026-11-08T21:18:57.155Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-1f47","ms":37}
+{"time":"2026-11-08T21:19:16.002Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-7801","ms":4}
+{"time":"2026-11-08T21:19:34.510Z","level":"error","msg":"relay failed","err":"timeout after 3027ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-9634"}
+{"time":"2026-11-08T21:19:53.131Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-30d9","ms":13}
+{"time":"2026-11-08T21:20:11.615Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-b0f9","ms":29}
+{"time":"2026-11-08T21:20:32.742Z","level":"error","msg":"relay failed","err":"timeout after 3036ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-ac68"}
+{"time":"2026-11-08T21:20:54.715Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-9442","ms":32}
+{"time":"2026-11-08T21:21:15.438Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-7d85","ms":8}
+{"time":"2026-11-08T21:21:34.648Z","level":"error","msg":"relay failed","err":"timeout after 3001ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-4678"}
+{"time":"2026-11-08T21:21:55.565Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-ce04","ms":12}
+{"time":"2026-11-08T21:22:15.355Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d460","ms":20}
+{"time":"2026-11-08T21:22:36.686Z","level":"error","msg":"relay failed","err":"timeout after 3027ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-1d13"}
+{"time":"2026-11-08T21:22:55.138Z","level":"error","msg":"relay failed","err":"checksum mismatch on frame 4716 from tower-5","tower":"tower-5","request_id":"req-0334"}
+{"time":"2026-11-08T21:23:16.089Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-dca8","ms":15}
+{"time":"2026-11-08T21:23:36.290Z","level":"error","msg":"relay failed","err":"timeout after 3035ms calling 10.0.0.7:4000","tower":"tower-2","request_id":"req-6bbf"}
+{"time":"2026-11-08T21:23:54.614Z","level":"warn","msg":"queue depth high","depth":244,"tower":"tower-2"}
+{"time":"2026-11-08T21:24:14.007Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-da9c","ms":17}
+{"time":"2026-11-08T21:24:34.783Z","level":"error","msg":"relay failed","err":"timeout after 3004ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-d974"}
+{"time":"2026-11-08T21:24:55.617Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-ff14","ms":17}
+{"time":"2026-11-08T21:25:16.786Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-00f4","ms":13}
+{"time":"2026-11-08T21:25:37.636Z","level":"error","msg":"relay failed","err":"timeout after 3016ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-a38b"}
+{"time":"2026-11-08T21:25:58.023Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-bf43","ms":4}
+{"time":"2026-11-08T21:26:16.524Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-f2cf","ms":30}
+{"time":"2026-11-08T21:26:35.050Z","level":"error","msg":"relay failed","err":"timeout after 3026ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-0a42"}
+{"time":"2026-11-08T21:26:55.465Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-94d4","ms":38}
+{"time":"2026-11-08T21:27:15.495Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-9d0a","ms":11}
+{"time":"2026-11-08T21:27:37.252Z","level":"error","msg":"relay failed","err":"timeout after 2999ms calling 10.0.0.7:4000","tower":"tower-1","request_id":"req-707c"}
+{"time":"2026-11-08T21:27:56.974Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-43e8","ms":9}
+{"time":"2026-11-08T21:28:16.591Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-d1a0","ms":10}
+{"time":"2026-11-08T21:28:37.020Z","level":"error","msg":"relay failed","err":"timeout after 3040ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-208f"}
+{"time":"2026-11-08T21:28:57.790Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-4738","ms":26}
+{"time":"2026-11-08T21:29:16.607Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-b1c3","ms":18}
+{"time":"2026-11-08T21:29:38.435Z","level":"error","msg":"relay failed","err":"timeout after 2998ms calling 10.0.0.7:4000","tower":"tower-2","request_id":"req-fed0"}
+{"time":"2026-11-08T21:29:57.386Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-2fbf","ms":33}
+{"time":"2026-11-08T21:30:16.083Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-b1bd","ms":9}
+{"time":"2026-11-08T21:30:37.685Z","level":"error","msg":"relay failed","err":"timeout after 2991ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-4d36"}
+{"time":"2026-11-08T21:30:57.758Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-01df","ms":34}
+{"time":"2026-11-08T21:31:15.972Z","level":"error","msg":"relay failed","err":"timeout after 3027ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-7f3a"}
+{"time":"2026-11-08T21:31:35.414Z","level":"error","msg":"relay failed","err":"timeout after 3022ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-4937"}
+{"time":"2026-11-08T21:31:57.277Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-6307","ms":26}
+{"time":"2026-11-08T21:32:15.914Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-fbdd","ms":4}
+{"time":"2026-11-08T21:32:34.495Z","level":"error","msg":"relay failed","err":"timeout after 3038ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-4c85"}
+{"time":"2026-11-08T21:32:52.827Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-dc76","ms":35}
+{"time":"2026-11-08T21:33:14.420Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-6276","ms":12}
+{"time":"2026-11-08T21:33:34.554Z","level":"error","msg":"relay failed","err":"timeout after 3002ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-abe3"}
+{"time":"2026-11-08T21:33:55.966Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-31d2","ms":23}
+{"time":"2026-11-08T21:34:16.520Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-2c25","ms":17}
+{"time":"2026-11-08T21:34:36.258Z","level":"error","msg":"relay failed","err":"timeout after 3039ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-daae"}
+{"time":"2026-11-08T21:34:55.298Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-735e","ms":4}
+{"time":"2026-11-08T21:35:16.353Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-f349","ms":28}
+{"time":"2026-11-08T21:35:37.974Z","level":"error","msg":"relay failed","err":"timeout after 3020ms calling 10.0.0.7:4000","tower":"tower-2","request_id":"req-f6ac"}
+{"time":"2026-11-08T21:35:56.343Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-372f","ms":6}
+{"time":"2026-11-08T21:36:17.966Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-ca40","ms":26}
+{"time":"2026-11-08T21:36:39.434Z","level":"error","msg":"relay failed","err":"timeout after 3037ms calling 10.0.0.7:4000","tower":"tower-1","request_id":"req-6f82"}
+{"time":"2026-11-08T21:37:00.508Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-8165","ms":16}
+{"time":"2026-11-08T21:37:20.630Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-6163","ms":31}
+{"time":"2026-11-08T21:37:41.462Z","level":"error","msg":"relay failed","err":"timeout after 3002ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-c099"}
+{"time":"2026-11-08T21:38:03.019Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-8703","ms":38}
+{"time":"2026-11-08T21:38:22.575Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-4e97","ms":36}
+{"time":"2026-11-08T21:38:43.470Z","level":"error","msg":"relay failed","err":"timeout after 3008ms calling 10.0.0.7:4000","tower":"tower-2","request_id":"req-cb3f"}
+{"time":"2026-11-08T21:39:03.012Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-7301","ms":21}
+{"time":"2026-11-08T21:39:24.229Z","level":"warn","msg":"queue depth high","depth":229,"tower":"tower-7"}
+{"time":"2026-11-08T21:39:44.828Z","level":"error","msg":"relay failed","err":"timeout after 3004ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-b177"}
+{"time":"2026-11-08T21:40:05.451Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-6e7f","ms":21}
+{"time":"2026-11-08T21:40:24.329Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-6d20","ms":36}
+{"time":"2026-11-08T21:40:45.330Z","level":"error","msg":"relay failed","err":"timeout after 3035ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-1225"}
+{"time":"2026-11-08T21:41:05.952Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-bfab","ms":33}
+{"time":"2026-11-08T21:41:26.459Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-2357","ms":20}
+{"time":"2026-11-08T21:41:44.473Z","level":"error","msg":"relay failed","err":"timeout after 3006ms calling 10.0.0.7:4000","tower":"tower-2","request_id":"req-2d6b"}
+{"time":"2026-11-08T21:42:03.005Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-52f9","ms":14}
+{"time":"2026-11-08T21:42:21.599Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-b05e","ms":24}
+{"time":"2026-11-08T21:42:41.897Z","level":"error","msg":"relay failed","err":"timeout after 3017ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-f783"}
+{"time":"2026-11-08T21:43:00.565Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-785e","ms":20}
+{"time":"2026-11-08T21:43:21.264Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-d9b5","ms":37}
+{"time":"2026-11-08T21:43:39.860Z","level":"error","msg":"relay failed","err":"timeout after 3022ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-4d15"}
+{"time":"2026-11-08T21:43:58.876Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-86bb","ms":7}
+{"time":"2026-11-08T21:44:20.027Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-e77c","ms":7}
+{"time":"2026-11-08T21:44:40.180Z","level":"error","msg":"relay failed","err":"timeout after 2997ms calling 10.0.0.7:4000","tower":"tower-2","request_id":"req-df05"}
+{"time":"2026-11-08T21:45:00.573Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-0509","ms":18}
+{"time":"2026-11-08T21:45:20.267Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d124","ms":4}
+{"time":"2026-11-08T21:45:38.680Z","level":"error","msg":"relay failed","err":"timeout after 3005ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-e62f"}
+{"time":"2026-11-08T21:45:59.753Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-69ea","ms":30}
+{"time":"2026-11-08T21:46:18.178Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-1c81","ms":28}
+{"time":"2026-11-08T21:46:38.523Z","level":"error","msg":"relay failed","err":"timeout after 3018ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-bab1"}
+{"time":"2026-11-08T21:46:58.779Z","level":"warn","msg":"queue depth high","depth":351,"tower":"tower-2"}
+{"time":"2026-11-08T21:47:18.906Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-6938","ms":19}
+{"time":"2026-11-08T21:47:39.523Z","level":"error","msg":"relay failed","err":"timeout after 3030ms calling 10.0.0.7:4000","tower":"tower-7","request_id":"req-0cc7"}
+{"time":"2026-11-08T21:47:59.053Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-5be7","ms":24}
+{"time":"2026-11-08T21:48:20.265Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-c401","ms":31}
+{"time":"2026-11-08T21:48:38.937Z","level":"error","msg":"relay failed","err":"timeout after 2995ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-9f90"}
+{"time":"2026-11-08T21:48:57.985Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-39b1","ms":37}
+{"time":"2026-11-08T21:49:16.832Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-4dc9","ms":26}
+{"time":"2026-11-08T21:49:36.106Z","level":"error","msg":"relay failed","err":"checksum mismatch on frame 8369 from tower-2","tower":"tower-2","request_id":"req-770d"}
+{"time":"2026-11-08T21:49:57.915Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-7de6","ms":16}
+{"time":"2026-11-08T21:50:19.874Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-6394","ms":34}
+{"time":"2026-11-08T21:50:39.010Z","level":"error","msg":"relay failed","err":"timeout after 2990ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-34a0"}
+{"time":"2026-11-08T21:51:00.834Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-967f","ms":32}
+{"time":"2026-11-08T21:51:19.411Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-b19f","ms":12}
+{"time":"2026-11-08T21:51:38.589Z","level":"error","msg":"relay failed","err":"timeout after 3012ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-94a2"}
+{"time":"2026-11-08T21:51:59.490Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-4f56","ms":16}
+{"time":"2026-11-08T21:52:18.058Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-d6ff","ms":20}
+{"time":"2026-11-08T21:52:37.232Z","level":"error","msg":"relay failed","err":"timeout after 3007ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-3e2f"}
+{"time":"2026-11-08T21:52:55.591Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-014d","ms":23}
+{"time":"2026-11-08T21:53:14.328Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-cc5a","ms":16}
+{"time":"2026-11-08T21:53:33.181Z","level":"error","msg":"relay failed","err":"timeout after 3014ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-a1fc"}
+{"time":"2026-11-08T21:53:53.412Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-8502","ms":5}
+{"time":"2026-11-08T21:54:13.197Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-f21c","ms":26}
+{"time":"2026-11-08T21:54:32.673Z","level":"error","msg":"relay failed","err":"timeout after 3020ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-b9c6"}
+{"time":"2026-11-08T21:54:53.205Z","level":"info","msg":"message relayed","tower":"tower-2","request_id":"req-645f","ms":21}
+{"time":"2026-11-08T21:55:14.947Z","level":"info","msg":"message relayed","tower":"tower-3","request_id":"req-f1c9","ms":36}
+{"time":"2026-11-08T21:55:35.968Z","level":"error","msg":"relay failed","err":"timeout after 2997ms calling 10.0.0.7:4000","tower":"tower-1","request_id":"req-e5d5"}
+{"time":"2026-11-08T21:55:54.499Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-a50e","ms":31}
+{"time":"2026-11-08T21:56:13.935Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-03cc","ms":31}
+{"time":"2026-11-08T21:56:32.205Z","level":"error","msg":"relay failed","err":"timeout after 3027ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-4500"}
+{"time":"2026-11-08T21:56:50.682Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-4160","ms":7}
+{"time":"2026-11-08T21:57:09.165Z","level":"info","msg":"message relayed","tower":"tower-7","request_id":"req-97cd","ms":28}
+{"time":"2026-11-08T21:57:27.798Z","level":"error","msg":"relay failed","err":"timeout after 3026ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-fed5"}
+{"time":"2026-11-08T21:57:46.384Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-5727","ms":33}
+{"time":"2026-11-08T21:58:04.505Z","level":"info","msg":"message relayed","tower":"tower-1","request_id":"req-1e89","ms":5}
+{"time":"2026-11-08T21:58:26.039Z","level":"error","msg":"relay failed","err":"timeout after 3003ms calling 10.0.0.7:4000","tower":"tower-5","request_id":"req-bf14"}
+{"time":"2026-11-08T21:58:47.990Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-e151","ms":26}
+{"time":"2026-11-08T21:59:09.666Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-a06d","ms":7}
+{"time":"2026-11-08T21:59:28.240Z","level":"error","msg":"relay failed","err":"timeout after 3022ms calling 10.0.0.7:4000","tower":"tower-3","request_id":"req-7cf0"}
+{"time":"2026-11-08T21:59:47.880Z","level":"info","msg":"message relayed","tower":"tower-5","request_id":"req-c533","ms":17}
+{"time":"2026-11-08T22:00:09.497Z","level":"fatal","msg":"relay stopped","err":"too many failures: 41 in 10m"}

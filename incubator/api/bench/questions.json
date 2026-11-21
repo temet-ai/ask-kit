@@ -1,0 +1,142 @@
+{
+  "fixture": "bench/fixture/watch-api.yaml (OpenAPI 3.1, YAML: the Ankh-Morpork City Watch) and bench/fixture/clacks-api.json (Swagger 2.0, JSON: the Grand Trunk clacks). Every question is a shot (a script and params, no model) that reads a document through the `spec` param, so it needs no server, no network and no credential, and gives the same result whatever API this copy of the kit is configured for. Run the bench from the kit's folder, so the relative paths resolve; an unconfigured copy needs API_SPEC set to anything readable, for example API_SPEC=bench/fixture/watch-api.yaml. The expectations were checked against the fixtures on 2026-11-21. bench/fixture/server.mjs serves the Watch API on 127.0.0.1 for trying call, list and health by hand (RECIPE.md says how). Questions for the model (`q`) are still to be added from real sessions.",
+  "questions": [
+    {
+      "id": "overview",
+      "do": "overview",
+      "params": { "spec": "bench/fixture/watch-api.yaml" },
+      "expect": [
+        "Ankh-Morpork City Watch API 1\\.4\\.2, 14 operations in 5 groups \\(10 read, 4 change things\\); requests go to http://127\\.0\\.0\\.1:8765",
+        "OpenAPI 3\\.1\\.0, YAML, from .*watch-api\\.yaml",
+        "\"sentAs\": \"bearer\"",
+        "\"about\": \"What was reported to the Watch, from stolen sausages to dragons\"",
+        "Lists are paged in three ways, one per collection, as the API grew\\.",
+        "POST /incidents \\(createIncident\\) \\[changes things\\]: Report an incident",
+        "\"readingPosts\": \\[\\s+\"searchIncidents\"\\s+\\]"
+      ]
+    },
+    {
+      "id": "overview-swagger2",
+      "do": "overview",
+      "params": { "spec": "bench/fixture/clacks-api.json" },
+      "expect": [
+        "Grand Trunk Clacks API 0\\.9, 4 operations in 1 group \\(2 read, 2 change things\\); requests go to https://clacks\\.example\\.com/v1",
+        "Swagger 2\\.0, JSON, from .*clacks-api\\.json",
+        "\"sentAs\": \"header:X-Clacks-Key\"",
+        "\"tag\": \"untagged\"",
+        "POST /overhead \\(appendOverhead\\) \\[changes things\\]"
+      ]
+    },
+    {
+      "id": "operations-words",
+      "do": "operations",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "words": "report an incident" },
+      "expect": [
+        "the nearest is POST /incidents \\(createIncident\\)",
+        "\"id\": \"createIncident\",\\s+\"op\": \"POST /incidents\",\\s+\"does\": \"Report an incident\",\\s+\"changes\": true",
+        "\"id\": \"searchIncidents\",\\s+\"op\": \"POST /incidents/search\",\\s+\"does\": \"Search incidents by words in the title\"\\s+\\}"
+      ]
+    },
+    {
+      "id": "operations-tag-about",
+      "do": "operations",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "words": "who walks the beat at night" },
+      "expect": ["no operation holds all of", "the nearest is GET /patrols \\(listPatrols\\)", "\"total\": 0"]
+    },
+    {
+      "id": "operations-tag-substring",
+      "do": "operations",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "tag": "incident", "method": "get" },
+      "expect": [
+        "2 operations fit the tag incidents \\(substring: \\\\\"incident\\\\\" is part of it\\), GET",
+        "\"op\": \"GET /incidents\"",
+        "\"op\": \"GET /incidents/\\{id\\}\"",
+        "^(?![\\s\\S]*createIncident)"
+      ]
+    },
+    {
+      "id": "operations-none",
+      "do": "operations",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "words": "pay the Thieves' Guild" },
+      "expect": ["no operation fits \\\\\"pay the Thieves' Guild\\\\\": try other words, or one of the tags", "\"total\": 0", "\"patrols\""]
+    },
+    {
+      "id": "operations-groups",
+      "do": "operations",
+      "params": { "spec": "bench/fixture/clacks-api.json", "words": "/towers" },
+      "expect": ["3 operations fit \\\\\"/towers\\\\\"; the nearest is GET /towers \\(listTowers\\)", "\"id\": \"sendMessage\"", "^(?![\\s\\S]*appendOverhead)"]
+    },
+    {
+      "id": "describe-body",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "op": "createIncident" },
+      "expect": [
+        "\"op\": \"POST /incidents\"",
+        "\"changes\": true",
+        "\"required\": true,\\s+\"contentType\": \"application/json\"",
+        "\\{\\\\n  title: string\\\\n  post: string  // The id of the post it was reported at\\\\n  reported_by\\?: string\\\\n\\}",
+        "\"status\": \"201\"",
+        "400 The report lacks a title or a post"
+      ]
+    },
+    {
+      "id": "describe-by-path",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "op": "GET /incidents/WATCH-12" },
+      "expect": [
+        "\"id\": \"getIncident\"",
+        "\"matched\": \"the path fits /incidents/\\{id\\}\"",
+        "\"about\": \"The incident's id, such as WATCH-12\"",
+        "status: \\\\\"open\\\\\" \\| \\\\\"closed\\\\\"",
+        "assigned_to\\?: \\{\\\\n    id: string",
+        "post\\?: Post \\{ id, name, district \\}",
+        "\\} \\| null\\\\n\\}",
+        "404 Nothing with that id"
+      ]
+    },
+    {
+      "id": "describe-parameters",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "op": "listguards" },
+      "expect": [
+        "\"matched\": \"exact, ignoring case\"",
+        "\"name\": \"rank\",\\s+\"in\": \"query\",\\s+\"required\": false,\\s+\"type\": \"\\\\\"commander\\\\\" \\| \\\\\"captain\\\\\"",
+        "\"name\": \"page\",\\s+\"in\": \"query\",\\s+\"required\": false,\\s+\"type\": \"integer\",\\s+\"default\": 1,\\s+\"about\": \"The page, from 1\"",
+        "badge\\?: integer  // The badge number\\.",
+        "\\}\\[\\]\""
+      ]
+    },
+    {
+      "id": "describe-reading-post",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "op": "searchIncidents" },
+      "expect": ["\"changes\": false", "\"runs\": \"always: a POST that only reads\"", "words: string\\\\n  status\\?: \\\\\"open\\\\\" \\| \\\\\"closed\\\\\""]
+    },
+    {
+      "id": "describe-no-credential",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/watch-api.yaml", "op": "Health" },
+      "expect": ["\"matched\": \"\\\\\"Health\\\\\" is part of getHealth\"", "\"auth\": \"none: the document says this operation takes no credential\"", "status\\?: \\\\\"ok\\\\\""]
+    },
+    {
+      "id": "describe-swagger2-body",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/clacks-api.json", "op": "sendMessage" },
+      "expect": [
+        "\"op\": \"POST /towers/\\{number\\}/messages\"",
+        "\"auth\": \"header:X-Clacks-Key\"",
+        "\"name\": \"number\",\\s+\"in\": \"path\",\\s+\"required\": true,\\s+\"type\": \"integer\"",
+        "\\{\\\\n  to: string  // The tower or city it is for\\\\n  text: string\\\\n  priority\\?: \\\\\"ordinary\\\\\" \\| \\\\\"urgent\\\\\"\\\\n\\}",
+        "\"status\": \"202\"",
+        "keeper\\?: string  // Who works the shutters",
+        "402 The sender cannot pay for it"
+      ]
+    },
+    {
+      "id": "describe-swagger2-form",
+      "do": "describe",
+      "params": { "spec": "bench/fixture/clacks-api.json", "op": "POST /overhead" },
+      "expect": ["\"id\": \"appendOverhead\"", "\"contentType\": \"application/x-www-form-urlencoded\"", "name: string  // The name to keep moving, such as John Dearheart", "\"shape\": \"no body described\""]
+    }
+  ]
+}

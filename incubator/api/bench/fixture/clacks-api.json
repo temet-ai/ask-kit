@@ -1,0 +1,98 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Grand Trunk Clacks API",
+    "version": "0.9",
+    "description": "Towers of the Grand Trunk Semaphore Company and the messages they pass. A fixture for the api kit: nothing answers at this address."
+  },
+  "host": "clacks.example.com",
+  "basePath": "/v1",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "securityDefinitions": {
+    "clacksKey": { "type": "apiKey", "in": "header", "name": "X-Clacks-Key" }
+  },
+  "security": [{ "clacksKey": [] }],
+  "paths": {
+    "/towers": {
+      "get": {
+        "operationId": "listTowers",
+        "summary": "List the towers on a line",
+        "parameters": [
+          { "name": "line", "in": "query", "type": "string", "enum": ["genua", "sto-lat", "uberwald"], "required": true, "description": "The line the towers stand on" },
+          { "name": "lit", "in": "query", "type": "boolean", "description": "Only towers whose lamps are lit" }
+        ],
+        "responses": {
+          "200": { "description": "The towers", "schema": { "type": "array", "items": { "$ref": "#/definitions/Tower" } } }
+        }
+      }
+    },
+    "/towers/{number}/messages": {
+      "parameters": [{ "name": "number", "in": "path", "type": "integer", "required": true, "description": "The tower's number on its line" }],
+      "get": {
+        "operationId": "listMessages",
+        "summary": "Messages waiting at a tower",
+        "responses": {
+          "200": { "description": "Waiting messages, oldest first", "schema": { "type": "array", "items": { "$ref": "#/definitions/Message" } } },
+          "404": { "description": "No tower with that number" }
+        }
+      },
+      "post": {
+        "operationId": "sendMessage",
+        "summary": "Send a message from a tower",
+        "parameters": [{ "name": "message", "in": "body", "required": true, "schema": { "$ref": "#/definitions/NewMessage" } }],
+        "responses": {
+          "202": { "description": "Accepted for sending", "schema": { "$ref": "#/definitions/Message" } },
+          "402": { "description": "The sender cannot pay for it" }
+        }
+      }
+    },
+    "/overhead": {
+      "post": {
+        "operationId": "appendOverhead",
+        "summary": "Add a name to the overhead, so it is never forgotten",
+        "consumes": ["application/x-www-form-urlencoded"],
+        "parameters": [
+          { "name": "name", "in": "formData", "type": "string", "required": true, "description": "The name to keep moving, such as John Dearheart" },
+          { "name": "code", "in": "formData", "type": "string", "default": "GNU", "description": "G: send on, N: do not log, U: turn at the end of the line" }
+        ],
+        "responses": { "201": { "description": "Added" } }
+      }
+    }
+  },
+  "definitions": {
+    "Tower": {
+      "type": "object",
+      "required": ["number", "line"],
+      "properties": {
+        "number": { "type": "integer" },
+        "line": { "type": "string" },
+        "lit": { "type": "boolean" },
+        "keeper": { "type": "string", "description": "Who works the shutters" }
+      }
+    },
+    "NewMessage": {
+      "type": "object",
+      "required": ["to", "text"],
+      "properties": {
+        "to": { "type": "string", "description": "The tower or city it is for" },
+        "text": { "type": "string", "maxLength": 500 },
+        "priority": { "type": "string", "enum": ["ordinary", "urgent"], "default": "ordinary" }
+      }
+    },
+    "Message": {
+      "allOf": [
+        { "$ref": "#/definitions/NewMessage" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "from": { "$ref": "#/definitions/Tower" },
+            "hops": { "type": "integer", "description": "Towers it has passed" }
+          }
+        }
+      ]
+    }
+  }
+}

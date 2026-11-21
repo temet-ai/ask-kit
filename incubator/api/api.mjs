@@ -12,7 +12,7 @@
 //    is not followed.
 import path from "node:path";
 import { request, sameOrigin } from "./http.mjs";
-import { loadSpec, paramsOf, bodyOf, responsesOf, shape, rank, resolveOp, matchPath, clip, plainUrl, tokens } from "./spec.mjs";
+import { loadSpec, paramsOf, bodyOf, responsesOf, shape, rank, resolveOp, matchPath, clip, firstSentence } from "./spec.mjs";
 
 export const REDACTED = "<redacted>";
 const READS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -72,10 +72,15 @@ export function dig(v, dotted) {
 
 const ITEM_KEYS = ["items", "data", "results", "records", "values", "entries", "list", "content", "rows", "objects", "resources", "elements", "nodes", "hits", "value"];
 
-/** The list an answer holds: the answer itself, or its best-known list field. {items, key} or null. */
-export function itemsOf(data, depth = 0) {
+/**
+ * The list an answer holds: the answer itself, or its best-known list field. {items, key} or null.
+ * `strict` is for an answer that may be one record: a record with a list among many fields (a
+ * release and its assets) is not a list, an envelope of a few fields around one is.
+ */
+export function itemsOf(data, strict = false, depth = 0) {
   if (Array.isArray(data)) return { items: data, key: null };
   if (!data || typeof data !== "object") return null;
+  if (strict && Object.keys(data).length > 10) return null;
   for (const k of ITEM_KEYS) if (Array.isArray(data[k])) return { items: data[k], key: k };
   const lists = Object.entries(data).filter(([, v]) => Array.isArray(v) && (v.length === 0 || (v[0] && typeof v[0] === "object")));
   if (lists.length) {
@@ -84,7 +89,7 @@ export function itemsOf(data, depth = 0) {
   }
   if (depth === 0)
     for (const k of ["data", "result", "response", "payload"]) {
-      const inner = data[k] && typeof data[k] === "object" ? itemsOf(data[k], 1) : null;
+      const inner = data[k] && typeof data[k] === "object" ? itemsOf(data[k], strict, 1) : null;
       if (inner) return { items: inner.items, key: `${k}${inner.key ? `.${inner.key}` : ""}` };
     }
   return null;
@@ -113,17 +118,17 @@ const TOTAL_PATHS = ["total", "total_count", "totalCount", "total_items", "total
  * Where the next page is, from one answer. {how, url} or {how, query} or null when this is the last
  * page. `declared` holds the operation's query parameter names, `query` what was sent.
  */
-export function nextPage({ data, headers, declared, query, count, firstOfPrev }) {
+export function nextPage({ data, headers, declared, query, count }) {
   const link = String(headers?.link ?? "");
   const m = /<([^>]+)>\s*;[^,]*\brel\s*=\s*"?[^",]*\bnext\b/i.exec(link);
-  if (m) return { how: "the Link header's rel=next", url: m[1] };
+  if (m) return { kind: "link", how: "the Link header's rel=next", url: m[1] };
   if (link && /\brel\s*=\s*"?(prev|first|last)/i.test(link)) return null;
   const body = data && typeof data === "object" && !Array.isArray(data) ? data : null;
   if (body) {
     for (const p of LINK_PATHS) {
       let v = at(body, p);
       if (v && typeof v === "object") v = v.href ?? v.url;
-      if (typeof v === "string" && /^(https?:\/\/|\/|\?)/.test(v)) return { how: `the answer's \`${p}\` link`, url: v };
+      if (typeof v === "string" && /^(https?:\/\/|\/|\?)/.test(v)) return { kind: "link", how: `the answer's \`${p}\` link`, url: v };
     }
     if (body.has_more === false || body.hasMore === false || body.has_next_page === false || at(body, "page_info.has_next_page") === false || at(body, "pageInfo.hasNextPage") === false) return null;
     for (const [paths, names] of CURSORS)
@@ -132,13 +137,13 @@ export function nextPage({ data, headers, declared, query, count, firstOfPrev })
         if ((typeof v === "string" && v) || typeof v === "number") {
           const name = names.find((n) => declared.has(n)) ?? names.find((n) => n in query) ?? names[0];
           if (String(query[name] ?? "") === String(v)) return null;
-          return { how: `a cursor: the answer's \`${p}\` sent as \`${name}\``, query: { [name]: v } };
+          return { kind: "cursor", how: `a cursor: the answer's \`${p}\` sent as \`${name}\``, query: { [name]: v } };
         }
       }
     if (body.has_more === true && (declared.has("starting_after") || "starting_after" in query)) {
       const list = itemsOf(body)?.items ?? [];
       const last = list[list.length - 1];
-      if (last && last.id != null) return { how: "`has_more` with `starting_after` set to the last item's id", query: { starting_after: last.id } };
+      if (last && last.id != null) return { kind: "cursor", how: "`has_more` with `starting_after` set to the last item's id", query: { starting_after: last.id } };
     }
   }
   const size = (() => {
@@ -155,17 +160,53 @@ export function nextPage({ data, headers, declared, query, count, firstOfPrev })
     if (count === 0 || (body && body.last === true)) return null;
     if (pagesTotal != null && (zero ? current + 1 >= pagesTotal : current >= pagesTotal)) return null;
     if (pagesTotal == null && size != null && count < size) return null;
-    if (pagesTotal == null && firstOfPrev) return null;
-    return { how: `a page number: \`${name}\`${size != null ? ` with ${size} a page` : ""}`, query: { [name]: current + 1 } };
+    return { kind: "page", how: `a page number: \`${name}\`${size != null ? ` with ${size} a page` : ""}`, query: { [name]: current + 1 } };
   }
   const offName = ["offset", "skip", "start", "from", "startAt", "start_index", "startIndex"].find((n) => declared.has(n) || n in query);
   if (offName) {
     const current = num(query[offName]) ?? (body ? num(body[offName]) : null) ?? 0;
     const next = current + count;
-    if (count === 0 || (size != null && count < size) || (total != null && next >= total) || firstOfPrev) return null;
-    return { how: `an offset: \`${offName}\` moved on by the items read`, query: { [offName]: next } };
+    if (count === 0 || (size != null && count < size) || (total != null && next >= total)) return null;
+    return { kind: "offset", how: `an offset: \`${offName}\` moved on by the items read`, query: { [offName]: next } };
   }
   return null;
+}
+
+/**
+ * Chosen fields of an item, or of each item of a list: `fields` is "id,name,post.name" or a list of
+ * such dotted paths. The result is flat: {"id": 1, "post.name": "Cable Street"}.
+ */
+export function pick(value, fields) {
+  const list = (Array.isArray(fields) ? fields : String(fields ?? "").split(",")).map((f) => String(f).trim()).filter(Boolean);
+  if (!list.length) return value;
+  const one = (v) => (v && typeof v === "object" ? Object.fromEntries(list.map((f) => [f, dig(v, f) ?? null])) : v);
+  return Array.isArray(value) ? value.map(one) : one(value);
+}
+
+/**
+ * A value cut down to about `budget` characters of JSON: long lists to their first items, long
+ * strings clipped, deep objects to their field names. {value, cut: what was done, or null}.
+ */
+export function small(value, budget = 4000) {
+  const size = (v) => JSON.stringify(v)?.length ?? 0;
+  if (size(value) <= budget) return { value, cut: null };
+  let out = value;
+  for (const [items, chars, depth] of [[20, 300, 5], [10, 160, 4], [5, 100, 3], [3, 60, 2], [2, 40, 1]]) {
+    const walk = (v, d) => {
+      if (typeof v === "string") return v.length > chars ? `${v.slice(0, chars)}… (${v.length} characters)` : v;
+      if (!v || typeof v !== "object") return v;
+      if (Array.isArray(v)) {
+        const head = v.slice(0, items).map((x) => walk(x, d + 1));
+        return v.length > items ? [...head, `… ${v.length - items} more`] : head;
+      }
+      const keys = Object.keys(v);
+      if (d >= depth) return `{${keys.slice(0, 12).join(", ")}${keys.length > 12 ? `, +${keys.length - 12} more` : ""}}`;
+      return Object.fromEntries(keys.map((k) => [k, walk(v[k], d + 1)]));
+    };
+    out = walk(value, 0);
+    if (size(out) <= budget) return { value: out, cut: `lists cut to ${items} items, strings to ${chars} characters, objects below level ${depth} to their field names` };
+  }
+  return { value: `${JSON.stringify(out).slice(0, budget)}…`, cut: `too large to show (${size(value)} characters of JSON): the start of it, as text` };
 }
 
 function parseAuth(text) {
@@ -200,9 +241,11 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     secrets.push(token, encodeURIComponent(token), Buffer.from(token).toString("base64"));
     if (token.includes(":")) secrets.push(token.slice(token.indexOf(":") + 1));
   }
+  let unusedLogin = false;
   try {
     const b = settings.API_BASE_URL ? new URL(settings.API_BASE_URL) : null;
     if (b?.password) secrets.push(b.password, decodeURIComponent(b.password));
+    unusedLogin = !!(b?.username || b?.password);
   } catch {}
   const live = [...new Set(secrets)].filter((s) => s && s.length > 3).sort((a, b) => b.length - a.length);
   const scrub = (text) => {
@@ -222,19 +265,21 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
   };
 
   const spec = (source) => loadSpec(source ?? settings.API_SPEC, { workdir, push });
-  const isReadPost = (op) => {
+  // `own` is false for a document read through api.document: API_READ_POSTS names operations of the configured API only.
+  const isReadPost = (op, own = true) => {
     if (op.method !== "POST") return false;
     if (op.readOnlyMark) return true;
-    return readPosts.some((entry) => {
+    return own && readPosts.some((entry) => {
       const e = entry.replace(/^post\s+/i, "");
       if (!e.startsWith("/")) return e.toLowerCase() === op.id.toLowerCase();
       const re = new RegExp(`^${e.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}/?$`, "i");
       return re.test(op.path);
     });
   };
-  const changes = (op) => !READS.has(op.method) && !isReadPost(op);
+  const changes = (op, own = true) => !READS.has(op.method) && !isReadPost(op, own);
   const label = (op) => `${op.method} ${op.path}`;
 
+  const basePath = (base) => base.pathname.replace(/\/+$/, "");
   const baseOf = (s) => {
     const raw = String(settings.API_BASE_URL ?? "").trim() || s.servers[0] || "";
     let u = null;
@@ -246,7 +291,6 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     u.password = "";
     u.search = "";
     u.hash = "";
-    u.pathname = u.pathname.replace(/\/+$/, "");
     return u;
   };
 
@@ -300,7 +344,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     if (/^https?:\/\//i.test(target)) {
       u = new URL(target);
       if (!sameOrigin(u, base)) throw new Error(`not allowed: ${u.host} is not this API's address (${base.host}). Requests and the credential go only there; read another address with the web kit`);
-    } else u = new URL(`${base.origin}${base.pathname}${target.startsWith("/") ? "" : "/"}${target}`);
+    } else u = new URL(`${base.origin}${basePath(base)}${target.startsWith("/") ? "" : "/"}${target}`);
     u.username = "";
     u.password = "";
     const declared = new Map(op ? paramsOf(s, op).filter((p) => p.in === "query").map((p) => [p.name, p]) : []);
@@ -336,7 +380,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const r = await request(u.href, { method, headers: all, body: payload, timeoutMs: Math.min(Math.max(Number(timeoutMs) || 30_000, 1000), 120_000), stay: true });
     const ms = Date.now() - started;
     push({ kind: "api", detail: clip(`${method} ${shown}`, 200), ms, code: r.status ?? 1, size: r.body?.length ?? 0 });
-    const out = { op, method, shown, ms, sentAuth, auth, base, finalUrl: r.url };
+    const out = { op, method, shown, ms, sentAuth, auth, base, finalUrl: r.url, query, spec: s };
     if (r.status == null) return { ...out, ok: false, status: null, error: scrub(r.error), code: r.code, meaning: r.meaning };
     let data = null;
     let note = null;
@@ -362,12 +406,22 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
   /** What the investigator sees of an answer: parsed data with credential-like fields replaced, a few headers, hints. */
   const tidy = (raw, how) => {
     const head = { op: raw.op ? `${label(raw.op)}${raw.op.id.includes(" ") ? "" : ` (${raw.op.id})`}` : `${raw.method} ${raw.shown.split("?")[0]} (not in the document)`, ...(how && !/^exact$/.test(how) ? { matched: how } : {}), url: raw.shown };
-    if (raw.status == null) return { status: null, ok: false, ...head, error: raw.error, code: raw.code, ...(raw.meaning ? { meaning: raw.meaning } : {}), ms: raw.ms, hint: `nothing answered at ${raw.base.host}: is the API running, and is API_BASE_URL right?` };
+    if (raw.status == null) return { status: null, ok: false, ...head, error: raw.error, code: raw.code, ...(raw.meaning ? { meaning: raw.meaning } : {}), ms: raw.ms, hint: raw.code === "EPROXY" ? `the proxy between this machine and ${raw.base.host} refused the request; that says nothing about the API itself` : `nothing answered at ${raw.base.host}: is the API running, and is API_BASE_URL right?` };
     const { value, fields } = redact(raw.data, live);
     const out = { status: raw.status, ok: raw.ok, ...head, data: value, headers: shownHeaders(raw.headers), ms: raw.ms };
     if (fields.length) out.redacted = `fields named like a credential were replaced with ${REDACTED}: ${fields.slice(0, 12).join(", ")}${fields.length > 12 ? `, +${fields.length - 12} more` : ""}`;
     if (raw.note) out.note = raw.note;
-    if (raw.status === 401 || raw.status === 403)
+    if (raw.ok && raw.op && !changes(raw.op)) {
+      const list = itemsOf(raw.data, true);
+      const next = list ? nextPage({ data: raw.data, headers: raw.headers, declared: new Set(paramsOf(raw.spec, raw.op).filter((p) => p.in === "query").map((p) => p.name)), query: raw.query ?? {}, count: list.items.length }) : null;
+      // A page number or an offset only says a next page may exist; a link or a cursor says it does.
+      if (next && (next.kind === "link" || next.kind === "cursor")) out.morePages = `this is one page; the next is found by ${next.how}. api.pages reads them all`;
+    }
+    const left = raw.headers?.["x-ratelimit-remaining"] ?? raw.headers?.["ratelimit-remaining"];
+    if ((raw.status === 403 || raw.status === 429) && String(left) === "0") {
+      const reset = num(raw.headers?.["x-ratelimit-reset"]);
+      out.hint = `${raw.status}: the API's request limit is used up (remaining: 0)${reset && reset > 1e9 ? `; it resets at ${new Date(reset * 1000).toISOString()}` : raw.headers?.["retry-after"] ? `; retry after ${raw.headers["retry-after"]}` : ""}${token ? "" : ". No credential is set; with one the limit is often higher"}. Do not repeat the call in a loop`;
+    } else if (raw.status === 401 || raw.status === 403)
       out.hint = !token
         ? `${raw.status}: no credential is set. API_TOKEN holds it${raw.auth ? ` (it would be sent as ${authText(raw.auth)})` : ""}`
         : !raw.sentAuth
@@ -430,15 +484,15 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       const u = new URL(p);
       if (!sameOrigin(u, base)) throw new Error(`not allowed: ${u.host} is not this API's address (${base.host}). Requests and the credential go only there; read another address with the web kit`);
       p = `${u.pathname}${u.search}`;
-      if (base.pathname && p.startsWith(`${base.pathname}/`)) p = p.slice(base.pathname.length);
+      if (basePath(base) && p.startsWith(`${basePath(base)}/`)) p = p.slice(basePath(base).length);
     } else if (!p.startsWith("/")) p = `/${p}`;
     const [pathOnly, qs] = p.split(/\?(.*)/s);
     const q = { ...Object.fromEntries(new URLSearchParams(qs ?? "")), ...(query ?? {}) };
     let hit = matchPath(s, "GET", pathOnly);
     let sendPath = pathOnly;
-    if (!hit && base.pathname && pathOnly.startsWith(`${base.pathname}/`)) {
-      hit = matchPath(s, "GET", pathOnly.slice(base.pathname.length));
-      sendPath = pathOnly.slice(base.pathname.length);
+    if (!hit && basePath(base) && pathOnly.startsWith(`${basePath(base)}/`)) {
+      hit = matchPath(s, "GET", pathOnly.slice(basePath(base).length));
+      sendPath = pathOnly.slice(basePath(base).length);
     }
     const raw = await send(s, { op: hit?.op ?? null, method: "GET", target: sendPath, query: q, timeoutMs: opts.timeoutMs });
     return { raw, how: hit && hit.op.path !== sendPath ? `the path fits ${hit.op.path}` : null, op: hit?.op ?? null, placed: { target: sendPath, query: q, headers: {} } };
@@ -448,7 +502,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const s = await spec();
     const max = Math.min(Math.max(Number(opts.max) || 5, 1), 50);
     const maxItems = Number(opts.maxItems) > 0 ? Number(opts.maxItems) : Infinity;
-    const isPath = typeof ref === "string" && /^\//.test(ref.trim());
+    const isPath = typeof ref === "string" && /^(\/|https?:\/\/)/i.test(ref.trim());
     let first = isPath ? await rawGet(s, ref, args?.query ?? {}, opts) : await rawCall(s, ref, args, opts);
     const { op, placed, how } = first;
     if (op && changes(op)) throw new Error(`${label(op)} changes things; api.pages reads a list. Use api.call for it`);
@@ -463,6 +517,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     let total = null;
     let stopped = null;
     let prevFirst = null;
+    let kind = null;
+    const began = Date.now();
     for (;;) {
       n++;
       if (raw.status == null || !raw.ok) {
@@ -489,11 +545,19 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       items.push(...found.items);
       total ??= raw.data && !Array.isArray(raw.data) ? firstNum(raw.data, TOTAL_PATHS) : null;
       total ??= num(raw.headers?.["x-total-count"]);
-      const next = nextPage({ data: raw.data, headers: raw.headers, declared, query, count: found.items.length, firstOfPrev: false });
-      if (!next) break;
+      const next = nextPage({ data: raw.data, headers: raw.headers, declared, query, count: found.items.length });
+      // An API pages one way. When the links or cursors it gave stop coming, that is the last page,
+      // whatever else in the query looks like a page number.
+      if (!next || (kind && next.kind !== kind)) break;
+      kind = next.kind;
       used ??= next.how;
       if (n >= max || items.length >= maxItems) {
         more = true;
+        break;
+      }
+      if (Date.now() - began > 120_000) {
+        more = true;
+        stopped = "reading the pages took two minutes; it stopped there";
         break;
       }
       if (next.url) {
@@ -538,27 +602,36 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
 
   // ---- reading the document ----
 
-  const line = (op) => ({ id: op.id, op: label(op), does: clip(op.summary || op.description, 110), ...(changes(op) ? { changes: true } : {}), ...(op.deprecated ? { deprecated: true } : {}) });
-  const tagsOf = (s) => {
-    const by = new Map();
-    for (const op of s.ops)
-      for (const t of op.tags.length ? op.tags : ["untagged"]) {
-        const e = by.get(t) ?? by.set(t, { tag: t, operations: 0, reads: 0, changes: 0 }).get(t);
-        e.operations++;
-        e[changes(op) ? "changes" : "reads"]++;
-      }
-    return [...by.values()].map((e) => ({ ...e, ...(s.tagAbout.get(e.tag) ? { about: s.tagAbout.get(e.tag) } : {}) }));
-  };
-
   const reader = (source) => {
     const doc = () => spec(source);
+    const own = !source;
+    const line = (op) => ({ id: op.id, op: label(op), does: op.summary ? clip(op.summary, 110) : firstSentence(op.description, 110), ...(changes(op, own) ? { changes: true } : {}), ...(op.deprecated ? { deprecated: true } : {}) });
+    const tagsOf = (s) => {
+      const by = new Map();
+      for (const op of s.ops)
+        for (const t of op.tags.length ? op.tags : ["untagged"]) {
+          const e = by.get(t) ?? by.set(t, { tag: t, operations: 0, reads: 0, changes: 0 }).get(t);
+          e.operations++;
+          e[changes(op, own) ? "changes" : "reads"]++;
+        }
+      return [...by.values()].map((e) => ({ ...e, ...(s.tagAbout.get(e.tag) ? { about: s.tagAbout.get(e.tag) } : {}) }));
+    };
     return {
+      /** Null when the document can be read, else why not, as text: a script returns that as its result. */
+      async ready() {
+        try {
+          await doc();
+          return null;
+        } catch (e) {
+          return scrub(e.message);
+        }
+      },
       async info() {
         const s = await doc();
         let base = null;
         let baseNote = null;
         try {
-          base = baseOf(s).href;
+          base = baseOf(s).href.replace(/\/$/, "");
         } catch (e) {
           baseNote = e.message;
         }
@@ -572,13 +645,14 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
           ...(s.description ? { about: clip(s.description, 400) } : {}),
           baseUrl: source ? (s.servers[0] ?? null) : base,
           ...(baseNote && !source ? { baseUrlProblem: baseNote } : {}),
+          ...(unusedLogin && !source ? { baseUrlNote: "API_BASE_URL holds a user or password, which is not sent: put `user:password` in API_TOKEN and set API_AUTH to basic" } : {}),
           ...(s.servers.length > 1 ? { servers: s.servers.slice(0, 6) } : {}),
           auth: source ? { sentAs: authText(fromSchemeOnly(s) ?? { kind: "none stated" }) } : { sentAs: authText(auth), from: auth.from, credentialSet: !!token },
           operations: s.ops.length,
-          reads: s.ops.filter((o) => !changes(o)).length,
-          changes: s.ops.filter((o) => changes(o)).length,
+          reads: s.ops.filter((o) => !changes(o, own)).length,
+          changes: s.ops.filter((o) => changes(o, own)).length,
           tags: tags.length > 60 ? [...tags.slice(0, 60), { tag: `+${tags.length - 60} more tags` }] : tags,
-          ...(s.ops.some(isReadPost) ? { readingPosts: s.ops.filter(isReadPost).slice(0, 20).map((o) => o.id) } : {}),
+          ...(s.ops.some((o) => isReadPost(o, own)) ? { readingPosts: s.ops.filter((o) => isReadPost(o, own)).slice(0, 20).map((o) => o.id) } : {}),
           ...(s.remote.size ? { remoteReferences: `${s.remote.size} reference(s) to other files or addresses were not fetched: ${[...s.remote].slice(0, 3).map((r) => clip(r, 60)).join(", ")}` } : {}),
           ...(s.note ? { note: s.note } : {}),
         };
@@ -590,7 +664,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
         return rank(s, words, opts).slice(0, max).map(line);
       },
       async count(words, o = {}) {
-        return rank(await doc(), words, o ?? {}).length;
+        const all = rank(await doc(), words, o ?? {});
+        return all.full ?? all.length;
       },
       async tags() {
         return tagsOf(await doc());
@@ -608,15 +683,15 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
           op: label(op),
           ...(how !== "exact" ? { matched: how } : {}),
           ...(op.summary ? { summary: op.summary } : {}),
-          ...(op.description && clip(op.description, 700) !== op.summary ? { description: clip(op.description, 700) } : {}),
+          ...(op.description && clip(op.description, 500) !== op.summary ? { description: clip(op.description, 500) } : {}),
           ...(op.tags.length ? { tags: op.tags } : {}),
-          changes: changes(op),
-          runs: changes(op) ? (act ? "this ask may change things, so it runs" : "only when the caller asked for a change (act: true)") : op.method === "POST" ? "always: a POST that only reads" : "always",
+          changes: changes(op, own),
+          runs: changes(op, own) ? (act ? "this ask may change things, so it runs" : "only when the caller asked for a change (act: true)") : op.method === "POST" ? "always: a POST that only reads" : "always",
           ...(op.deprecated ? { deprecated: true } : {}),
-          auth: auth ? `${authText(auth)}, sent for you` : "none: the document says this operation takes no credential",
+          auth: !auth ? "none: the document says this operation takes no credential" : source ? authText(auth) : token ? `${authText(auth)}, sent for you` : `${authText(auth)}, but no credential is set (API_TOKEN)`,
           parameters: params.slice(0, 40).map((p) => {
             const sch = s.deref(p.schema) ?? {};
-            return { name: p.name, in: p.in, required: p.required, type: shape(s, p.schema, { depth: 1, maxLines: 6 }).replace(/\s*\n\s*/g, " "), ...(sch.default !== undefined ? { default: sch.default } : {}), ...(p.description ? { about: clip(p.description, 160) } : {}), ...(p.deprecated ? { deprecated: true } : {}) };
+            return { name: p.name, in: p.in, required: p.required, type: shape(s, p.schema, { depth: 1, maxLines: 6 }).replace(/\s*\n\s*/g, " "), ...(sch.default !== undefined ? { default: sch.default } : {}), ...(p.description ? { about: clip(p.description, 110) } : {}), ...(p.deprecated ? { deprecated: true } : {}) };
           }),
           ...(params.length > 40 ? { moreParameters: params.slice(40).map((p) => p.name).join(", ") } : {}),
         };
@@ -656,7 +731,9 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     },
     async call(ref, args = {}, opts = {}) {
       const s = await spec();
-      const { raw, how } = await rawCall(s, ref, args, opts);
+      // A full address is a GET by path: it is sent only when it lies inside the API's own address.
+      const url = /^(?:get\s+)?(https?:\/\/\S+)$/i.exec(String(ref ?? "").trim());
+      const { raw, how } = url ? await rawGet(s, url[1], args?.query ?? {}, opts) : await rawCall(s, ref, args, opts);
       return tidy(raw, how);
     },
     async get(target, query = {}, opts = {}) {
@@ -665,11 +742,15 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       return tidy(raw, how);
     },
     pages,
+    items: (data, strict = false) => itemsOf(data, strict === true),
+    pick,
+    small,
     /** The cheapest reading operations to try the API with: GET, no required parameter. */
     async probes() {
       const s = await spec();
       const cheap = s.ops.filter((op) => op.method === "GET" && !op.deprecated && !paramsOf(s, op).some((p) => p.required));
-      const score = (op) => (/(^|\/)(health|healthz|ping|status|version|me|whoami|user|info)$/i.test(op.path) ? 0 : 10) + op.path.split("/").length + op.path.length / 100;
+      // Cheap and harmless first: a health or identity path, then short paths; never a login, an export or a download.
+      const score = (op) => (/(^|\/)(health|healthz|ping|status|version|me|whoami|user|info)$/i.test(op.path) ? 0 : 10) + (/log(in|out)|sign(in|out)|auth|token|export|download|reset|callback|delete|search/i.test(op.path) ? 50 : 0) + op.path.split("/").length + op.path.length / 100;
       const open = (op) => Array.isArray(op.raw.security) && op.raw.security.length === 0;
       const sizes = (op) => paramsOf(s, op).filter((p) => p.in === "query" && SIZE_NAMES.includes(p.name)).map((p) => p.name)[0] ?? null;
       const row = (op) => ({ id: op.id, op: label(op), takesCredential: !open(op), sizeParam: sizes(op) });
@@ -678,8 +759,6 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     },
     act,
   };
-  for (const k of Object.keys(api)) if (typeof api[k] === "function" && k !== "document") api[k] = guarded(api[k]);
+  for (const k of Object.keys(api)) if (typeof api[k] === "function" && !["document", "items", "pick", "small"].includes(k)) api[k] = guarded(api[k]);
   return api;
 }
-
-export { tokens };

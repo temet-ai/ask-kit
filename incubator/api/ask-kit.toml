@@ -1,0 +1,61 @@
+id = "temet.api"
+name = "api"
+version = "0.1.0"
+min_ask_kit = "0.3.0"
+says = "one HTTP API you configured, used through its OpenAPI (Swagger) document: what the API can do, which endpoint does something, what an operation takes and returns, calling an endpoint and reading the fields that matter, listing a collection through all its pages, whether the API is up and the token accepted; and, when asked, creating, updating or deleting through it (POST, PUT, PATCH, DELETE)"
+keywords = ["api", "endpoints?", "openapi", "swagger", "rest api", "operationId", "request body", "response (body|schema)", "status code", "(GET|POST|PUT|PATCH|DELETE) /\\S+", "curl", "bearer token", "api (key|token)", "paginat\\w+", "localhost:\\d+", "backend"]
+route_hint = "This kit is one configured HTTP API, described by its OpenAPI document: its endpoints, what they take and return, and calling them. What a web page or online documentation says is web; whether a URL answers, its DNS or certificate is net; GitHub's pull requests, issues and CI are github; the code that implements an endpoint is code; a database read with SQL is postgres or sqlite"
+cite = "the operation as `METHOD /path` with its operationId, the status, and the field the fact came from"
+instructions = "instructions.md"
+acts = ["api.call with POST, PUT, PATCH or DELETE"]
+
+[[settings]]
+key = "API_SPEC"
+about = "the API's OpenAPI or Swagger document: a URL or a file path, JSON or YAML"
+required = true
+
+[[settings]]
+key = "API_BASE_URL"
+about = "where to send requests, when it differs from the document's `servers`"
+
+[[settings]]
+key = "API_TOKEN"
+about = "the credential, sent the way the document's security scheme says (a bearer token unless API_AUTH says otherwise)"
+secret = true
+
+[[settings]]
+key = "API_AUTH"
+about = "how to send the token: `bearer`, `basic`, `header:<Name>` or `query:<name>`; by default what the document says, else bearer"
+
+[[settings]]
+key = "API_READ_POSTS"
+about = "POST operations that only read (a search, a query endpoint), as operationIds or path patterns such as /search/*, comma-separated; they run without a request for a change"
+
+[[settings]]
+key = "API_NAME"
+about = "what this API is, in a few words; used in answers"
+
+[[settings]]
+key = "WORKDIR"
+about = "the folder a relative API_SPEC path starts at; by default the folder the agent runs in"
+detect = ["node", "-e", "process.stdout.write(process.cwd())"]
+
+[[sources]]
+kind = "module"
+name = "api"
+module = "api.mjs"
+api = "api.d.ts"
+
+[[actions]]
+name = "overview"
+title = "What this API is and what it offers"
+script = "overview"
+match = ['what (?:can|does) (?:this|the) api (?:do|offer|provide)', '(?:what|which) (?:endpoints|operations) does (?:this|the) api have', '(?:give me )?an overview of (?:this|the) api']
+expect = '"operations"'
+
+[[actions]]
+name = "health"
+title = "Whether the API is reachable and the credential accepted"
+script = "health"
+match = ['is (?:this|the) api (?:up|down|reachable|alive|working|running|healthy)(?: right now)?', '(?:does|is) (?:my|the) (?:api )?(?:token|credential|api key) (?:work|working|valid|accepted)']
+expect = '"verdict"'

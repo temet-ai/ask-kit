@@ -18,10 +18,10 @@ export const stateDir = () =>
 
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 24);
 export const clip = (s, n) => {
-  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  const t = String(s ?? "").replace(/<\/?(?!redacted>)[a-zA-Z][^>]*>/g, " ").replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
-const firstSentence = (s, n) => clip(String(s ?? "").split(/\n\s*\n|(?<=[.!?])\s/)[0], n);
+export const firstSentence = (s, n) => clip(String(s ?? "").split(/\n\s*\n|(?<=[.!?])\s/)[0], n);
 export const METHODS = ["get", "put", "post", "delete", "patch", "head", "options"];
 const URL_TTL_MS = 60 * 60_000;
 const memo = new Map();
@@ -286,8 +286,13 @@ export function responsesOf(spec, op) {
 
 const refName = (ref) => unescapePointer(String(ref).split("/").pop());
 
-/** A schema written like a type, clipped at `depth` levels of nested objects and `maxLines` lines. */
-export function shape(spec, schema, { depth = 3, maxLines = 70, maxProps = 40 } = {}) {
+/**
+ * A schema written like a type. Objects nest to `depth` levels; below that an object is its field
+ * names. When the text is over `maxLines` lines or `maxChars` characters, it is written again one
+ * level shallower, so every top-level field shows before any nested one is spelt out.
+ */
+export function shape(spec, schema, { depth = 3, maxLines = 60, maxChars = 3200, maxProps = 40 } = {}) {
+  let shown = new Set(); // named schemas already written out: a second mention gives the name only
   const walk = (s, d, ind, stack) => {
     if (s == null || s === true) return "any";
     if (typeof s !== "object") return "any";
@@ -297,7 +302,12 @@ export function shape(spec, schema, { depth = 3, maxLines = 70, maxProps = 40 } 
       const t = spec.target(s.$ref);
       if (t?.remote) return `${name} (a reference to ${clip(t.remote, 80)}, not fetched)`;
       if (t?.missing) return `${name} (not in the document)`;
-      return walk(t, d, ind, [...stack, s.$ref]);
+      if (d > 0 && t && typeof t === "object" && (t.properties || t.allOf)) {
+        if (shown.has(s.$ref)) return `${name} (shown above)`;
+        shown.add(s.$ref);
+      }
+      const text = walk(t, d, ind, [...stack, s.$ref]);
+      return d <= 0 && text.startsWith("{ ") ? `${name} ${text}` : text;
     }
     let nullable = s.nullable === true;
     let types = [].concat(s.type ?? []);
@@ -343,7 +353,7 @@ export function shape(spec, schema, { depth = 3, maxLines = 70, maxProps = 40 } 
       const req = new Set([].concat(s.required ?? []));
       const lines = props.slice(0, maxProps).map(([k, v]) => {
         const r = spec.deref(v) ?? {};
-        const about = [r.deprecated ? "deprecated" : "", r.readOnly ? "read only" : "", firstSentence(v?.description ?? r.description, 80)].filter(Boolean).join("; ");
+        const about = [r.deprecated ? "deprecated" : "", r.readOnly ? "read only" : "", firstSentence(v?.description ?? r.description, 64)].filter(Boolean).join("; ");
         return `${ind}  ${/^[\w$-]+$/.test(k) ? k : JSON.stringify(k)}${req.has(k) ? "" : "?"}: ${walk(v, d - 1, `${ind}  `, stack)}${about ? `  // ${about}` : ""}`;
       });
       if (props.length > maxProps) lines.push(`${ind}  +${props.length - maxProps} more: ${props.slice(maxProps, maxProps + 30).map(([k]) => k).join(", ")}`);
@@ -364,9 +374,18 @@ export function shape(spec, schema, { depth = 3, maxLines = 70, maxProps = 40 } 
     }
     return out;
   };
-  const text = walk(schema, depth, "", []);
+  let text = "";
+  let used = depth;
+  for (; used >= 1; used--) {
+    shown = new Set();
+    text = walk(schema, used, "", []);
+    if (text.length <= maxChars && text.split("\n").length <= maxLines) break;
+  }
+  if (used >= 1 && used < depth) return `${text}\n(nested objects are cut to their field names to fit; api.schema(name) spells one out)`;
   const lines = text.split("\n");
-  return lines.length > maxLines ? `${lines.slice(0, maxLines).join("\n")}\n… ${lines.length - maxLines} more lines: ask with a smaller depth, or read one named schema with api.schema(name)` : text;
+  let keep = 0;
+  for (let size = 0; keep < lines.length && keep < maxLines && size + lines[keep].length <= maxChars; keep++) size += lines[keep].length + 1;
+  return keep < lines.length ? `${lines.slice(0, keep).join("\n")}\n… ${lines.length - keep} more lines: ask with a smaller depth, or read one named schema with api.schema(name)` : text;
 }
 
 // ---- finding operations ----
@@ -382,19 +401,25 @@ export const tokens = (s) =>
     .filter(Boolean)
     .map(stem);
 
-const hay = (op) =>
+const hay = (spec, op) =>
   (op.hay ??= {
-    id: new Set(tokens(op.id.includes(" ") ? "" : op.id)),
+    id: tokens(op.id.includes(" ") ? "" : op.id),
     idText: op.id.toLowerCase(),
-    path: new Set(tokens(op.path.replace(/\{[^}]*\}/g, " "))),
-    tags: new Set(tokens(op.tags.join(" "))),
-    summary: new Set(tokens(op.summary)),
-    text: `${op.summary} ${op.description}`.toLowerCase(),
+    path: tokens(op.path.replace(/\{[^}]*\}/g, " ")),
+    tags: tokens(op.tags.join(" ")),
+    summary: tokens(op.summary),
+    // The words of the operation itself, and what the document says its tags are about.
+    text: `${op.summary} ${op.description} ${op.tags.map((t) => spec.tagAbout.get(t) ?? "").join(" ")}`.toLowerCase(),
   });
 
-const weight = (h, t) => Math.max(h.id.has(t) ? 6 : t.length > 2 && h.idText.includes(t) ? 3 : 0, h.path.has(t) ? 5 : 0, h.summary.has(t) ? 4 : 0, h.tags.has(t) ? 3 : 0, t.length > 2 && h.text.includes(t) ? 1 : 0);
+// A word fits a token when they are the same or one starts the other ("repository" and "repo").
+const fits = (list, t) => list.includes(t) || (t.length >= 4 && list.some((x) => x.length >= 4 && (x.startsWith(t) || t.startsWith(x))));
+const weight = (h, t) => Math.max(fits(h.id, t) ? 6 : t.length > 2 && h.idText.includes(t) ? 3 : 0, fits(h.path, t) ? 5 : 0, fits(h.summary, t) ? 5 : 0, fits(h.tags, t) ? 3 : 0, t.length > 2 && h.text.includes(t) ? 1 : 0);
 
-/** Operations ranked by how well they fit some words. With no words, all of them in the document's order. */
+/**
+ * Operations ranked by how well they fit some words. With no words, all of them in the document's
+ * order. The list's `full` is how many hold every word; the ones after those hold only some.
+ */
 export function rank(spec, words, { tag, method } = {}) {
   let pool = spec.ops;
   if (tag) {
@@ -411,29 +436,37 @@ export function rank(spec, words, { tag, method } = {}) {
   const asMethod = /^(get|post|put|patch|delete|head|options)\b/i.exec(q)?.[1]?.toUpperCase();
   const terms = [...new Set(tokens(q))].filter((t) => !STOP.has(t) && !(asMethod && t === asMethod.toLowerCase()));
   if (!terms.length && !asPath) return asMethod ? pool.filter((o) => o.method === asMethod) : pool;
-  const df = terms.map((t) => pool.reduce((n, o) => n + (weight(hay(o), t) > 0 ? 1 : 0), 0));
+  // A word that few operations hold says more than one most of them hold.
+  const df = terms.map((t) => pool.reduce((n, o) => n + (weight(hay(spec, o), t) > 0 ? 1 : 0), 0));
   const scored = [];
   for (const op of pool) {
-    const h = hay(op);
+    const h = hay(spec, op);
     let score = 0;
     let hit = 0;
     terms.forEach((t, k) => {
       const w = weight(h, t);
-      if (w) {
-        hit++;
-        score += w * Math.log(1 + pool.length / (1 + df[k]));
-      }
-      if (VERBS[op.method]?.includes(t)) score += 1.5;
+      const verb = VERBS[op.method]?.includes(t);
+      if (w || verb) hit++;
+      if (w) score += w * Math.log(1 + pool.length / (1 + df[k]));
+      if (verb) score += 2;
     });
-    if (terms.length) score *= 0.4 + 0.6 * (hit / terms.length);
-    if (asPath && op.path.toLowerCase().includes(asPath)) score += 20 + (op.path.toLowerCase() === asPath ? 10 : 0);
+    const onPath = asPath && op.path.toLowerCase().includes(asPath);
+    if (!hit && !onPath) continue;
+    if (terms.length) {
+      // All the words found beats some of them; an operation that is about little else beats one that mentions them in passing.
+      score *= 0.3 + 0.7 * (hit / terms.length) ** 2;
+      const name = (h.summary.length ? h.summary : h.id).filter((x) => !STOP.has(x));
+      if (name.length) score *= 0.6 + 0.4 * (name.filter((x) => fits(terms, x) || VERBS[op.method]?.includes(x)).length / name.length);
+    }
+    if (onPath) score += 20 + (op.path.toLowerCase() === asPath ? 10 : 0);
     if (asMethod && op.method === asMethod) score += 2;
-    if (!hit && !(asPath && op.path.toLowerCase().includes(asPath))) continue;
     if (op.deprecated) score *= 0.7;
-    scored.push([score, op]);
+    scored.push([score, op, onPath || hit === terms.length]);
   }
   scored.sort((a, b) => b[0] - a[0] || a[1].path.length - b[1].path.length || METHODS.indexOf(a[1].method.toLowerCase()) - METHODS.indexOf(b[1].method.toLowerCase()));
-  return scored.map((x) => x[1]);
+  const out = scored.map((x) => x[1]);
+  out.full = scored.filter((x) => x[2]).length;
+  return out;
 }
 
 const matcher = (op) =>
@@ -493,6 +526,6 @@ export function resolveOp(spec, ref) {
   if (same.length === 1) return { op: same[0], how: "exact, ignoring punctuation", pathArgs: {} };
   const part = sq.length > 2 ? spec.ops.filter((o) => !o.id.includes(" ") && squash(o.id).includes(sq)) : [];
   if (part.length === 1) return { op: part[0], how: `"${clip(r, 40)}" is part of ${part[0].id}`, pathArgs: {} };
-  const near = (part.length ? part : rank(spec, r)).slice(0, 6).map((o) => o.id);
+  const near = (part.length ? part : [...rank(spec, r)]).slice(0, 6).map((o) => o.id);
   throw new Error(`${part.length > 1 ? `"${clip(r, 60)}" fits ${part.length} operations` : `no operation "${clip(r, 60)}"`}; ${near.length ? `nearest: ${near.join(", ")}` : "nothing near it"}. api.find(words) lists operations`);
 }

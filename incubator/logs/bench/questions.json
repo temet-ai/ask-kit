@@ -1,0 +1,316 @@
+{
+  "fixture": "bench/fixture holds invented logs of Ankh-Morpork, written by bench/fixture/build.mjs with fixed times: the clacks relay's JSON lines log (a timeout error starts at 21:14:34), the City Watch duty application's Python log (a traceback twice, three lines with credentials), an nginx access log (a burst of 502 from 21:14 to 21:17), a semaphore tower's logfmt log as a rotated set of three files (one gzipped), and a syslog file. Every question is a shot: a script and its params, no model. Run them from the kit's folder, because relative paths resolve against WORKDIR. Windows are counted from the log (\"last-1h\", \"21:14\"), never from the wall clock, except one question that checks what is said when the wall clock is used on a saved log. The syslog file has no year in its lines, so its expectations leave the year open. Each expectation was checked against the fixture files with grep and wc on 2026-11-21. Model questions (`q`) are still to be added from real sessions.",
+  "questions": [
+    {
+      "id": "overview-fixture",
+      "do": "overview",
+      "params": {
+        "dir": "bench/fixture"
+      },
+      "expect": [
+        "5 logs under bench/fixture; most errors: bench/fixture/clacks-relay\\.jsonl \\(52, 14\\.4% of its entries\\)",
+        "clacks-relay\\.jsonl \\| 46\\.0 KB \\| JSON lines \\| 2026-11-08T20:00:00Z to 2026-11-08T22:00:09\\.497Z \\| 362 lines, 362 entries, 52 errors \\(14\\.4%\\), 13 warnings",
+        "tower/semaphore\\.log \\(3 files\\) \\| [\\d.]+ KB \\| logfmt \\| 2026-11-06T06:00:00Z to 2026-11-08T17:48:09Z \\| 181 lines, 181 entries, 18 errors",
+        "watch-app\\.log \\| [\\d.]+ KB \\| python logging \\| .* \\| 103 lines, 91 entries, 3 errors \\(3\\.3%\\), 8 warnings",
+        "access\\.log \\| [\\d.]+ KB \\| web access log, combined \\| .* \\| 301 lines, 301 entries, 11 errors \\(3\\.7%\\), 15 warnings",
+        "gate\\.log \\| [\\d.]+ KB \\| syslog, RFC 3164 \\| .* \\| 24 lines, 24 entries, 3 errors"
+      ]
+    },
+    {
+      "id": "errors-new-in-the-last-hour",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/clacks-relay.jsonl",
+        "since": "last-1h"
+      },
+      "expect": [
+        "3 kinds of error in bench/fixture/clacks-relay\\.jsonl since 2026-11-08T21:00:09\\.497Z, 49 in 180 entries; 2 new in the window",
+        "\"signature\": \"relay failed: timeout after <dur> calling <ip>\",\\s*\"count\": 46,\\s*\"first\": \"2026-11-08T21:14:34\\.059Z\",\\s*\"last\": \"2026-11-08T21:59:28\\.240Z\",\\s*\"levels\": \"error 46\",\\s*\"new\": true",
+        "\"message\": \"relay failed: timeout after 3023ms calling 10\\.0\\.0\\.7:4000\"",
+        "\"line\": 225,\\s*\"file\": \"bench/fixture/clacks-relay\\.jsonl\"",
+        "\"signature\": \"relay failed: checksum mismatch on frame <n> from tower-<n>\",\\s*\"count\": 2,[^}]*\"new\": false",
+        "\"levels\": \"fatal 1\",\\s*\"new\": true"
+      ]
+    },
+    {
+      "id": "errors-stack-trace-is-one-kind",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/watch-app.log"
+      },
+      "expect": [
+        "2 kinds of error in bench/fixture/watch-app\\.log, 3 in 91 entries",
+        "\"signature\": \"watch\\.duty: Unhandled exception while saving roster \\| KeyError: '<str>'\",\\s*\"count\": 2,\\s*\"first\": \"2026-11-08T21:19:59\\.171Z\",\\s*\"last\": \"2026-11-08T21:39:56\\.664Z\"",
+        "File \\\\\"/srv/watch/duty\\.py\\\\\", line 88, in save_roster\\\\n    row = roster\\[badge\\]\\\\nKeyError: 'badge 177'\",\\s*\"line\": 41",
+        "watch\\.clacks: Failed to send report WATCH-<n> to tower-<n>: timeout after <dur> calling <ip> request_id=<\\*>"
+      ]
+    },
+    {
+      "id": "errors-syslog-lines-without-a-level",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/gate.log"
+      },
+      "expect": [
+        "1 kind of error in bench/fixture/gate\\.log, 3 in 24 entries",
+        "\"signature\": \"sshd: Failed password for nobby from <ip> port <n> ssh2\",\\s*\"count\": 3,\\s*\"first\": \"\\d{4}-11-08T21:10:44Z\",\\s*\"last\": \"\\d{4}-11-08T21:18:09Z\",\\s*\"levels\": \"no level 3\"",
+        "syslog, RFC 3164",
+        "\"line\": 9"
+      ]
+    },
+    {
+      "id": "errors-rotated-set-new-on-the-last-day",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/tower/semaphore.log",
+        "since": "2026-11-08"
+      },
+      "expect": [
+        "2 kinds of error in bench/fixture/tower/semaphore\\.log since 2026-11-08T00:00:00Z, 13 in 60 entries; 1 new in the window: \\\\\"lamp oil low\\\\\"",
+        "3 files, oldest first: semaphore\\.log\\.2\\.gz, semaphore\\.log\\.1, semaphore\\.log",
+        "\"signature\": \"shutter jammed: motor stalled after <dur>\",\\s*\"count\": 9,[^}]*\"new\": false",
+        "\"signature\": \"lamp oil low\",\\s*\"count\": 4,[^}]*\"new\": true"
+      ]
+    },
+    {
+      "id": "errors-window-after-a-saved-log-says-so",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/clacks-relay.jsonl",
+        "since": "2h"
+      },
+      "expect": [
+        "no error in bench/fixture/clacks-relay\\.jsonl since .* \\(0 entries in the window\\)",
+        "the log ends at 2026-11-08T22:00:09\\.497Z; for a log that is not being written now, count from its end: since: \\\\\"last-1h\\\\\""
+      ]
+    },
+    {
+      "id": "errors-file-by-part-of-its-name",
+      "do": "errors",
+      "params": {
+        "file": "relay",
+        "top": 1
+      },
+      "expect": [
+        "\\\\\"relay\\\\\" matched bench/fixture/clacks-relay\\.jsonl",
+        "3 kinds of error in bench/fixture/clacks-relay\\.jsonl, 52 in 362 entries; most frequent: \\\\\"relay failed: timeout after <dur> calling <ip>\\\\\" \\(46\\)",
+        "\"leftOut\": 2"
+      ]
+    },
+    {
+      "id": "errors-missing-file-names-what-exists",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/clacks.log"
+      },
+      "expect": [
+        "\"error\": \"no log file bench/fixture/clacks\\.log; have: ",
+        "bench/fixture/clacks-relay\\.jsonl",
+        "bench/fixture/tower/semaphore\\.log"
+      ]
+    },
+    {
+      "id": "timeline-when-the-errors-rose",
+      "do": "timeline",
+      "params": {
+        "file": "bench/fixture/clacks-relay.jsonl"
+      },
+      "expect": [
+        "362 entries, 52 errors and 13 warnings from 2026-11-08T20:00:00Z to 2026-11-08T22:00:09\\.497Z in buckets of 5 min; errors high from 2026-11-08T21:15Z to 2026-11-08T22:00Z \\(47 errors in 9 buckets of 5 min\\); usual per bucket: 15 entries, 0 errors",
+        "\"2026-11-08T21:10Z  15  error 1\"",
+        "\"2026-11-08T21:15Z  15  warn 1  error 5  << high in errors\""
+      ]
+    },
+    {
+      "id": "timeline-of-one-text",
+      "do": "timeline",
+      "params": {
+        "file": "bench/fixture/access.log",
+        "grep": " 502 ",
+        "bucket": "1m"
+      },
+      "expect": [
+        "11 entries, 11 errors and 0 warnings",
+        "errors high from 2026-11-08T21:14Z to 2026-11-08T21:17Z \\(11 errors in 3 buckets of 1 min\\)",
+        "\"2026-11-08T21:16Z  3  error 3  << high in errors\"",
+        "\\(14 empty buckets\\)"
+      ]
+    },
+    {
+      "id": "first-seen-with-what-came-before",
+      "do": "first-seen",
+      "params": {
+        "file": "bench/fixture/clacks-relay.jsonl",
+        "text": "timeout after"
+      },
+      "expect": [
+        "\\\\\"timeout after\\\\\" first appeared at 2026-11-08T21:14:34\\.059Z \\(bench/fixture/clacks-relay\\.jsonl:225\\), 46 times in all, last at 2026-11-08T21:59:28\\.240Z \\(bench/fixture/clacks-relay\\.jsonl:360\\)",
+        "\"signature\": \"relay failed: timeout after <dur> calling <ip>\"",
+        "\"time\": \"2026-11-08T21:14:14\\.414Z\",\\s*\"level\": \"info\",\\s*\"message\": \"message relayed\",\\s*\"line\": 224",
+        "\"2026-11-08T21:00Z  46\""
+      ]
+    },
+    {
+      "id": "first-seen-across-a-rotated-set",
+      "do": "first-seen",
+      "params": {
+        "file": "bench/fixture/tower/semaphore.log",
+        "text": "shutter jammed",
+        "before": 1
+      },
+      "expect": [
+        "first appeared at 2026-11-06T06:49:11Z \\(bench/fixture/tower/semaphore\\.log\\.2\\.gz:5\\), 14 times in all, last at 2026-11-08T14:46:21Z \\(bench/fixture/tower/semaphore\\.log:45\\)",
+        "\"over\": \"per day\"",
+        "\"2026-11-06  2\",\\s*\"2026-11-07  3\",\\s*\"2026-11-08  9\""
+      ]
+    },
+    {
+      "id": "around-a-request-id-across-logs",
+      "do": "around",
+      "params": {
+        "file": "bench/fixture",
+        "id": "req-7f3a"
+      },
+      "expect": [
+        "2 entries hold \\\\\"req-7f3a\\\\\" in 2 files, from 2026-11-08T21:30:58\\.388Z to 2026-11-08T21:31:15\\.972Z",
+        "watch\\.clacks: Failed to send report WATCH-12 to tower-3: timeout after 3003ms calling 10\\.0\\.0\\.7:4000 request_id=req-7f3a\",\\s*\"line\": 69,\\s*\"file\": \"bench/fixture/watch-app\\.log\",\\s*\"hit\": true",
+        "\"request_id\": \"req-7f3a\"\\s*\\},\\s*\"line\": 275,\\s*\"file\": \"bench/fixture/clacks-relay\\.jsonl\"",
+        "\"matches\": 2"
+      ]
+    },
+    {
+      "id": "around-a-line-inside-a-stack-trace",
+      "do": "around",
+      "params": {
+        "file": "bench/fixture/watch-app.log",
+        "line": 44,
+        "before": 1,
+        "after": 1
+      },
+      "expect": [
+        "3 entries around line 44 in bench/fixture/watch-app\\.log",
+        "KeyError: 'badge 177'\",\\s*\"line\": 41,\\s*\"file\": \"bench/fixture/watch-app\\.log\",\\s*\"hit\": true",
+        "\"line\": 40,",
+        "\"line\": 48,"
+      ]
+    },
+    {
+      "id": "around-a-time-merged-in-time-order",
+      "do": "around",
+      "params": {
+        "file": [
+          "bench/fixture/watch-app.log",
+          "bench/fixture/clacks-relay.jsonl"
+        ],
+        "time": "21:31",
+        "before": 1,
+        "after": 1
+      },
+      "expect": [
+        "4 entries around 2026-11-08T21:31:00Z in 2 files, from 2026-11-08T21:30:57\\.758Z to 2026-11-08T21:31:28\\.602Z",
+        "\"line\": 274,\\s*\"file\": \"bench/fixture/clacks-relay\\.jsonl\"[\\s\\S]*\"line\": 69,\\s*\"file\": \"bench/fixture/watch-app\\.log\"[\\s\\S]*\"line\": 275,\\s*\"file\": \"bench/fixture/clacks-relay\\.jsonl\"[\\s\\S]*\"line\": 70,\\s*\"file\": \"bench/fixture/watch-app\\.log\""
+      ]
+    },
+    {
+      "id": "requests-burst-of-502",
+      "do": "requests",
+      "params": {
+        "file": "bench/fixture/access.log"
+      },
+      "expect": [
+        "301 requests from 2026-11-08T21:00:01Z to 2026-11-08T21:29:54Z: 3\\.7% 5xx, 5% 4xx; 11 of the 11 5xx are on POST /clacks/send \\(16\\.9% of its requests\\); failing from 2026-11-08T21:14Z to 2026-11-08T21:16Z \\(buckets of 1 min\\); slowest path POST /clacks/send \\(mean 0\\.555 s, max 3\\.039 s\\)",
+        "\"2xx\": 274,\\s*\"3xx\": 1,\\s*\"4xx\": 15,\\s*\"5xx\": 11",
+        "\"502: 11\"",
+        "\"path\": \"GET /watch/roster/<\\*>\",\\s*\"requests\": 61",
+        "\"path\": \"GET /favicon\\.ico\",\\s*\"4xx\": 15,\\s*\"of\": 15",
+        "\"seconds\": 3\\.039,\\s*\"status\": 502,\\s*\"request\": \"POST /clacks/send\",\\s*\"time\": \"2026-11-08T21:14:44Z\",\\s*\"line\": 150",
+        "\"2026-11-08T21:14Z  10 requests  4 5xx \\(40%\\)  << failing\"",
+        "^(?![\\s\\S]*tok-abcdef123456)"
+      ]
+    },
+    {
+      "id": "compare-before-and-after-a-moment",
+      "do": "compare",
+      "params": {
+        "file": "bench/fixture/clacks-relay.jsonl",
+        "split": "21:14"
+      },
+      "expect": [
+        "entries at warn and above: 2 kinds only in b: \\\\\"relay failed: timeout after <dur> calling <ip>\\\\\" \\(46\\), \\\\\"relay stopped: too many failures: <n> in <dur>\\\\\" \\(1\\); nothing only in a; biggest change: \\\\\"queue depth high\\\\\" 9 to 4",
+        "\"signature\": \"relay failed: checksum mismatch on frame <n> from tower-<n>\",\\s*\"a\": 3,\\s*\"b\": 2,\\s*\"change\": -1",
+        "\"until\": \"2026-11-08T21:14:00Z\""
+      ]
+    },
+    {
+      "id": "compare-two-parts-of-a-rotated-set",
+      "do": "compare",
+      "params": {
+        "a": "bench/fixture/tower/semaphore.log.1",
+        "b": "bench/fixture/tower/semaphore.log",
+        "rotated": false
+      },
+      "expect": [
+        "1 kind only in b: \\\\\"lamp oil low\\\\\" \\(4\\); 1 only in a: \\\\\"fog: visibility <n> yards\\\\\" \\(3\\); biggest change: \\\\\"shutter jammed: motor stalled after <dur>\\\\\" 3 to 9",
+        "\"change\": 6"
+      ]
+    },
+    {
+      "id": "redaction-in-text",
+      "do": "errors",
+      "params": {
+        "file": "bench/fixture/watch-app.log",
+        "level": "debug",
+        "grep": "login ok|Connecting to|POST https"
+      },
+      "expect": [
+        "3 kinds of entry at debug or above",
+        "watch\\.auth: login ok user=vimes password=<redacted> from 10\\.0\\.0\\.12",
+        "watch\\.db: Connecting to postgres://vimes:<redacted>@db\\.example\\.com:5432/watch",
+        "watch\\.http: POST https://clacks\\.example\\.com/v1/send Authorization: <redacted>",
+        "\"signature\": \"watch\\.db: Connecting to postgres://db\\.example\\.com/watch\"",
+        "^(?![\\s\\S]*(ramkin-1|sybil-and-young-sam|gnu-0123456789abcdef))"
+      ]
+    },
+    {
+      "id": "redaction-in-json-fields",
+      "do": "around",
+      "params": {
+        "file": "bench/fixture/clacks-relay.jsonl",
+        "id": "operator login"
+      },
+      "expect": [
+        "1 entry holds \\\\\"operator login\\\\\" in bench/fixture/clacks-relay\\.jsonl, at 2026-11-08T20:39:40\\.839Z",
+        "\"user\": \"adora\\.dearheart\",\\s*\"password\": \"<redacted>\",\\s*\"authorization\": \"<redacted>\"",
+        "\"line\": 120",
+        "^(?![\\s\\S]*(gnu-terry-pratchett|clacks-operator-token-0042))"
+      ]
+    },
+    {
+      "id": "redaction-cannot-be-searched-around",
+      "do": "around",
+      "params": {
+        "file": "bench/fixture",
+        "id": "gnu-terry-pratchett"
+      },
+      "expect": [
+        "nothing in 5 logs matches \\\\\"gnu-terry-pratchett\\\\\"",
+        "\"matches\": 0"
+      ]
+    },
+    {
+      "id": "redaction-in-a-url-query",
+      "do": "around",
+      "params": {
+        "file": "bench/fixture/access.log",
+        "grep": "/watch/login",
+        "before": 0,
+        "after": 0
+      },
+      "expect": [
+        "matches at 2026-11-08T21:01:34Z \\(bench/fixture/access\\.log:17\\); 1 entry around it",
+        "GET /watch/login\\?user=vimes&token=<redacted> HTTP/1\\.1 302 0 0\\.021s from 10\\.0\\.0\\.14",
+        "^(?![\\s\\S]*tok-abcdef123456)"
+      ]
+    }
+  ]
+}

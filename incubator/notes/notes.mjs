@@ -50,14 +50,36 @@ const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)[^\s@/]+@/gi;
 export function safe(line) {
   return String(line).replace(URL_PASSWORD, "$1[redacted]@").replace(SECRET_SHAPE, "[redacted]").replace(SECRET_KV, "$1[redacted]");
 }
-/** Lines made safe; the body of a private key block is dropped. */
-function safeLines(lines) {
+/** A file's lines as they may be returned: the body of a private key block is gone before any line is looked at. */
+function splitLines(text) {
+  const lines = text.split(/\r?\n/);
+  if (!text.includes("PRIVATE KEY-----")) return lines;
   let inKey = false;
   return lines.map((l) => {
     if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(l)) return (inKey = true), "[redacted private key]";
     if (inKey) return /-----END [A-Z ]*PRIVATE KEY-----/.test(l) ? ((inKey = false), "") : "";
-    return safe(l);
+    return l;
   });
+}
+const safeLines = (lines) => lines.map(safe);
+
+/**
+ * Lines from..to (1-based) numbered "N\tline", whole lines only, stopping before `chars` is passed.
+ * A cell's result is clipped at 4000 characters unless the caller raises it, so the default fits.
+ */
+function numbered(lines, from, to, chars) {
+  const out = [];
+  let size = 0;
+  let last = from - 1;
+  const made = safeLines(lines.slice(from - 1, to));
+  for (let i = 0; i < made.length; i++) {
+    const l = `${from + i}\t${clip(made[i], 400)}`;
+    if (out.length && size + l.length + 1 > chars) break;
+    out.push(l);
+    size += l.length + 1;
+    last = from + i;
+  }
+  return { text: out.join("\n"), to: last };
 }
 
 // ---- dates: plain YYYY-MM-DD strings, local time ----
@@ -164,7 +186,7 @@ const prose = (line) => line.replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length)).
  * What the index keeps of one note. Lines are 1-based. Fenced code blocks and inline code are
  * skipped for tags, links, tasks and headings. Short keys, because a large vault makes a large file.
  */
-export function parseNote(text) {
+export function parseNote(text, privateTags = []) {
   const lines = text.split(/\r?\n/);
   const { data, end } = frontMatter(lines);
   const tags = new Set();
@@ -255,7 +277,7 @@ export function parseNote(text) {
     }
   }
   for (const k of ["status", "type", "project", "author", "area"]) if (typeof data[k] === "string" && data[k]) props[k] = clip(data[k], 80);
-  const isPrivate = /^(true|yes|on|1)$/i.test(String(data.private ?? ""));
+  const isPrivate = /^(true|yes|on|1)$/i.test(String(data.private ?? "")) || [...tags].some((t) => privateTags.some((p) => t === p || t.startsWith(`${p}/`)));
   const out = { w: words, e: end };
   if (typeof data.title === "string" && data.title) out.t = clip(data.title, 200);
   const h1 = headings.find((h) => h.v === 1);
@@ -270,7 +292,7 @@ export function parseNote(text) {
   if (c) out.c = c;
   if (u) out.u = u;
   if (Object.keys(props).length) out.pr = props;
-  if (isPrivate) out.p = 1; // a private note keeps no headings and no task text, even in the index
+  if (isPrivate) out.p = 1; // a private note keeps no headings and no task text, even in the index on disk
   else {
     if (headings.length) out.hd = headings;
     if (tasks.length) out.q = tasks;
@@ -416,21 +438,35 @@ function tokens(words) {
   return [...new Set(kept.length ? kept : all)].slice(0, 8);
 }
 const WORD_CHAR = /[\p{L}\p{N}]/u;
-/** How often `w` starts a word in `low` (already lower case), counted up to `cap`. */
+/**
+ * How often the word `w` is in `low` (already lower case), counted up to `cap`. A word of four
+ * letters or more also matches with an ending of up to four letters ("patrol" finds "patrols" and
+ * "patrolled"); a shorter one matches whole ("act" does not find "action"). A word in a script
+ * without spaces between words matches anywhere.
+ */
 function countWord(low, w, cap = 6) {
+  const anywhere = /[^\x00-\x7f]/.test(w);
   let n = 0;
-  for (let at = low.indexOf(w); at >= 0 && n < cap; at = low.indexOf(w, at + w.length)) if (at === 0 || !WORD_CHAR.test(low[at - 1])) n++;
+  for (let at = low.indexOf(w); at >= 0 && n < cap; at = low.indexOf(w, at + w.length)) {
+    if (anywhere) n++;
+    else if (at === 0 || !WORD_CHAR.test(low[at - 1])) {
+      let end = at + w.length;
+      while (end < low.length && end - at - w.length <= 4 && WORD_CHAR.test(low[end])) end++;
+      const tail = end - at - w.length;
+      if (tail === 0 || (w.length >= 4 && tail <= 4)) n++;
+    }
+  }
   return n;
 }
 
 const DECISION_HEAD = /^(decisions?|decided|outcome|resolution|verdict|ruling|what we decided)\b/i;
-const DECISION_LINE = /\b(decided|decision:|we will|we'll|we agreed|agreed (?:to|that)|we chose|chose to|going with|we are going to|settled on|resolved to|ruling:)/i;
+const DECISION_LINE = /\b(decided (?:to|that|on|against|not|in favou?r)|decision:|we will|we'll|we agreed|agreed (?:to|that|on)|we chose|chose to|going with|we are going to|settled on|resolved to|ruling:)/i;
 const REASON = /\b(because|since|so that|reasons?|rationale|why|due to|in order to|otherwise|trade-?offs?)\b/i;
 const REASON_HEAD = /^(why|rationale|reasons?|context|consequences|background)\b/i;
 const ADR_PATH = /(^|[/\s_-])adr[-_ ]?\d+|(^|\/)(decisions?|adrs?|decision[-_ ]records?)\//i;
 const TASK_HEAD = /^(tasks?|to-?dos?|to do|actions?|action items|next( steps| actions)?)\b/i;
 
-function makeVault({ root, settings, push, act, workdir }) {
+function makeVault({ root, settings, push, act, workdir, vaults = new Map() }) {
   const privateTags = String(settings.NOTES_PRIVATE_TAGS ?? "private,secret").split(",").map((t) => t.trim().replace(/^#/, "").toLowerCase()).filter(Boolean);
   const cacheFile = path.join(stateRoot(), "notes", `${path.basename(root).replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 40) || "root"}-${crypto.createHash("sha1").update(root).digest("hex").slice(0, 10)}.json`);
   const note = (kind, detail, started, size) => push?.({ kind, detail: String(detail).slice(0, 200), ms: Date.now() - started, code: 0, size });
@@ -448,7 +484,8 @@ function makeVault({ root, settings, push, act, workdir }) {
       records = new Map();
       try {
         const saved = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
-        if (saved.v === VERSION && saved.root === root) {
+        // The private tags decide what a record may hold, so an index made under other tags is not used.
+        if (saved.v === VERSION && saved.root === root && saved.privateTags === privateTags.join(",")) {
           records = new Map(Object.entries(saved.notes));
           fromCache = true;
         }
@@ -471,16 +508,22 @@ function makeVault({ root, settings, push, act, workdir }) {
       } catch {
         continue;
       }
-      next.set(f.rel, { s: f.size, m: f.mtime, b: f.birth, ...parseNote(text) });
+      next.set(f.rel, { s: f.size, m: f.mtime, b: f.birth, ...parseNote(text, privateTags) });
       parsed++;
     }
     const changed = parsed > 0 || next.size !== records.size;
     records = next;
+    if (!changed && snap) {
+      // Nothing was added, removed or edited since the last look: the notes, names and links built then still hold.
+      Object.assign(snap, { at: Date.now(), walk: w, stats: { parsed: 0, reused, fromCache: false, ms: Date.now() - started } });
+      note("index", `${root}: ${snap.notes.length} notes, unchanged`, started, snap.notes.length);
+      return snap;
+    }
     if (changed) {
       try {
         fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
         const tmp = `${cacheFile}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, root, notes: Object.fromEntries(records) }));
+        fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, root, privateTags: privateTags.join(","), notes: Object.fromEntries(records) }));
         fs.renameSync(tmp, cacheFile);
       } catch {}
     }
@@ -615,10 +658,13 @@ function makeVault({ root, settings, push, act, workdir }) {
     const inbound = new Map(); // rel -> [{from, link}]
     const out = new Map(); // rel -> [{link, to}]
     const unresolved = [];
+    const names = maps(s).byName;
     for (const n of s.notes) {
       const mine = [];
       for (const k of n.links) {
-        const r = resolveExact(s, k.t, n);
+        // Most links are a bare file name that one note has: that needs no path work.
+        const only = k.r ? null : names.get(k.t.toLowerCase());
+        const r = only?.length === 1 ? { note: only[0] } : resolveExact(s, k.t, n);
         const ext = path.posix.extname(k.t).toLowerCase();
         const attachment = !r && /^\.[a-z0-9]{2,5}$/.test(ext) && !NOTE_EXT.has(ext);
         if (attachment) continue;
@@ -646,7 +692,7 @@ function makeVault({ root, settings, push, act, workdir }) {
       return null;
     }
     note("read", n.rel, started, text.length);
-    return text.split(/\r?\n/);
+    return splitLines(text);
   }
   const headingAt = (n, line) => {
     let h = null;
@@ -693,13 +739,12 @@ function makeVault({ root, settings, push, act, workdir }) {
       const s = load();
       const g = graph(s);
       const tasks = s.open.flatMap((n) => n.tasks);
-      const tags = new Set(s.open.flatMap((n) => n.tags));
       const days = s.open.map((n) => n.day).sort();
       return {
         root,
         notes: s.notes.length,
         words: s.open.reduce((a, n) => a + n.words, 0),
-        tags: tags.size,
+        tags: api.tags({ max: 1 }).total,
         links: s.open.reduce((a, n) => a + n.links.length, 0),
         unresolvedLinks: g.unresolved.filter((u) => !u.from.private).length,
         tasks: { open: tasks.filter((t) => t.s === " ").length, done: tasks.filter((t) => t.s === "x").length, cancelled: tasks.filter((t) => t.s === "-").length },
@@ -725,7 +770,8 @@ function makeVault({ root, settings, push, act, workdir }) {
       const today = todayOf(o.today);
       const s = load();
       const list = pool(s, o, today);
-      const max = Math.max(1, Math.min(Number(o.max ?? 8), 30));
+      const max = Math.max(1, Math.min(Number(o.max ?? 6), 30));
+      const perNote = Math.max(1, Math.min(Number(o.passages ?? 2), 8));
       const started = Date.now();
       const df = q.map(() => 0);
       const hits = [];
@@ -762,9 +808,10 @@ function makeVault({ root, settings, push, act, workdir }) {
         for (let i = h.n.fmEnd; i < lines.length; i++) {
           const low = lines[i].toLowerCase();
           const k = q.reduce((a, w, j) => a + (countWord(low, w, 1) ? idf[j] : 0), 0);
-          if (k) scored.push({ i, k: k + (/^\s*#{1,6}\s/.test(lines[i]) ? 0.01 : 0) });
+          // The title line repeats what the row already says; a passage is a line of the text.
+          if (k && !(h.n.h1 && /^\s*#\s/.test(lines[i]))) scored.push({ i, k });
         }
-        const best = scored.sort((a, b) => b.k - a.k || a.i - b.i).slice(0, 3).sort((a, b) => a.i - b.i);
+        const best = scored.sort((a, b) => b.k - a.k || a.i - b.i).slice(0, perNote).sort((a, b) => a.i - b.i);
         return {
           ...row(h.n),
           score: h.score,
@@ -779,6 +826,7 @@ function makeVault({ root, settings, push, act, workdir }) {
         words: q,
         notes,
         total: hits.length,
+        withEveryWord: hits.filter((h) => h.matched === q.length).length,
         ...(hits.length > max ? { leftOut: hits.length - max } : {}),
         searched: list.length,
         ...(hiddenHits.length ? { privateNotesWithTheWordInTheirTitle: hiddenHits.slice(0, 10) } : {}),
@@ -810,7 +858,7 @@ function makeVault({ root, settings, push, act, workdir }) {
           re.lastIndex = 0;
           continue;
         }
-        const lines = text.split(/\r?\n/);
+        const lines = splitLines(text);
         for (let i = n.fmEnd; i < lines.length; i++) {
           re.lastIndex = 0;
           if (!re.test(lines[i].slice(0, 2000))) continue;
@@ -845,11 +893,11 @@ function makeVault({ root, settings, push, act, workdir }) {
         to = next ? next.l - 1 : lines.length;
         section = h.x;
       }
-      const maxLines = Math.max(1, Math.min(Number(o.max ?? 200), 400));
-      to = Math.min(to, lines.length, from + maxLines - 1);
-      let text = safeLines(lines.slice(from - 1, to)).map((l, i) => `${from + i}\t${clip(l, 400)}`).join("\n");
-      const cut = text.length > 14_000;
-      if (cut) text = text.slice(0, 14_000);
+      const maxLines = Math.max(1, Math.min(Number(o.max ?? 120), 400));
+      const wanted = Math.min(to, lines.length);
+      const part = numbered(lines, from, Math.min(wanted, from + maxLines - 1), Math.max(200, Math.min(Number(o.chars ?? 2600), 40_000)));
+      to = part.to;
+      const text = part.text;
       const g = graph(s);
       return {
         found: true,
@@ -864,15 +912,15 @@ function makeVault({ root, settings, push, act, workdir }) {
         ...(n.tags.length ? { tags: n.tags } : {}),
         ...(Object.keys(n.props).length ? { properties: n.props } : {}),
         words: n.words,
-        headings: n.headings.slice(0, 40).map((h) => ({ line: h.l, level: h.v, text: h.x })),
+        headings: n.headings.slice(0, 30).map((h) => `${h.l} ${"#".repeat(h.v)} ${clip(h.x, 80)}`),
+        ...(n.headings.length > 30 ? { headingsLeftOut: n.headings.length - 30 } : {}),
         tasks: { open: n.tasks.filter((t) => t.s === " ").length, done: n.tasks.filter((t) => t.s === "x").length },
         links: { out: (g.out.get(n.rel) ?? []).length, in: (g.inbound.get(n.rel) ?? []).length },
         ...(section ? { section } : {}),
         lines: lines.length,
         from,
         to,
-        ...(to < lines.length && !section ? { more: `lines ${to + 1} to ${lines.length}: notes.note(name, { from: ${to + 1} })` } : {}),
-        ...(cut ? { clipped: true } : {}),
+        ...(to < wanted ? { more: `lines ${to + 1} to ${wanted} are not shown: notes.note(${JSON.stringify(n.rel)}, { from: ${to + 1}${section ? `, to: ${wanted}` : ""} })` } : {}),
         text,
       };
     },
@@ -1056,7 +1104,8 @@ function makeVault({ root, settings, push, act, workdir }) {
       }
       if (n.private) return { date: day, exists: true, private: true, title: n.title };
       const lines = readLines(n) ?? [];
-      const max = Math.max(1, Math.min(Number(o.max ?? 200), 400));
+      const max = Math.max(1, Math.min(Number(o.max ?? 120), 400));
+      const part = numbered(lines, 1, Math.min(lines.length, max), Math.max(200, Math.min(Number(o.chars ?? 2400), 40_000)));
       return {
         date: day,
         weekday: DOW[weekday(day)],
@@ -1064,11 +1113,12 @@ function makeVault({ root, settings, push, act, workdir }) {
         path: n.rel,
         words: n.words,
         ...(n.tags.length ? { tags: n.tags } : {}),
-        tasks: n.tasks.map((t) => ({ line: t.l, text: safe(t.x), done: t.s === "x", ...(t.d ? { due: t.d } : {}) })),
-        links: [...new Set(n.links.map((k) => k.t))].slice(0, 30),
+        tasks: { open: n.tasks.filter((t) => t.s === " ").length, done: n.tasks.filter((t) => t.s === "x").length },
+        openTasks: n.tasks.filter((t) => t.s === " ").slice(0, 12).map((t) => ({ line: t.l, text: clip(safe(t.x), 160), ...(t.d ? { due: t.d } : {}) })),
+        links: [...new Set(n.links.map((k) => path.posix.basename(k.t).replace(/\.(md|markdown|txt)$/i, "")))].slice(0, 20),
         lines: lines.length,
-        ...(lines.length > max ? { more: `lines ${max + 1} to ${lines.length}: notes.note("${n.rel}", { from: ${max + 1} })` } : {}),
-        text: safeLines(lines.slice(0, max)).map((l, i) => `${i + 1}\t${clip(l, 400)}`).join("\n").slice(0, 14_000),
+        ...(part.to < lines.length ? { more: `lines ${part.to + 1} to ${lines.length} are not shown: notes.note(${JSON.stringify(n.rel)}, { from: ${part.to + 1} })` } : {}),
+        text: part.text,
       };
     },
 
@@ -1084,7 +1134,7 @@ function makeVault({ root, settings, push, act, workdir }) {
         since,
         until,
         pattern: s.daily.pattern,
-        days: days.slice(-max).map((n) => (n.private ? { date: n.dailyDay, private: true } : { date: n.dailyDay, weekday: DOW[weekday(n.dailyDay)], path: n.rel, words: n.words, headings: n.headings.slice(0, 8).map((h) => h.x), tasksOpen: n.tasks.filter((t) => t.s === " ").length, tasksDone: n.tasks.filter((t) => t.s === "x").length, links: [...new Set(n.links.map((k) => k.t))].slice(0, 12) })),
+        days: days.slice(-max).map((n) => (n.private ? { date: n.dailyDay, private: true } : { date: n.dailyDay, weekday: DOW[weekday(n.dailyDay)], path: n.rel, words: n.words, headings: n.headings.slice(0, 8).map((h) => h.x), tasksOpen: n.tasks.filter((t) => t.s === " ").length, tasksDone: n.tasks.filter((t) => t.s === "x").length, links: [...new Set(n.links.map((k) => path.posix.basename(k.t).replace(/\.(md|markdown|txt)$/i, "")))].slice(0, 12) })),
         total: days.length,
         ...(days.length > max ? { leftOut: days.length - max } : {}),
       };
@@ -1150,7 +1200,7 @@ function makeVault({ root, settings, push, act, workdir }) {
         const low = text.toLowerCase();
         const head = `${n.name} ${n.title} ${n.aliases.join(" ")} ${n.tags.join(" ")}`.toLowerCase();
         if (q.length && !q.every((w) => countWord(low, w, 1) || countWord(head, w, 1))) continue;
-        const lines = text.split(/\r?\n/);
+        const lines = splitLines(text);
         const sectionEnd = (h) => (n.headings.find((x) => x.l > h.l && x.v <= h.v)?.l ?? lines.length + 1) - 1;
         const body = (from, to, max) => {
           const out = [];
@@ -1158,31 +1208,35 @@ function makeVault({ root, settings, push, act, workdir }) {
           return out;
         };
         const covered = [];
-        const add = (line, heading, decision, reasons) => {
+        const add = (line, heading, decision, reasons, loose = false) => {
           const near = `${decision.map((d) => d.text).join(" ")} ${reasons.map((r) => r.text).join(" ")} ${heading ?? ""}`.toLowerCase();
           const onIt = q.filter((w) => countWord(near, w, 1)).length;
           const inHead = q.filter((w) => countWord(head, w, 1)).length;
+          // A loose line that says "decided" in a note that only mentions the topic elsewhere is another decision.
+          if (loose && q.length && !onIt && !inHead) return;
           found.push({ n, line, heading, decision, reasons, rank: q.length ? onIt * 3 + inHead * 2 + (adr ? 1 : 0) : 0, on: q.length ? (onIt === q.length ? "the decision" : onIt || inHead ? "the decision and the note" : "the note") : undefined });
         };
         for (const h of n.headings) {
           if (!DECISION_HEAD.test(h.x)) continue;
           const end = sectionEnd(h);
           covered.push([h.l, end]);
-          const decision = body(h.l + 1, end, 4);
-          if (!decision.length) continue;
-          const reasons = [];
-          for (let i = h.l + 1; i <= end && reasons.length < 3; i++) if (REASON.test(lines[i - 1] ?? "") && !decision.some((d) => d.line === i)) reasons.push({ line: i, text: clip(safe(lines[i - 1].trim())) });
+          const section = body(h.l + 1, end, 6);
+          if (!section.length) continue;
+          // The first line is the decision; a later line that gives a reason is a reason.
+          const decision = [section[0], ...section.slice(1).filter((x) => !REASON.test(x.text))].slice(0, 3);
+          const reasons = section.slice(1).filter((x) => REASON.test(x.text));
           for (const r of n.headings) if (r !== h && REASON_HEAD.test(r.x) && reasons.length < 5) reasons.push(...body(r.l + 1, sectionEnd(r), 2).map((x) => ({ ...x, under: r.x })));
-          add(h.l, h.x, decision, reasons.slice(0, 5));
+          add(decision[0].line, h.x, decision, reasons.slice(0, 5));
         }
         let fence = false;
         for (let i = n.fmEnd; i < lines.length; i++) {
           if (/^\s*(```|~~~)/.test(lines[i])) fence = !fence;
-          if (fence || !DECISION_LINE.test(lines[i]) || /^\s*#{1,6}\s/.test(lines[i])) continue;
+          // Not a heading, not a table row, not a quote of someone else's words.
+          if (fence || !DECISION_LINE.test(lines[i]) || /^\s*(#{1,6}\s|\||>)/.test(lines[i])) continue;
           if (covered.some(([a, b]) => i + 1 >= a && i + 1 <= b)) continue;
           const reasons = [];
           for (let j = Math.max(n.fmEnd, i - 2); j <= Math.min(lines.length - 1, i + 5) && reasons.length < 3; j++) if (j !== i && REASON.test(lines[j]) && !/^\s*#{1,6}\s/.test(lines[j])) reasons.push({ line: j + 1, text: clip(safe(lines[j].trim())) });
-          add(i + 1, headingAt(n, i + 1), [{ line: i + 1, text: clip(safe(lines[i].trim())) }], reasons);
+          add(i + 1, headingAt(n, i + 1), [{ line: i + 1, text: clip(safe(lines[i].trim())) }], reasons, true);
         }
         if (adr && found.length === before) {
           const why = n.headings.filter((r) => REASON_HEAD.test(r.x)).flatMap((r) => body(r.l + 1, sectionEnd(r), 2).map((x) => ({ ...x, under: r.x })));
@@ -1205,6 +1259,7 @@ function makeVault({ root, settings, push, act, workdir }) {
           heading: f.heading,
           decision: f.decision.map((d) => d.text).join(" / "),
           reasons: f.reasons,
+          ...(!f.reasons.length && f.decision.some((d) => REASON.test(d.text)) ? { reasonIsOnTheLine: true } : {}),
           ...(f.on ? { topicIsIn: f.on } : {}),
         })),
         total: found.length,
@@ -1227,7 +1282,7 @@ function makeVault({ root, settings, push, act, workdir }) {
       seps.push(parts[i + 1] ?? "");
     }
     const eol = seps.find(Boolean) ?? "\n";
-    return { rel, lines, seps, eol, parsed: parseNote(text) };
+    return { rel, lines, seps, eol, parsed: parseNote(text, privateTags) };
   }
   const saveDoc = (doc) => {
     const started = Date.now();
@@ -1304,7 +1359,7 @@ function makeVault({ root, settings, push, act, workdir }) {
   }
 
   const changed = (rel, r, extra) => {
-    const fresh = fs.readFileSync(path.join(root, rel), "utf8").split(/\r?\n/);
+    const fresh = splitLines(fs.readFileSync(path.join(root, rel), "utf8"));
     const from = Math.max(1, extra.line - 1);
     return { changed: true, path: rel, ...(r ? { matchedBy: r.how } : {}), ...extra, now: safeLines(fresh.slice(from - 1, extra.line + (extra.added ?? 1))).map((l, i) => `${from + i}\t${clip(l, 300)}`).join("\n") };
   };
@@ -1441,7 +1496,10 @@ function makeVault({ root, settings, push, act, workdir }) {
   api.at = (dir) => {
     if (!dir || typeof dir !== "string") throw new Error("at needs a folder");
     const other = path.resolve(workdir, expand(dir));
-    return other === root ? api : makeVault({ root: other, settings: { ...settings, NOTES_DAILY: "" }, push, act, workdir });
+    if (other === root) return api;
+    // NOTES_DAILY describes the main folder; another folder's daily notes are found from its own files.
+    if (!vaults.has(other)) vaults.set(other, makeVault({ root: other, settings: { ...settings, NOTES_DAILY: "" }, push, act, workdir, vaults }));
+    return vaults.get(other);
   };
   return api;
 }

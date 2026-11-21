@@ -1,0 +1,45 @@
+id = "temet.logs"
+name = "logs"
+version = "0.1.0"
+min_ask_kit = "0.3.0"
+says = "what a log file or a folder of log files says: which errors there are and which happen most, when an error first appeared and how often since, what happened around a time, a line or a request id, how the rate of entries and errors changed over time, what an nginx or Apache access log shows (status codes, failing and slow paths), what differs between two logs or two periods; for app logs, JSON lines, logfmt, syslog, access logs, gzip and rotated files"
+keywords = ["logs?", "log files?", "logfile", "\\.log\\b", "access log", "error log", "nginx log", "apache log", "syslog", "/var/log", "stack ?traces?", "tracebacks?", "request id", "5xx", "502", "status codes?", "error rate", "spike", "first (appear|seen|occur)", "tail", "jsonl log", "rotated"]
+route_hint = "What a log file or a folder of log files says (errors, when, how often, around a time or a request id) is logs; a systemd unit's journal is systemd; a container's logs are docker; test output is tests; what a past agent session did is sessions; a CSV or other data file is data"
+cite = "the file, the line number and the timestamp of the entry"
+instructions = "instructions.md"
+bench = "bench/questions.json"
+
+[[settings]]
+key = "WORKDIR"
+about = "the folder questions are about; by default the folder the agent runs in"
+detect = ["node", "-e", "process.stdout.write(process.cwd())"]
+
+[[settings]]
+key = "LOGS_DIRS"
+about = "folders or files to look for logs in when none is named, comma-separated; default: the logs and log folders under the agent's folder, and /var/log on Linux and macOS"
+default = ""
+
+[[settings]]
+key = "LOGS_UTC_OFFSET"
+about = "the zone of timestamps written without one, such as +02:00; default +00:00 (UTC)"
+default = ""
+
+[[sources]]
+kind = "module"
+name = "logs"
+module = "logs.mjs"
+api = "api.d.ts"
+
+[[actions]]
+name = "files"
+title = "Which log files there are"
+script = "overview"
+match = ['(?:what|which) log ?files (?:are|do we have|are there|exist)(?: (?:here|in (?:this|the) (?:folder|repo|repository|project|directory)))?', '(?:list|show)(?: me)?(?: all)?(?: the)? log ?files(?: (?:here|in (?:this|the) (?:folder|repo|repository|project|directory)))?']
+expect = '"logs"'
+
+[[actions]]
+name = "errors"
+title = "The errors in a log file"
+script = "errors"
+match = ['(?:what|which) errors (?:are|were)(?: there)? in (?<file>[\w./\\-]+\.(?:log|out|err|jsonl|ndjson)(?:\.\d+)?(?:\.gz)?)', '(?:are there |any )errors in (?<file>[\w./\\-]+\.(?:log|out|err|jsonl|ndjson)(?:\.\d+)?(?:\.gz)?)', '(?:summari[sz]e|show|list)(?: me)?(?: the)? errors in (?<file>[\w./\\-]+\.(?:log|out|err|jsonl|ndjson)(?:\.\d+)?(?:\.gz)?)']
+expect = '"kinds"'

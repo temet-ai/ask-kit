@@ -1,8 +1,9 @@
 // A YAML reader for OpenAPI documents, with no dependency. It covers what such documents use:
 // block maps and lists, plain, single-quoted and double-quoted scalars (also over several lines),
 // block scalars (| and >, with chomping and an indentation digit), flow lists and maps, comments,
-// anchors, aliases and the merge key (<<). It reads the first document of a file.
-// Not covered: complex keys (? ), tags other than !!str, tabs as indentation.
+// anchors, aliases, the merge key (<<) and a long key written as `? key` then `: value`. It reads
+// the first document of a file.
+// Not covered: a list or a map as a key, tags other than !!str, tabs as indentation.
 // Scalars follow the YAML 1.2 core schema, so `yes` and `no` are strings.
 // Errors name a line and never quote the file: a file that is not a spec may hold anything.
 
@@ -68,7 +69,9 @@ export function parseYaml(input) {
   let text = String(input);
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const lines = text.split(/\r?\n/);
-  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  const endsWithBreak = lines.length > 1 && lines[lines.length - 1] === "";
+  if (endsWithBreak) lines.pop();
+  const last = lines.length;
   let N = lines.length;
   let i = 0;
   const anchors = new Map();
@@ -91,6 +94,7 @@ export function parseYaml(input) {
     while (i < N && blank(lines[i])) i++;
   };
   const isEntry = (s, n) => s.charCodeAt(n) === 45 && (n + 1 === s.length || s.charCodeAt(n + 1) === SP);
+  const isLongKey = (s, n) => s.charCodeAt(n) === 63 && s.charCodeAt(n + 1) === SP;
 
   /** The index of the colon that ends a key starting at column n, or -1 when the line is not `key: ...`. */
   function keyEnd(line, n) {
@@ -128,23 +132,49 @@ export function parseYaml(input) {
   function nodeAt(n, parent) {
     const line = lines[i];
     if (isEntry(line, n)) return seq(n);
-    if (line.charCodeAt(n) === 63 && line.charCodeAt(n + 1) === SP) fail("complex keys (? ) are not supported");
-    if (keyEnd(line, n) >= 0) return map(n);
+    if (isLongKey(line, n) || keyEnd(line, n) >= 0) return map(n);
     return inline(line.slice(n), parent);
+  }
+
+  /**
+   * `? key` on one line and `: value` on the next: how a writer puts a key too long for `key: value`
+   * (a long path). Only a scalar key on one line is read; a list or a map as a key is refused.
+   */
+  function longKey(n) {
+    const line = lines[i];
+    const text = stripComment(line.slice(n + 2).trim());
+    const c = text.charCodeAt(0);
+    if (!text || c === 91 || c === 123 || c === 45 || c === 124 || c === 62) fail("a key that is a list, a map or a block is not supported");
+    const key = c === 34 || c === 39 ? unquote(text.slice(1, -1), c) : text;
+    i++;
+    skip();
+    if (i >= N || indentOf(lines[i]) !== n || lines[i].charCodeAt(n) !== 58) return [key, null];
+    const after = lines[i].slice(n + 1);
+    const rest = after.trim();
+    if (rest === "" || rest.charCodeAt(0) === 35) {
+      i++;
+      return [key, block(n)];
+    }
+    // The value stands where it would under `key:` on a line of its own.
+    const k = n + 1 + (after.length - after.trimStart().length);
+    lines[i] = " ".repeat(k) + rest;
+    return [key, nodeAt(k, n)];
   }
 
   function map(n) {
     const out = {};
     while (i < N) {
       const line = lines[i];
-      const j = keyEnd(line, n);
-      if (j < 0) fail("a key was expected here");
+      const long = isLongKey(line, n);
+      const j = long ? -1 : keyEnd(line, n);
+      if (j < 0 && !long) fail("a key was expected here");
       const c = line.charCodeAt(n);
-      let key = line.slice(n, j).trimEnd();
-      if (c === 34 || c === 39) key = unquote(key.slice(1, -1), c);
-      let rest = line.slice(j + 1).trim();
+      let key = long ? null : line.slice(n, j).trimEnd();
+      if (!long && (c === 34 || c === 39)) key = unquote(key.slice(1, -1), c);
+      let rest = long ? "" : line.slice(j + 1).trim();
       let v;
-      if (rest === "" || rest.charCodeAt(0) === 35) {
+      if (long) [key, v] = longKey(n);
+      else if (rest === "" || rest.charCodeAt(0) === 35) {
         i++;
         skip();
         v = null;
@@ -334,6 +364,8 @@ export function parseYaml(input) {
     }
     if (!out.length) return chomp === "+" ? "\n".repeat(trail) : "";
     if (chomp === "-") return body;
+    // A file that stops in the middle of its last line has no line break there to keep.
+    if (i >= last && !endsWithBreak && trail === 0) return body;
     return body + (chomp === "+" ? "\n".repeat(trail + 1) : "\n");
   }
 
@@ -400,8 +432,15 @@ export function parseYaml(input) {
             p++;
             return a;
           }
-          a.push(one(false));
+          let v = one(false);
           ws();
+          if (t.charCodeAt(p) === 58) {
+            // `[a: 1]` is a list holding the map {a: 1}.
+            p++;
+            v = { [String(v)]: one(false) };
+            ws();
+          }
+          a.push(v);
           if (t.charCodeAt(p) === 44) p++;
           else if (t.charCodeAt(p) !== 93) fail("a , or ] was expected in a flow list", at);
         }

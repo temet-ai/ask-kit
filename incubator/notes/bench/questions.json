@@ -1,0 +1,89 @@
+{
+  "about": "Shots against bench/fixture/vault, Sam Vimes's working notes on the Watch, with today fixed at 2026-11-08. No model is called. Run from the kit's folder, because the vault path is relative. Questions for a model (q) are still to be added from real sessions.",
+  "questions": [
+    {
+      "id": "find-ledger",
+      "do": "find",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "words": "clacks ledger" },
+      "expect": ["best: cases/WATCH-12 Missing clacks ledger\\.md \\(2026-11-04\\)", "\"line\": 14", "signed out at two bells", "\"searched\": 16", "^(?![\\s\\S]*(Oblong Office|Misbegot Bridge|gnu-terry-pratchett|octarine))"]
+    },
+    {
+      "id": "find-equal-rank-newest-first",
+      "do": "find",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "words": "boots" },
+      "expect": ["4 of 16 notes hold boots; best: Boots theory\\.md \\(2026-10-09\\)", "daily/2026-11-07\\.md[\\s\\S]*daily/2026-11-05\\.md[\\s\\S]*people/Sam Vimes\\.md"]
+    },
+    {
+      "id": "decided-night-patrols",
+      "do": "decided",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "topic": "night patrols" },
+      "expect": ["1 decision on night patrols; best: decisions/ADR-001 Night patrols in pairs\\.md:14 \\(2026-10-14\\)", "go in pairs, and no officer walks Elm Street alone", "A lone officer in the Shades is a target", "\"status\": \"accepted\""]
+    },
+    {
+      "id": "decided-warrant-reason",
+      "do": "decided",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "topic": "warrant" },
+      "expect": ["WATCH-12 Missing clacks ledger\\.md:20", "We will not search the Guild of Engravers without a warrant", "\"line\": 21", "Because Vetinari wants the guilds kept calm"]
+    },
+    {
+      "id": "tasks-open",
+      "do": "tasks",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08" },
+      "expect": ["10 open tasks: 2 overdue \\(oldest due 2026-10-30\\), 3 with no due date", "\"group\": \"overdue\"[\\s\\S]*petty cash tin[\\s\\S]*Interview the night clerk[\\s\\S]*\"group\": \"due today\"[\\s\\S]*Post the rota", "\"due\": \"2026-11-20\"", "^(?![\\s\\S]*(task in the bin|nor is this a task|Ask him nothing))"]
+    },
+    {
+      "id": "tasks-one-note",
+      "do": "tasks",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "note": "WATCH-12", "state": "all" },
+      "expect": ["3 open tasks in cases/WATCH-12 Missing clacks ledger\\.md: 1 overdue", "\"matchedBy\": \"alias\"", "\"doneOn\": \"2026-11-05\"", "\"total\": 4"]
+    },
+    {
+      "id": "recent-week",
+      "do": "recent",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "since": "week" },
+      "expect": ["6 notes from 2026-11-02 to 2026-11-08: 6 created, 0 changed, on 6 days", "\"day\": \"2026-11-08\"[\\s\\S]*\"day\": \"2026-11-04\"[\\s\\S]*\"day\": \"2026-11-02\"", "Rota\\.md", "^(?![\\s\\S]*file time)"]
+    },
+    {
+      "id": "links-vimes",
+      "do": "links",
+      "params": { "vault": "bench/fixture/vault", "note": "Vimes" },
+      "expect": ["people/Sam Vimes\\.md \\(matched by alias\\): 2 links in from 2 notes and 1 private, 1 out, 0 to notes that do not exist", "\"fromPrivateNotes\": \\[\\s*\"Havelock Vetinari\"", "which \\[\\[Sam Vimes\\|Vimes\\]\\] accepted", "\"line\": 19", "^(?![\\s\\S]*(Old rota|Oblong Office))"]
+    },
+    {
+      "id": "links-unresolved-and-embed",
+      "do": "links",
+      "params": { "vault": "bench/fixture/vault", "note": "rota" },
+      "expect": ["1 to notes that do not exist \\(Detritus\\)", "\"embed\": true", "\"resolved\": \"reference/Clacks codes\\.md\"", "\"resolved\": null"]
+    },
+    {
+      "id": "daily-yesterday",
+      "do": "daily",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "date": "yesterday" },
+      "expect": ["daily/2026-11-07\\.md \\(Saturday\\): 41 words, 0 tasks, 0 open", "Walked the Shades with", "\"exists\": true"]
+    },
+    {
+      "id": "daily-missing-day",
+      "do": "daily",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08", "date": "2026-11-01" },
+      "expect": ["no daily note for 2026-11-01 \\(Sunday\\); it would be daily/2026-11-01\\.md", "\"after\": \"2026-11-05\"", "\\.obsidian/daily-notes\\.json"]
+    },
+    {
+      "id": "tags-all",
+      "do": "tags",
+      "params": { "vault": "bench/fixture/vault" },
+      "expect": ["12 tags; most used: watch \\(6\\), person \\(4\\), watch/officer \\(4\\), case \\(3\\), case/open \\(2\\)", "^(?![\\s\\S]*(urgent|not-a-tag|trashed|\"secret\"))"]
+    },
+    {
+      "id": "tags-nested",
+      "do": "tags",
+      "params": { "vault": "bench/fixture/vault", "tag": "#case" },
+      "expect": ["3 notes tagged case; newest: daily/2026-11-05\\.md \\(2026-11-05\\)", "case/closed", "WATCH-7 Theft at the Royal Mint\\.md"]
+    },
+    {
+      "id": "overview",
+      "do": "overview",
+      "params": { "vault": "bench/fixture/vault", "today": "2026-11-08" },
+      "expect": ["18 notes, 1005 words, 2026-10-01 to 2026-11-08; 10 open tasks \\(2 overdue\\), 5 done; 1 with nothing linking to them, 1 missing notes linked to; 2 private", "\"target\": \"Detritus\",\\s*\"count\": 2", "\"path\": \"Boots theory\\.md\"", "\"titles\": \\[\\s*\"Informants\",\\s*\"Havelock Vetinari\"", "\"credentialNamed\": 1", "\"attachments\": 1", "\"path\": \"people/Angua\\.md\",\\s*\"linkedFrom\": 5", "Rota\\.md:11, Watch\\.md:17", "^(?![\\s\\S]*Ghost note)"]
+    }
+  ]
+}
