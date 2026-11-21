@@ -14,7 +14,7 @@
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|mesh|commons|set|enable|disable   kits
+//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|mesh|commons|set|log|config-dir|enable|disable   kits
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -574,6 +574,57 @@ async function kitCommand() {
       if (pairs.length || unset.length) console.log("\n`ask` uses the new values on its next call.");
       return;
     }
+    case "config-dir": {
+      // Every folder and file ask-kit keeps for a kit.
+      const name = positional[1];
+      if (!name) throw new Error("kit config-dir needs a kit's name");
+      const dir = kits.findKit(name);
+      if (!dir) throw new Error(`no kit ${name}; ask-kit kit list shows them`);
+      const { STATE_ROOT } = await import("../src/config.mjs");
+      const own = path.join(CONFIG_DIR, "kits", name);
+      let link = null;
+      try {
+        if (fs.lstatSync(own).isSymbolicLink()) link = fs.readlinkSync(own);
+      } catch {}
+      const there = (p) => (fs.existsSync(p) ? p : null);
+      return print({ kit: dir, ...(link ? { linkedFrom: link } : {}), config: `${path.join(CONFIG_DIR, "config.json")} (domains.${name})`, journals: there(path.join(STATE_ROOT, name)), generated: there(path.join(STATE_ROOT, "kits", name)), data: there(kits.kitStateDir(name)), actionLog: there(path.join(STATE_ROOT, "actions", `${name}.jsonl`)) });
+    }
+    case "log": {
+      // A kit's recent asks from its journals, newest first.
+      const name = positional[1];
+      if (!name) throw new Error("kit log needs a kit's name");
+      const { STATE_ROOT } = await import("../src/config.mjs");
+      const root = path.join(STATE_ROOT, name);
+      const rows = [];
+      const read = (d) => {
+        let entries = [];
+        try {
+          entries = fs.readdirSync(d, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const e of entries) {
+          const p = path.join(d, e.name);
+          if (e.isDirectory() && e.name !== "drafts" && e.name !== "warm") read(p);
+          else if (e.name.endsWith(".jsonl"))
+            for (const l of fs.readFileSync(p, "utf8").split("\n")) {
+              try {
+                const r = JSON.parse(l);
+                if (r.type === "ask") rows.push(r);
+              } catch {}
+            }
+        }
+      };
+      read(root);
+      rows.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+      const limit = Number(flag("limit")) || 20;
+      const out = rows.slice(0, limit).map((r) => ({ at: r.ts, ok: r.ok !== false, ...(r.shot ? { shot: r.do } : { backend: r.backend }), seconds: r.ms != null ? Math.round(r.ms / 100) / 10 : null, ...(r.costUsd != null ? { costUsd: r.costUsd } : {}), ...(r.cells != null ? { cells: r.cells } : {}), ...(r.act ? { act: true } : {}), question: String(r.question ?? "").slice(0, 160), ...(r.error ? { error: String(r.error).slice(0, 160) } : {}) }));
+      if (flag("json")) return print(out);
+      if (!out.length) return console.log(`no asks of ${name} are journaled under ${root}`);
+      for (const r of out) console.log(`${String(r.at).slice(0, 19)} ${r.ok ? "ok " : "ERR"} ${String(r.seconds ?? "-").padStart(5)}s ${r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : r.shot ? "shot   " : "       "} ${r.question}${r.error ? `  (${r.error})` : ""}`);
+      if (rows.length > limit) console.log(`... ${rows.length - limit} older (--limit ${rows.length})`);
+      return;
+    }
     case "mesh": {
       // How a kit fits with the kits already here, and the steps to work it in (docs/design/mesh.md).
       if (!positional[1]) throw new Error("kit mesh needs a kit's name or a source (a folder, owner/repo[/folder])");
@@ -595,7 +646,7 @@ async function kitCommand() {
       return flag("json") ? print(r) : console.log(formatSuggest(r));
     }
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--as name] [--ref branch] [--full] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · mesh <name|source> [--only n] [--json] · commons [name] [--dir <folder of kits>] [--json] · set <name> [KEY=value ...] [--unset KEY] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command>|mcp:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--as name] [--ref branch] [--full] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · mesh <name|source> [--only n] [--json] · log <name> [--limit 20] [--json] · config-dir <name> · commons [name] [--dir <folder of kits>] [--json] · set <name> [KEY=value ...] [--unset KEY] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 

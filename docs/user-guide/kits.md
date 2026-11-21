@@ -34,6 +34,8 @@ A kit runs as you, with no sandbox: the preview names its sources, the calls tha
 | `kit set <name> [KEY=value ...] [--unset KEY]` | Shows a kit's settings and where each value comes from (secrets masked), or sets them in the config |
 | `kit suggest [--from <pack>] [--since 30d]` | Kits not installed here, ranked by the lookups your agents did by hand that the kit answers for (its `replaces`), from this machine's transcripts. `--from` takes a folder or `owner/repo/folder` of kits; without it, the gallery. |
 | `kit commons [name]` | What kits repeat of each other and of the shared library ([Shared code](#shared-code-lib-and-kit-commons)) |
+| `kit mesh <name or source>` | How a kit fits with the installed kits: code it repeats, questions it would take or lose, commands and answers it shares, work it redoes that another kit answers for, settings it needs; each with a step for the agent, the person or the kit's author. It changes nothing. |
+| `kit log <name>`, `kit config-dir <name>` | A kit's recent asks from its journals; every folder ask-kit keeps for it |
 
 Install refuses a kit whose name a different kit already has (another `id`, or a linked folder):
 install it with `--as <other name>`, or remove the other first. A kit whose `min_ask_kit` is newer
@@ -87,7 +89,7 @@ says that the change needs `ask` with `act: true`, and the caller can ask again 
 ## Make one
 
 ```sh
-ask-kit kit new notes --from folder:~/notes     # or --from cli:gh
+ask-kit kit new notes --from folder:~/notes     # or --from cli:gh, or --from mcp:<command that starts the server>
 ```
 
 writes `~/.config/ask-kit/kits/notes/ask-kit.toml`:

@@ -104,7 +104,13 @@ export function registerAsk(server, ctx) {
   const DEFAULT = [domainCfg.backend, D.defaultBackend, config.backends.default, NAMES[0]].find((b) => b && BACKENDS[b]);
   // A domain that provides a capability another may also provide says when it holds nothing for a
   // question, so the router can hand the question to the next provider (src/capabilities.mjs).
-  const rulesFor = () => D.answerRules + (D.provides?.length ? NO_DATA_RULE : "");
+  // A kit's role whose patterns match the question is named first, so the investigator loads that
+  // playbook before it starts (roles: docs/user-guide/kits.md, "Skills and roles").
+  const roleLine = (q) => {
+    const r = q && D.roleFor ? D.roleFor(String(q)) : null;
+    return r ? `\n\nThis question fits the kit's role \`${r.name}\` (${r.when}): run \`skills.read("role:${r.name}")\` first and follow it.` : "";
+  };
+  const rulesFor = (q) => roleLine(q) + D.answerRules + (D.provides?.length ? NO_DATA_RULE : "");
   const WARM_DIR = path.join(STATE_DIR, "warm");
   const WARM_CWD = path.join(WARM_DIR, "cwd");
   fs.mkdirSync(WARM_CWD, { recursive: true, mode: 0o700 });
@@ -235,7 +241,7 @@ export function registerAsk(server, ctx) {
     const started = Date.now();
     const target = prev ? ["--resume", prev.innerSession] : ["--resume", warm.sessionId, "--fork-session"];
     const cfg = claudeMcpFile(warm.sessionId);
-    const j = await claudeCall(be, ["-p", question + rulesFor(), ...target, ...claudeArgs(be, cfg)], timeoutMs, signal).finally(() => fs.rmSync(cfg, { force: true }));
+    const j = await claudeCall(be, ["-p", question + rulesFor(question), ...target, ...claudeArgs(be, cfg)], timeoutMs, signal).finally(() => fs.rmSync(cfg, { force: true }));
     const u = j.usage ?? {};
     const before = prev ? prev.reportedTotalUsd ?? 0 : warm.warmCostUsd ?? 0;
     if (!j.is_error) writeLast(b, { innerSession: j.session_id, reportedTotalUsd: j.total_cost_usd ?? 0 });
@@ -305,8 +311,8 @@ export function registerAsk(server, ctx) {
     if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
     const started = Date.now();
     const args = prev
-      ? ["exec", "resume", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), prev.innerSession, question + rulesFor()]
-      : ["exec", "fork", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), warm.sessionId, question + rulesFor()];
+      ? ["exec", "resume", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), prev.innerSession, question + rulesFor(question)]
+      : ["exec", "fork", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), warm.sessionId, question + rulesFor(question)];
     const r = codexResult(await run(bin, args, { cwd: WARM_CWD, env: childEnv(), timeoutMs, signal }));
     if (r.thread) writeLast(b, { innerSession: r.thread });
     else if (prev) writeLast(b, prev);
@@ -334,8 +340,8 @@ export function registerAsk(server, ctx) {
     const cfg = path.join(WARM_DIR, `copilot-mcp-${process.pid}-${crypto.randomUUID()}.json`);
     fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { repl: { type: "local", command: process.execPath, args: [SERVER], env: replEnv(null, `ask-${askId}`), tools: ["*"] } } }), { mode: 0o600 });
     const prompt = prev
-      ? question + rulesFor()
-      : `${fs.readFileSync(INSTRUCTIONS, "utf8")}\n\nWork only through the \`repl\` MCP server's tools (call its \`help\` first); do not run shell commands or read files yourself.\n\nThe question:\n${question}${rulesFor()}`;
+      ? question + rulesFor(question)
+      : `${fs.readFileSync(INSTRUCTIONS, "utf8")}\n\nWork only through the \`repl\` MCP server's tools (call its \`help\` first); do not run shell commands or read files yourself.\n\nThe question:\n${question}${rulesFor(question)}`;
     const started = Date.now();
     const r = await run(
       be.bin ?? "copilot",
@@ -436,7 +442,7 @@ export function registerAsk(server, ctx) {
     let askId;
     if (prev?.messages) {
       askId = prev.askId;
-      messages = [...prev.messages, { role: "user", content: question + rulesFor() }];
+      messages = [...prev.messages, { role: "user", content: question + rulesFor(question) }];
     } else {
       const how = native
         ? "\n\nYou work by calling the `repl` tool with JavaScript; it runs in a persistent REPL (top-level await, " +
@@ -458,7 +464,7 @@ export function registerAsk(server, ctx) {
       askId = opts.askId || (cont && !prev && held?.askId) || crypto.randomUUID();
       messages = [
         be.explicitCache ? { role: "system", content: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] } : { role: "system", content: system },
-        { role: "user", content: question + rulesFor() },
+        { role: "user", content: question + rulesFor(question) },
       ];
     }
     const repl = await openInnerRepl(askId);
@@ -488,7 +494,7 @@ export function registerAsk(server, ctx) {
           question +
           `\n\n(Run for you before this message, because the question matches the kit's \`${action.name}\` action: \`shots[${JSON.stringify(action.script)}] = await scripts.run(${JSON.stringify(action.script)}, ${JSON.stringify(params)})\`. ` +
           `It is in that variable, and returned:\n\`\`\`\n${o.text}\n\`\`\`\nStart from it; run only what it leaves open.)` +
-          rulesFor();
+          rulesFor(question);
       }
     }
     // Escalation: past `escAt` with no answer, the ask goes to a stronger backend in this REPL.

@@ -799,7 +799,8 @@ export function newKit(name, from, { dir } = {}) {
   if (!NAME.test(name)) throw new Error(`"${name}": lowercase letters, digits and dashes, starting with a letter`);
   const [kind, ...rest] = String(from ?? "").split(":");
   const target = rest.join(":");
-  if (!["folder", "cli"].includes(kind) || !target) throw new Error("--from folder:<path> or cli:<command>");
+  if (kind === "openapi") throw new Error("an OpenAPI kit is a copy of the api kit: ask-kit kit install temet-ai/ask-kit/incubator/api --as <name>, then ask-kit kit set <name> API_SPEC=<url or file>");
+  if (!["folder", "cli", "mcp"].includes(kind) || !target) throw new Error("--from folder:<path>, cli:<command> or mcp:<command that starts the MCP server>");
   const out = dir ?? path.join(CONFIG_DIR, "kits", name);
   if (fs.existsSync(path.join(out, MANIFEST))) throw new Error(`${out} already has ${MANIFEST}`);
   fs.mkdirSync(out, { recursive: true });
@@ -807,7 +808,10 @@ export function newKit(name, from, { dir } = {}) {
   const src =
     kind === "folder"
       ? `[[sources]]\nkind = "folder"\nname = "${/^[a-z_]\w*$/.test(name.replace(/-/g, "_")) ? name.replace(/-/g, "_") : "files"}"\npath = "${target}"\n`
-      : `[[sources]]\nkind = "cli"\nname = "${id.split("_")[0]}"\ncommand = ${JSON.stringify(target.split(/\s+/))}\n`;
+      : kind === "mcp"
+        ? // Its tools become functions; a server with more than 30 is documented by name (find, describe, call).
+          `[[sources]]\nkind = "mcp"\nname = "${/^[a-z_]\w*$/.test(name.replace(/-/g, "_")) ? name.replace(/-/g, "_") : "server"}"\ncommand = ${JSON.stringify(target.split(/\s+/))}\n# allow = ["tool_a", "tool_b"]   # the tools this kit may call; all when left out\n# acts = ["${name.replace(/-/g, "_")}.tool_that_changes_things"]\n`
+        : `[[sources]]\nkind = "cli"\nname = "${id.split("_")[0]}"\ncommand = ${JSON.stringify(target.split(/\s+/))}\n`;
   fs.writeFileSync(
     path.join(out, MANIFEST),
     `name = "${name}"\nversion = "0.1.0"\nsays = "TODO: what this kit answers, in the words people use"\n\n${src}`,
