@@ -59,7 +59,7 @@ export async function suggest({ from, ref, since = "30d", catalogue } = {}) {
       says: k.m.says,
       install: k.install,
       ...(k.ref ? { ref: k.ref } : {}),
-      runsHere: !why || /^needs [A-Z_]+ \(|: set it in the environment/.test(why),
+      runsHere: !why || /: ask-kit kit set /.test(why),
       ...(why ? { needs: why } : {}),
       chains: demand?.chains ?? 0,
       sessions: demand?.sessions ?? 0,

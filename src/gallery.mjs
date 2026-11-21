@@ -8,7 +8,7 @@ import path from "node:path";
 import { CONFIG_DIR, ROOT, STATE_ROOT, loadConfig, saveConfig } from "./config.mjs";
 import { which } from "./platform.mjs";
 import { writeAgentsMd } from "./agentsmd.mjs";
-import { MANIFEST, findKit, readManifest } from "./kits.mjs";
+import { MANIFEST, findKit, readManifest, unavailable } from "./kits.mjs";
 import { providersOf, providesOfName, tiesOf } from "./capabilities.mjs";
 
 // Kits carry the topic `ask-kit`; `ask-kit-domain` (the older domain.mjs form) is still listed.
@@ -90,27 +90,60 @@ export function findKits(dir) {
 
 // The preview shows what a kit reaches, which of its calls change things, and what it runs at
 // install: it is code that runs as the user, with no sandbox.
-async function addKits(r, dir, commit, kitDirsFound, { yes, only }) {
+async function addKits(r, dir, commit, kitDirsFound, { yes, only, full = false, as } = {}) {
   let kits = kitDirsFound.map((d) => ({ dir: d, m: readManifest(d) }));
   if (only?.length) {
     const missing = only.filter((n) => !kits.some((k) => k.m.name === n));
     if (missing.length) throw new Error(`${r.url ?? dir} has no kit ${missing.join(", ")}; it has: ${kits.map((k) => k.m.name).join(", ")}`);
     kits = kits.filter((k) => only.includes(k.m.name));
   }
+  // --as: one copy of one kit under another name, with its own settings and state.
+  if (as) {
+    if (kits.length !== 1) throw new Error(`--as installs one kit under another name; ${r.url ?? dir} holds ${kits.length}: pick one with --only`);
+    if (!/^[a-z][a-z0-9-]*$/.test(as)) throw new Error("--as: lowercase letters, digits and dashes, starting with a letter");
+    kits[0].original = kits[0].m.name;
+    kits[0].m = { ...kits[0].m, name: as };
+  }
+  const configNow = loadConfig({ required: false }) ?? {};
+  const { evaluate } = await import("./commons.mjs");
   const out = {
     source: r.url ?? dir,
     commit,
-    kits: kits.map(({ dir: d, m }) => ({
-      name: m.name,
-      version: m.version ?? null,
-      says: m.says,
-      sources: m.sources.map((s) => ({ kind: s.kind, name: s.name, ...(s.path ? { path: s.path } : {}), ...(s.command ? { command: [].concat(s.command).join(" ") } : {}), ...(s.module ? { module: s.module } : {}) })),
-      acts: m.acts ?? [],
-      settings: (m.settings ?? []).map((s) => ({ key: s.key, ...(s.about ? { about: s.about } : {}), ...(s.required ? { required: true } : {}), ...(s.secret ? { secret: true } : {}), ...(s.default != null ? { default: s.default } : {}), ...(s.detect ? { detect: [].concat(s.detect).join(" ") } : {}) })),
-      build: (m.build ?? []).map((b) => [].concat(b.command).join(" ")),
-      files: listFiles(d),
-      modules: Object.fromEntries(m.sources.filter((s) => s.kind === "module").map((s) => [s.module, fs.readFileSync(path.join(d, s.module), "utf8").slice(0, 4000)])),
-    })),
+    kits: kits.map(({ dir: d, m, original }) => {
+      // Whether it can run here, as far as is known without running it (detect settings wait for first use).
+      const settings = Object.fromEntries((m.settings ?? []).map((s) => [s.key, process.env[s.key] ?? configNow.domains?.[m.name]?.settings?.[s.key] ?? (s.detect ? undefined : s.default)]).filter(([, v]) => v != null));
+      const why = unavailable(m, settings, { lazy: true });
+      const files = listFiles(d);
+      const code = m.sources.filter((s) => s.kind === "module").map((s) => s.module);
+      // Mesh: the jobs this kit writes for itself that lib already does (docs/design/mesh.md).
+      let repeats = [];
+      try {
+        repeats = (evaluate([{ name: m.name, dir: d }]).byKit[m.name]?.use ?? []).map((u) => `${u.job} (${u.where[0]}; lib has ${u.lib})`);
+      } catch {}
+      const clash = installedClash(m, original);
+      return {
+        name: m.name,
+        ...(original ? { copyOf: original } : {}),
+        version: m.version ?? null,
+        says: m.says,
+        reaches: m.sources.map((s) => `${s.kind} ${s.name}${s.path ? `: ${s.path}` : ""}${s.command ? `: ${[].concat(s.command).join(" ")}` : ""}${s.module ? `: ${s.module}` : ""}`),
+        changes: m.acts ?? [],
+        runsAtInstall: (m.build ?? []).map((b) => [].concat(b.command).join(" ")),
+        needs: [...[].concat(m.requires ?? []).map((x) => `${x} on PATH`), ...(m.settings ?? []).filter((s) => s.required).map((s) => `${s.key}${s.about ? ` (${s.about})` : ""}`), ...(m.min_ask_kit ? [`ask-kit ${m.min_ask_kit}+`] : [])],
+        runsHere: why ? `no: ${why}` : "yes",
+        ...(clash ? { clash } : {}),
+        ...(repeats.length ? { repeats } : {}),
+        readFirst: code.map((f) => path.join(d, f)),
+        files: `${files.length} files, ${size(files.reduce((s, f) => s + f.bytes, 0))}`,
+        ...(full
+          ? {
+              settings: (m.settings ?? []).map((s) => ({ key: s.key, ...(s.about ? { about: s.about } : {}), ...(s.required ? { required: true } : {}), ...(s.secret ? { secret: true } : {}), ...(s.default != null ? { default: s.default } : {}), ...(s.detect ? { detect: [].concat(s.detect).join(" ") } : {}) })),
+              fileList: files,
+              modules: Object.fromEntries(code.map((f) => [f, fs.readFileSync(path.join(d, f), "utf8").slice(0, 4000)])),
+            }
+          : {}),
+      };
+    }),
     installed: [],
   };
   // A kit that provides a capability an enabled domain provides, for the same covers at the same
@@ -127,18 +160,25 @@ async function addKits(r, dir, commit, kitDirsFound, { yes, only }) {
   out.claims = await claimsOf(kits.map((k) => k.m), installedNames);
   if (!yes) {
     out.next =
-      "Tell the user what each kit reaches (sources), what it can change (acts), what it runs at install (build), and read its modules and scripts." +
+      "Read each kit's readFirst files, then tell the user what it reaches, what it changes (only when asked), what it runs at install and whether it can run here." +
+      (out.kits.some((k) => k.clash) ? " A clash means a different kit already has the name: install this one with --as <other name>, or remove the other first." : "") +
+      (out.kits.some((k) => k.repeats) ? " repeats: code it carries that ask-kit's shared library already has; worth telling its author." : "") +
       (out.claims.length ? " Also say which questions of installed kits it would take (claims)." : "") +
       (kits.length > 1 ? ` To install only some: --only ${kits.map((k) => k.m.name).slice(0, 2).join(",")}.` : "") +
       " On their yes, run the same command with --yes.";
     return out;
   }
   if (ties.length) throw new Error(`not installed: ${ties.map((t) => t.message).join("; ")}`);
-  for (const { dir: d, m } of kits) {
+  const clashes = out.kits.filter((k) => k.clash);
+  if (clashes.length) throw new Error(`not installed: ${clashes.map((k) => `${k.name}: ${k.clash}`).join("; ")}`);
+  const tooOld = out.kits.filter((k) => /needs ask-kit/.test(k.runsHere));
+  if (tooOld.length) throw new Error(`not installed: ${tooOld.map((k) => `${k.name} ${k.runsHere.replace(/^no: /, "")}`).join("; ")}`);
+  for (const { dir: d, m, original } of kits) {
     const dest = path.join(CONFIG_DIR, "kits", m.name);
     fs.rmSync(dest, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.cpSync(d, dest, { recursive: true, filter: (p) => !p.includes(`${path.sep}.git`) });
+    if (original) renameManifest(path.join(dest, MANIFEST), m.name);
     for (const b of m.build ?? []) {
       const [bin, ...args] = [].concat(b.command);
       const res = spawnSync(bin, args, { cwd: dest, encoding: "utf8", timeout: 600_000 });
@@ -147,7 +187,7 @@ async function addKits(r, dir, commit, kitDirsFound, { yes, only }) {
     // Where it came from, so `kit update` can fetch it again: the repository and the kit's folder in it.
     const rel = r.local ? null : path.relative(fetchRoot(r), d).split(path.sep).join("/");
     const from = r.local ? d : `${r.owner}/${r.repo}${rel ? `/${rel}` : ""}`;
-    config.domains = { ...(config.domains ?? {}), [m.name]: { ...(config.domains?.[m.name] ?? {}), enabled: true, from, ...(r.ref ? { ref: r.ref } : {}), ...(commit ? { commit } : {}), version: m.version ?? null } };
+    config.domains = { ...(config.domains ?? {}), [m.name]: { ...(config.domains?.[m.name] ?? {}), enabled: true, from, ...(r.ref ? { ref: r.ref } : {}), ...(commit ? { commit } : {}), version: m.version ?? null, ...(original ? { copyOf: original } : {}) } };
     out.installed.push({ name: m.name, dir: dest });
   }
   saveConfig(config);
@@ -155,6 +195,38 @@ async function addKits(r, dir, commit, kitDirsFound, { yes, only }) {
   out.next = `\`ask\` lists the new kit${out.installed.length > 1 ? "s" : ""} on its next call, with no restart. Prove it: ask-kit kit test ${out.installed[0].name}`;
   return out;
 }
+
+// A different kit already installed under this name: one with another id, or a linked folder.
+function installedClash(m, original) {
+  const own = path.join(CONFIG_DIR, "kits", m.name);
+  let st;
+  try {
+    st = fs.lstatSync(own);
+  } catch {
+    return null;
+  }
+  if (st.isSymbolicLink()) return `${m.name} is linked from ${fs.readlinkSync(own)}; remove the link first (ask-kit kit remove ${m.name})`;
+  let theirs;
+  try {
+    theirs = readManifest(own);
+  } catch {
+    return null;
+  }
+  const config = loadConfig({ required: false }) ?? {};
+  const theirsIs = config.domains?.[m.name]?.copyOf ?? theirs.name;
+  const sameKit = (theirs.id && m.id ? theirs.id === m.id : true) && theirsIs === (original ?? m.name);
+  return sameKit ? null : `a different kit (${theirs.id ?? theirs.name}, from ${config.domains?.[m.name]?.from ?? "unknown"}) is installed as ${m.name}`;
+}
+
+// The kit's top-level name in its manifest, for a copy installed under another name.
+function renameManifest(file, name) {
+  const text = fs.readFileSync(file, "utf8");
+  const i = text.search(/^\[/m);
+  const head = i < 0 ? text : text.slice(0, i);
+  fs.writeFileSync(file, head.replace(/^name\s*=\s*"[^"]*"/m, `name = "${name}"`) + (i < 0 ? "" : text.slice(i)));
+}
+
+const size = (b) => (b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 
 const fetchRoot = (r) => path.join(STATE_ROOT, "gallery", `${r.owner}-${r.repo}`);
 
@@ -238,15 +310,22 @@ export function removeKit(name, { yes = false, purge = false } = {}) {
 
 // What differs between an installed kit and a fetched copy: files, and the manifest fields a person
 // consented to at install (what it reaches, what it changes, what it runs, what it needs).
-function changesBetween(installed, fresh) {
+function changesBetween(installed, fresh, as = null) {
   const files = (d) => Object.fromEntries(listFiles(d).map((f) => [f.file, fs.readFileSync(path.join(d, f.file))]));
   const a = files(installed);
   const b = files(fresh);
+  // A copy's manifest carries its own name: compare the fetched one under that name.
+  if (as && b[MANIFEST]) {
+    const text = b[MANIFEST].toString("utf8");
+    const i = text.search(/^\[/m);
+    const head = i < 0 ? text : text.slice(0, i);
+    b[MANIFEST] = Buffer.from(head.replace(/^name\s*=\s*"[^"]*"/m, `name = "${as}"`) + (i < 0 ? "" : text.slice(i)));
+  }
   const added = Object.keys(b).filter((f) => !(f in a));
   const removed = Object.keys(a).filter((f) => !(f in b));
   const changed = Object.keys(b).filter((f) => f in a && !a[f].equals(b[f]));
   const ma = readManifest(installed);
-  const mb = readManifest(fresh);
+  const mb = { ...readManifest(fresh), ...(as ? { name: as } : {}) };
   const show = (m) => ({
     sources: (m.sources ?? []).map((s) => `${s.kind}:${s.name}${s.command ? ` ${[].concat(s.command).join(" ")}` : ""}${s.path ? ` ${s.path}` : ""}`),
     acts: m.acts ?? [],
@@ -297,17 +376,27 @@ export async function updateKit(name, { yes = false } = {}) {
       out.push({ name: n, error: e.message });
       continue;
     }
-    const fresh = findKits(fetched.dir).find((d) => readManifest(d).name === n);
+    // A copy installed with --as is fetched by its original name; a kit renamed upstream, by its id.
+    const want = entry.copyOf ?? n;
+    const id = (() => {
+      try {
+        return readManifest(own).id;
+      } catch {
+        return null;
+      }
+    })();
+    const found = findKits(fetched.dir);
+    const fresh = found.find((d) => readManifest(d).name === want) ?? (id ? found.find((d) => readManifest(d).id === id) : null);
     if (!fresh) {
       out.push({ name: n, error: `${entry.from} no longer holds a kit named ${n}` });
       continue;
     }
-    const diff = changesBetween(own, fresh);
+    const diff = changesBetween(own, fresh, entry.copyOf ? n : null);
     const same = !diff.added.length && !diff.removed.length && !diff.changed.length;
     const row = { name: n, source: entry.from, ...(entry.commit && fetched.commit ? { commits: `${entry.commit.slice(0, 7)} -> ${fetched.commit.slice(0, 7)}` } : {}), upToDate: same, ...(same ? {} : diff) };
     if (!same && yes) {
       if (diff.consent.build || diff.consent.sources || diff.consent.acts) row.note = "it now reaches, changes or runs something new (consent): the user saw this in the preview";
-      const res = await addKits(r, fetched.dir, fetched.commit, [fresh], { yes: true });
+      const res = await addKits(r, fetched.dir, fetched.commit, [fresh], { yes: true, ...(entry.copyOf ? { as: n } : {}) });
       row.updated = !!res.installed.length;
     }
     out.push(row);
@@ -332,11 +421,11 @@ const listFiles = (dir, rel = "") =>
  * Fetch a shared domain and describe it. With yes, copy it into the user's domains folder and
  * enable it. Returns what was found, so the agent can show the user before saying yes.
  */
-export async function addDomain(ref, { yes = false, only, ref: pin } = {}) {
+export async function addDomain(ref, { yes = false, only, ref: pin, full = false, as } = {}) {
   const r = parseRef(ref, { ref: pin });
   const { dir, commit } = fetchRepo(r);
   const kits = findKits(dir);
-  if (kits.length) return addKits(r, dir, commit, kits, { yes, only });
+  if (kits.length) return addKits(r, dir, commit, kits, { yes, only, full, as });
   const found = findDomains(dir, r.name.replace(/^ask-kit-/, "").toLowerCase().replace(/[^a-z0-9-]/g, "-"));
   if (!found.length) throw new Error(`${r.url ?? dir} holds no domain.mjs (at its root, in <name>/ or in domains/<name>/)`);
   const recipeFile = ["RECIPE.md", "README.md"].map((f) => path.join(dir, f)).find((f) => fs.existsSync(f));

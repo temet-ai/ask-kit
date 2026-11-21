@@ -14,7 +14,7 @@
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|commons|enable|disable   kits
+//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|commons|set|enable|disable   kits
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -529,7 +529,7 @@ async function kitCommand() {
     case "install": {
       if (!positional[1]) throw new Error("kit install needs a repository (owner/repo, owner/repo/folder) or a folder");
       const only = typeof flag("only") === "string" ? flag("only").split(",").map((s) => s.trim()).filter(Boolean) : undefined;
-      return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes"), only, ref: typeof flag("ref") === "string" ? flag("ref") : undefined }));
+      return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes"), only, ref: typeof flag("ref") === "string" ? flag("ref") : undefined, full: !!flag("full"), as: typeof flag("as") === "string" ? flag("as") : undefined }));
     }
     case "remove":
     case "uninstall": {
@@ -538,6 +538,42 @@ async function kitCommand() {
     }
     case "update":
       return print(await (await import("../src/gallery.mjs")).updateKit(positional[1], { yes: !!flag("yes") }));
+    case "set": {
+      // A kit's settings: show them, set KEY=value, or --unset KEY. They go to domains.<kit>.settings.
+      const name = positional[1];
+      if (!name) throw new Error("kit set needs a kit's name: ask-kit kit set <kit> [KEY=value ...] [--unset KEY]");
+      const dir = kits.findKit(name);
+      if (!dir) throw new Error(`no kit ${name}; ask-kit kit list shows them`);
+      const m = kits.readManifest(dir);
+      const declared = new Map((m.settings ?? []).map((s) => [s.key, s]));
+      const c = loadConfig();
+      const own = { ...(c.domains?.[name]?.settings ?? {}) };
+      const pairs = positional.slice(2);
+      const unset = [].concat(typeof flag("unset") === "string" ? flag("unset").split(",") : []);
+      for (const p of pairs) {
+        const i = p.indexOf("=");
+        if (i < 1) throw new Error(`"${p}" is not KEY=value`);
+        const key = p.slice(0, i);
+        if (!declared.has(key)) throw new Error(`${name} has no setting ${key}; its settings: ${[...declared.keys()].join(", ") || "none"}`);
+        own[key] = p.slice(i + 1);
+      }
+      for (const key of unset) delete own[key];
+      if (pairs.length || unset.length) {
+        c.domains = { ...(c.domains ?? {}), [name]: { ...(c.domains?.[name] ?? {}), settings: own } };
+        saveConfig(c);
+      }
+      const shown = (s, v) => (v == null ? null : s.secret ? `${String(v).slice(0, 2)}… (${String(v).length} characters, secret)` : v);
+      const rows = [...declared.values()].map((s) => {
+        const from = process.env[s.key] != null ? "the environment (wins over the config)" : own[s.key] != null ? "the config" : s.detect ? "detected at first use" : s.default != null ? "the default" : null;
+        const v = process.env[s.key] ?? own[s.key] ?? (s.detect ? null : s.default ?? null);
+        return { key: s.key, ...(s.about ? { about: s.about } : {}), value: shown(s, v), from: from ?? (s.required ? "unset: required" : "unset"), ...(s.required ? { required: true } : {}) };
+      });
+      if (flag("json")) return print(rows);
+      if (!rows.length) return console.log(`${name} has no settings.`);
+      for (const r of rows) console.log(`${r.key}${r.required ? " (required)" : ""}: ${r.value ?? "-"}  [${r.from}]${r.about ? `\n    ${r.about}` : ""}`);
+      if (pairs.length || unset.length) console.log("\n`ask` uses the new values on its next call.");
+      return;
+    }
     case "commons": {
       // What kits repeat of each other and of the shared library (docs/design/mesh.md).
       const { evaluate, formatEvaluation } = await import("../src/commons.mjs");
@@ -552,7 +588,7 @@ async function kitCommand() {
       return flag("json") ? print(r) : console.log(formatSuggest(r));
     }
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--ref branch] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · commons [name] [--dir <folder of kits>] [--json] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--as name] [--ref branch] [--full] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · commons [name] [--dir <folder of kits>] [--json] · set <name> [KEY=value ...] [--unset KEY] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 

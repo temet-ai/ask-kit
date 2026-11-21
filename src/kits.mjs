@@ -649,7 +649,7 @@ export function unavailable(m, settings, { lazy = false } = {}) {
   // checked when the kit is first used.
   const pending = (s) => lazy && s.detect && settings[s.key] == null;
   const unset = (m.settings ?? []).filter((s) => s.required && !settings[s.key] && !pending(s)).map((s) => (s.about ? `${s.key} (${s.about})` : s.key));
-  if (unset.length) return `needs ${unset.join(", ")}: set it in the environment or in domains.${m.name}.settings in ask-kit's config`;
+  if (unset.length) return `needs ${unset.join(", ")}: ask-kit kit set ${m.name} ${unset.length === 1 ? (m.settings ?? []).find((s) => s.required && !settings[s.key] && !pending(s)).key : "KEY"}=<value>`;
   const waiting = new Set((m.settings ?? []).filter(pending).map((s) => s.key));
   for (const s of m.sources) {
     if (s.kind !== "folder" || [...String(s.path).matchAll(/\$\{([A-Z0-9_]+)\}/g)].some(([, k]) => waiting.has(k))) continue;

@@ -108,6 +108,41 @@ assert.ok(listChanged >= 1, "the client was told the tool list changed");
 const about = await client.callTool({ name: "ask", arguments: { do: "where", about: "clacks" } });
 assert.ok(!about.isError, text(about));
 
+// The preview is short: what a kit reaches, changes and needs, whether it can run here, what to read.
+const short = cli("kit", "install", pack, "--only", "clacks").kits[0];
+assert.equal(short.runsHere, "yes");
+assert.deepEqual(short.reaches, ["module clacks: clacks.mjs"]);
+assert.ok(short.readFirst[0].endsWith(path.join("clacks", "clacks.mjs")));
+assert.equal(short.modules, undefined, "module source only with --full");
+assert.ok(cli("kit", "install", pack, "--only", "clacks", "--full").kits[0].modules["clacks.mjs"].includes("export function make"));
+
+// A different kit under a name already taken is refused; the same kit under another name is a copy.
+const other = path.join(tmp, "other-clacks");
+fs.mkdirSync(other, { recursive: true });
+fs.writeFileSync(path.join(other, "ask-kit.toml"), 'id = "uu.clacks"\nname = "clacks"\nsays = "the University\'s own clacks"\n\n[[sources]]\nkind = "folder"\nname = "uu"\npath = "."\n');
+fs.writeFileSync(path.join(pack, "kits", "clacks", "ask-kit.toml"), 'id = "watch.clacks"\n' + fs.readFileSync(path.join(pack, "kits", "clacks", "ask-kit.toml"), "utf8"));
+cli("kit", "install", pack, "--only", "clacks", "--yes");
+assert.match(cli("kit", "install", other).kits[0].clash, /a different kit \(watch\.clacks/);
+assert.match(cliFails("kit", "install", other, "--yes"), /not installed: clacks: a different kit/);
+cli("kit", "install", pack, "--only", "clacks", "--as", "semaphore", "--yes");
+assert.equal(readConfig().domains.semaphore.copyOf, "clacks");
+assert.match(fs.readFileSync(path.join(config, "kits", "semaphore", "ask-kit.toml"), "utf8"), /^name = "semaphore"$/m);
+
+// kit set: each copy has its own settings; the router sees them on the next ask.
+assert.match(cliFails("kit", "set", "semaphore", "NOBBY=1"), /has no setting NOBBY; its settings: TOWERS/);
+execFileSync(process.execPath, [CLI, "kit", "set", "semaphore", "TOWERS=/genua/towers"], { env, cwd: caller });
+const shown = JSON.parse(execFileSync(process.execPath, [CLI, "kit", "set", "semaphore", "--json"], { env, cwd: caller, encoding: "utf8" }));
+assert.deepEqual(shown.map((r) => [r.key, r.value, r.from]), [["TOWERS", "/genua/towers", "the config"]]);
+const sem = JSON.parse(text(await client.callTool({ name: "ask", arguments: { do: "semaphore.where" } })).replace(/\n\[[^\]]*\]\s*$/, ""));
+const cl = JSON.parse(text(await client.callTool({ name: "ask", arguments: { do: "clacks.where" } })).replace(/\n\[[^\]]*\]\s*$/, ""));
+assert.equal(sem.towers, "/genua/towers");
+assert.equal(cl.towers, path.join(cl.callerDir, "towers"), "the original keeps its own");
+assert.equal(sem.stateDir, path.join(state, "kit-data", "semaphore"), "and its own data folder");
+// Updating the copy fetches it by its original name and keeps its name; unchanged, it is up to date.
+assert.equal(cli("kit", "update", "semaphore").kits[0].upToDate, true);
+execFileSync(process.execPath, [CLI, "kit", "set", "semaphore", "--unset", "TOWERS"], { env, cwd: caller });
+assert.equal(readConfig().domains.semaphore.settings.TOWERS, undefined);
+
 // Update: the source changes a script and adds an act; the preview names both, --yes applies them.
 fs.writeFileSync(path.join(pack, "kits", "watch", "scripts", "duty.mjs"), fs.readFileSync(path.join(pack, "kits", "watch", "scripts", "duty.mjs"), "utf8") + "\n// a new line\n");
 // (at the top: a key after [[sources]] would belong to that table)
