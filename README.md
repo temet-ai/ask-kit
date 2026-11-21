@@ -145,7 +145,8 @@ action answers that a model checks in the background, both answers. Each ask's j
 holds how many of the answer's citations resolved, and the ones that did not (a path and line,
 or a session and event); the check reads local files and transcripts only. With `journal.trajectories:
 true` (off by default) the journals also keep each cell's printed result and each answer, so they
-then hold excerpts of what was read.
+then hold excerpts of what was read. Kits keep their own data (a test run's log, a page cache) under
+`~/.local/state/ask-kit/kit-data/<kit>/`; `ask-kit kit remove <kit> --purge` deletes it.
 [What it stores and sends](docs/user-guide/privacy.md) has the full list.
 
 ## Contributing

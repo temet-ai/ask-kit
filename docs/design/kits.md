@@ -198,7 +198,9 @@ and `--ref` pins a version. The manifest also names every call that changes some
 | Shots, early answers, skills, roles, `uses`, `ask.kit` | Built, with offline tests: `test/shots.mjs`, `test/early.mjs`, `test/kits.mjs`, `test/kitcall.mjs` |
 | `[[actions]]` (named, titled scripts matched from the question, guarded and shadowed) | Built, with an offline test: `test/actions.mjs`. The user guide's [Actions](../user-guide/kits.md#actions) |
 | `roleFor` called by the `ask` tool | Not built |
-| `http` source, `kit new --from mcp\|openapi`, `kit update`, `log`, `config-dir`, `id`, `min_ask_kit` | Not built |
+| `kit update` (with a diff of what a kit newly reaches, changes or runs), `kit remove`, `kit set`, `kit suggest`, install from `owner/repo/folder` with `--only`, `--ref` and `--as`, `id` and `min_ask_kit` read, no restart after an install or removal | Built (2026-11-21): `test/kit-lifecycle.mjs` |
+| The shared library (`make({ lib })`) and `kit commons`, the first part of [mesh.md](mesh.md) | Built (2026-11-21): `test/kitlib.mjs`, `test/commons.mjs` |
+| `http` source, `kit new --from mcp\|openapi`, `log`, `config-dir` | Not built. The api kit (`incubator/api`) does an OpenAPI document's job as a module. |
 | `code` and `sessions` as kits | Not built: both still load as `domain.mjs` domains |
 | Fleet kit | Built, in the private repository `temet-ai/ask-kit-fleet`, on mike's MCP tools directly (no mike pack under it) |
 | mike kit | Built (2026-11-19): `temet-ai/ask-kit-mike` (private). mike-ask is now a launcher that runs ask-kit's router with the mike kit, `ops` as a kit, `claude-code-docs` and the built-in `code` and `sessions` |

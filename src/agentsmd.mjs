@@ -76,13 +76,25 @@ Match the request to one of these. Show the user what will change before changin
 - **Check it**: \`ask-kit doctor\`.
 - **It answered badly, or is slow**: \`ask-kit report --since 7d\`, then the ask-kit-improve skill
   (or the ask-kit-tuner agent).
-- **Add a kit someone shared** (a GitHub repo with the topic \`ask-kit\`, or \`ask-kit-domain\`):
-  \`ask-kit kit install <repo>\` shows its sources, what it can change (\`acts\`) and what it runs
-  at install; it is code that runs with the user's rights, so tell the user, and only on their
-  yes run it again with \`--yes\`. \`ask-kit gallery\` lists shared kits.
+- **Find kits worth adding**: \`ask-kit kit suggest\` ranks kits not installed here by the lookups
+  the user's agents did by hand that each would have answered (from this machine's transcripts);
+  \`ask-kit gallery\` lists shared kits.
+- **Add a kit someone shared** (a GitHub repo with the topic \`ask-kit\`, a folder in one as
+  \`owner/repo/folder\`, or a local folder): \`ask-kit kit install <ref>\` previews what it reaches,
+  what it can change (\`acts\`), what it runs at install, what it needs, whether it can run here,
+  and which files to read first. It is code that runs with the user's rights: read those files,
+  tell the user, and only on their yes run it again with \`--yes\`. \`--only a,b\` picks kits of a
+  pack; \`--as <name>\` installs a second copy with its own settings. \`ask\` offers it on its next
+  call; no restart. A setting it needs: \`ask-kit kit set <kit> KEY=value\`.
+- **Update or remove a kit**: \`ask-kit kit update [kit]\` previews what changed, above all what it
+  now reaches, changes or runs (\`consent\`): tell the user that before \`--yes\`.
+  \`ask-kit kit remove <kit>\` (\`--purge\` also deletes its journals and data) previews, then
+  \`--yes\`. A built-in kit is turned off with \`ask-kit kit disable <kit>\`.
 - **Make a kit**: \`ask-kit kit new <name> --from folder:<path>|cli:<command>\` writes the manifest;
   \`ask-kit kit link <dir>\` uses a working folder in place; \`ask-kit kit test <name>\` runs its
-  bench. \`ask-kit kit list\` shows them. The ask-kit-domain skill has the details.
+  bench. \`ask-kit kit list\` shows them. Before writing a helper (redaction, HTTP, running a
+  program), use the shared library a module's \`make({ lib })\` gets; \`ask-kit kit commons <kit>\`
+  says what a kit repeats of it. The ask-kit-domain skill has the details.
 - **Put the skills, agents and rule into an agent installed later**: \`ask-kit init\`.
 - **Remove it**: \`ask-kit uninstall\` (registrations, and the skills, agents and rule it wrote,
   except files the user has edited).
