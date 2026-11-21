@@ -40,6 +40,23 @@ its sources, the calls that change things (`acts`) and the commands it runs at i
 | [notes](https://github.com/temet-ai/ask-kit-notes) | a Markdown vault (Obsidian, Logseq): what I wrote or decided, open and overdue tasks, backlinks, the daily note; adds and ticks tasks | a folder |
 | [shell](https://github.com/temet-ai/ask-kit-shell) | what command I ran, where an alias or variable is set, which copy of a program wins on PATH | shell history, startup files |
 | [api](https://github.com/temet-ai/ask-kit-api) | one HTTP API with an OpenAPI document: its endpoints, what one takes and returns; calls it | Node |
+| [git](https://github.com/temet-ai/ask-kit-git) | the current repository: uncommitted work, which commit changed a line, whether a branch is merged or pushed; commits and tidies when asked | `git` |
+| [rust](https://github.com/temet-ai/ask-kit-rust) | a cargo workspace: compile errors with the suggested fix, failing tests, clippy, the crate tree, build times; fixes when asked | `cargo`, `git` |
+| [checks](https://github.com/temet-ai/ask-kit-checks) | what a repository's checks cost and catch: slow or never-failing CI jobs, overlapping checks, hooks | `git` |
+| [release](https://github.com/temet-ai/ask-kit-release) | how close a repository is to a public release; what is unreleased since the last tag; adds missing files when asked | `git`, Node |
+| [docs-check](https://github.com/temet-ai/ask-kit-docs-check) | whether the docs still match the code: stale paths, flags and env vars, broken links | `git`, `rg` |
+| [gitlab](https://github.com/temet-ai/ask-kit-gitlab) | merge requests, pipelines and why a job failed, issues; comments and reruns | `glab` |
+| [skills](https://github.com/temet-ai/ask-kit-skills) | Claude Code skills and agents: which covers a job, overlaps, broken frontmatter, stale references | a folder |
+| [rules](https://github.com/temet-ai/ask-kit-rules) | CLAUDE.md, AGENTS.md, rules and lessons: what exists on a subject, duplicates, contradictions, stale rules | `rg` |
+| [claude-setup](https://github.com/temet-ai/ask-kit-claude-setup) | how Claude Code is configured: hooks, permissions, MCP servers, settings, and which file sets each | a folder |
+| [storybook](https://github.com/temet-ai/ask-kit-storybook) | a project's Storybook: stories, components with no story, stories that fail, the build; writes a story when asked | Node |
+| [browser](https://github.com/temet-ai/ask-kit-browser) | what a page does in a headless browser: errors, layout faults, contrast, screenshots, short click sequences | Node |
+| [ink](https://github.com/temet-ai/ask-kit-ink) | building Ink 8 terminal apps: playbooks plus checks of the app's own render options, tests and bundle | Node |
+| [hyperframes](https://github.com/temet-ai/ask-kit-hyperframes) | HyperFrames videos: which skill or block fits, why a check failed, what a project is missing | a folder |
+| [desktop](https://github.com/temet-ai/ask-kit-desktop) | a Hyprland desktop on Omarchy: windows, workspaces, monitors, keybindings, what is on screen; acts on windows | `hyprctl`, `grim`, `tesseract` |
+| [crash](https://github.com/temet-ai/ask-kit-crash) | why a program crashed, from systemd-coredump: which crashed, one crash in detail, a backtrace, a report | `coredumpctl`, `journalctl` |
+| [phone](https://github.com/temet-ai/ask-kit-phone) | an Android phone over adb: what is on screen, installed apps, recent crashes; taps, types and opens apps | `adb` |
+| [taste](https://github.com/temet-ai/ask-kit-taste) | what a person's taste or style file says they accept and reject, and whether a piece of work breaks it | a file you point it at |
 
 ## Who can make a kit change something
 
