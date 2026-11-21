@@ -17,7 +17,7 @@ the user's view see [Domains](../domains.md); for the typed contract see
 | [src/router.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/router.mjs) | `makeRouter`: which domains are enabled, and the `says` line the router reads. |
 | [src/ask.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/ask.mjs) | `registerAsk`: reads `instructions`, `prime`, `answerRules`, `openWith`, `askDescription`, `childEnv`, `defaultBackend`. |
 | [domains/code/domain.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/domain.mjs) | The `domain` export of `code`; `repoRoot()` finds the repository. |
-| [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo({root, push})`: `rg`, `files`, `read`, `git`; the constants `GIT_ALLOWED` and `GIT_DENIED`. |
+| [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo({root, push})`: `rg`, `sg`, `files`, `read`, `git`, `write`, `edit`, `run`; `readOnly(repo)` and the constants `READ_GIT` and `GIT_WRITES`. |
 | [domains/code/lib.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/lib.mjs) | `NOISE`, `spellings`, `escape`, `definitionPattern`. Kept outside `scripts/`, because every `.mjs` file in `scripts/` is loaded as a script. |
 | [domains/code/api.d.ts](https://github.com/temet-ai/ask-kit/blob/main/domains/code/api.d.ts) | Types for `repo`, `scripts` and the toolkit. `help` returns this file. |
 | [domains/code/instructions.md](https://github.com/temet-ai/ask-kit/blob/main/domains/code/instructions.md) | The system prompt of the `code` investigator. |
@@ -114,19 +114,20 @@ const start = process.env.ASK_KIT_CODE_ROOT || process.cwd();
 Agents start MCP servers in the session's project directory, so `process.cwd()` is the
 repository. `childEnv` passes the result on as `ASK_KIT_CODE_ROOT`.
 
-`makeRepo` returns four methods. All run with `execFile`, so no shell is involved.
+`makeRepo` returns `root` and eight methods. All run with `execFile`, so no shell is involved.
 
 - `rg(pattern, opts)` runs ripgrep with `--json`, always with an explicit path (otherwise rg
   reads stdin). It returns `{file, line, text}` rows, at most `max` (default 200), with `total`
   and `complete` on the array. Exit code 1 (no match) is treated as an empty result.
 - `files(glob, opts)` runs `rg --files`, sorted, at most 2000 by default.
 - `read(file, {from, to})` returns at most 400 numbered lines.
-- `git(sub, ...args)` allows only the subcommands in `GIT_ALLOWED` (`log`, `show`, `blame`,
-  `diff`, `ls-files`, `grep`, `rev-parse`, `status`, `shortlog`, `branch`, `tag`) and rejects any
-  argument matching `GIT_DENIED` (`--output`, `--ext-diff`, `-c`, `--git-dir`, `-C` and similar).
+- `sg(pattern, opts)` runs ast-grep for structural search and throws a clear error when ast-grep is not installed.
+- `git(sub, ...args)` runs any git command with `--no-pager` and returns stdout; it throws on a non-zero exit.
+- `write(file, text)`, `edit(file, from, to, opts)` and `run(cmd, ...args)` write a file, replace text in one, and run any program (no shell, 120 s limit). `run` returns `{code, out, err}` and does not throw on a non-zero exit.
+- `readOnly(repo)` wraps a repository client for an ask that did not pass `act: true`: `write`, `edit` and `run` throw, and `git` runs only the subcommands in `READ_GIT` (`log`, `show`, `diff`, `blame`, `status`, `ls-files`, `ls-tree`, `rev-parse`, `rev-list`, `grep`, `shortlog`, `describe`, `cat-file`, `merge-base`, `name-rev`, `for-each-ref`, `whatchanged`) and rejects any argument matching `GIT_WRITES` (`--output`, `--open-files-in-pager`, `-O`, `--ext-diff`).
 
-`inside()` resolves every path against the real repository root and throws when the result is
-outside. `rgPath()` from `src/platform.mjs` supplies ripgrep.
+`inside()` resolves every path against the real repository root and returns the path relative to
+it, or the absolute path when the result is outside the root; it does not throw. `rgPath()` from `src/platform.mjs` supplies ripgrep.
 
 The scripts search every spelling of a name through `spellings()` in `lib.mjs`, and leave out the
 paths in `NOISE`. Their `meta` and default function are described below.
