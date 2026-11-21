@@ -1,7 +1,7 @@
 # Set it up
 
-Paste this into Claude Code, Codex, Copilot CLI, Gemini CLI or opencode, on Linux, macOS or
-Windows:
+Paste this into Claude Code, Codex, Copilot CLI, Gemini CLI or opencode, on Linux or
+macOS:
 
 ```
 Read https://github.com/temet-ai/ask-kit/blob/main/AGENTS.md, then set up ask-kit for me.

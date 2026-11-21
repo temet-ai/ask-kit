@@ -115,18 +115,17 @@ runs on every push and pull request:
 
 | Setting | Value |
 |---|---|
-| Systems | `ubuntu-latest`, `macos-latest`, `windows-latest` |
+| Systems | `ubuntu-latest`, `macos-latest` |
 | Node | 22.x and 24.x |
-| Matrix | six jobs; `fail-fast: false`, so one failing job does not stop the others |
+| Matrix | four jobs; `fail-fast: false`, so one failing job does not stop the others |
 | Steps | `actions/checkout@v4`, `actions/setup-node@v4` with the npm cache, `npm ci`, then `node test/fixtures.mjs`, `node test/setup.mjs`, `node test/repl.mjs` and `node test/bundle.mjs` |
 
 The bundle step runs only when `test/bundle.mjs` exists. CI does not run `test:machine`, because
 it needs real transcripts, and does not lint or type-check.
 
 Failures that appear on one system only are usually paths (backslashes in JSON, a temporary folder
-behind a symlink: the tests call `fs.realpathSync` on it), file modes (Windows has no POSIX modes,
-and `setup.mjs` skips that check there) or shims (`claude`, `codex` and `copilot` are `.cmd` files
-on Windows, handled in `src/platform.mjs`).
+behind a symlink: the tests call `fs.realpathSync` on it), file modes or shims (`claude`, `codex` and `copilot` as `.cmd` files, handled in
+`src/platform.mjs`). CI does not run on Windows; the Windows paths in the code are kept but untested.
 
 After you change a dependency, regenerate the notices:
 `node scripts/notices.mjs > THIRD-PARTY-NOTICES.md`.

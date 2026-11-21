@@ -27,6 +27,19 @@ its sources, the calls that change things (`acts`) and the commands it runs at i
 | [dotfiles](https://github.com/temet-ai/ask-kit-dotfiles) | which file in `~/.config` sets a keybinding, rule or setting; edits it | a folder, credentials excluded |
 | [claude-code-docs](https://github.com/temet-ai/ask-kit-claude-code-docs) | how Claude Code works, from its docs and changelog | a folder, downloaded at install |
 | fleet (needs [mike](https://github.com/temet-ai/mike)) | how a fleet of sessions is doing, what needs you, why a task is stuck; answers and mails seats | mike's MCP tools and inspect API |
+| [tests](https://github.com/temet-ai/ask-kit-tests) | do the tests, build, lint and typecheck pass; which tests fail and why; type errors; flaky tests; fixes one when asked | the project's own test, lint and build commands |
+| [deps](https://github.com/temet-ai/ask-kit-deps) | which version of a package is installed and why; outdated, vulnerable, licences; how to call an installed library; installs and removes | npm, pnpm, yarn, Python, Go |
+| [repos](https://github.com/temet-ai/ask-kit-repos) | every git repository and worktree on the machine: uncommitted, unpushed, stashed, ahead or behind; fetches, pulls, prunes | `git` |
+| [data](https://github.com/temet-ai/ask-kit-data) | a CSV, TSV, JSON or JSON-lines file: columns, rows, groups, distinct values, how two files differ | Node; `duckdb` if installed |
+| [sqlite](https://github.com/temet-ai/ask-kit-sqlite) | a `.db` file's tables, columns, rows, which table holds a value, size, health; runs SQL that writes when asked | Node |
+| [web](https://github.com/temet-ai/ask-kit-web) | what a page or a docs site says about something, which page covers a topic, a changelog | Node; `pdftotext` for PDFs |
+| [procs](https://github.com/temet-ai/ask-kit-procs) | what holds a port, what uses the CPU or memory, whether a program is running; stops one | `ps`, `ss` or `lsof` |
+| [net](https://github.com/temet-ai/ask-kit-net) | what a name resolves to, whether a host and port answer, what a URL returns, when a certificate expires | Node |
+| [logs](https://github.com/temet-ai/ask-kit-logs) | log files on disk: which errors are most common or new, when one first appeared, what happened around a time or request id | Node |
+| [files](https://github.com/temet-ai/ask-kit-files) | where a file is, what uses the space, what changed in a folder, which documents mention something, what a PDF, office file or archive holds | Node |
+| [notes](https://github.com/temet-ai/ask-kit-notes) | a Markdown vault (Obsidian, Logseq): what I wrote or decided, open and overdue tasks, backlinks, the daily note; adds and ticks tasks | a folder |
+| [shell](https://github.com/temet-ai/ask-kit-shell) | what command I ran, where an alias or variable is set, which copy of a program wins on PATH | shell history, startup files |
+| [api](https://github.com/temet-ai/ask-kit-api) | one HTTP API with an OpenAPI document: its endpoints, what one takes and returns; calls it | Node |
 
 ## Who can make a kit change something
 

@@ -54,7 +54,7 @@ Each thing `ask` can answer about is a **domain**. ask-kit comes with two, as a 
 
 ## Set it up
 
-Paste one line into the agent you already use, on Linux, macOS or Windows:
+Paste one line into the agent you already use, on Linux or macOS:
 
 ```
 Read https://github.com/temet-ai/ask-kit/blob/main/AGENTS.md, then set up ask-kit for me.
@@ -124,7 +124,7 @@ ask-kit itself, on 18 Nov 2026, on one machine with about 1,500 sessions on disk
 ## Status
 
 Early. Tested on Linux with real transcripts. Fixtures for all five transcript formats run in CI
-on Linux, macOS and Windows. The Gemini CLI reader and the opencode and Gemini install formats
+on Linux and macOS. The Gemini CLI reader and the opencode and Gemini install formats
 follow their docs and haven't yet been tried on a real install. Releases are on npm as
 [`@temet-ai/ask-kit`](https://www.npmjs.com/package/@temet-ai/ask-kit).
 

@@ -37,7 +37,7 @@ The journal records every step of it: see [Make it better](tuning.md).
   store.
 - The opencode and Gemini skill and agent formats follow their docs and have not yet been checked
   on a real install.
-- ask-kit has been used on one Linux machine. CI runs on Linux, macOS and Windows, on Node 22
+- ask-kit has been used on one Linux machine. CI runs on Linux and macOS, on Node 22
   and 24, against fixtures.
 
 Bugs and fixes are welcome at
