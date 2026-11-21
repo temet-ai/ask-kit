@@ -14,6 +14,9 @@ ask-kit kit install ./incubator/notes --yes   # installs one
 ask-kit kit link ./incubator/notes            # or use it in place while changing it
 ```
 
+Read [REVIEW.md](REVIEW.md) before building on these: none has been run on a real model yet, and
+it says what to measure first.
+
 ## How they were chosen
 
 A kit earns its place when all of these hold:
