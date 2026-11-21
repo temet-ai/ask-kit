@@ -10,9 +10,8 @@ From a checkout of this branch:
 
 ```sh
 ask-kit kit install ./incubator            # previews every kit here: sources, acts, settings, files
-ask-kit kit install ./incubator/tests --yes   # installs one
-ask-kit kit link ./incubator/tests            # or use it in place while changing it
-cd incubator/tests && ask-kit kit test tests  # its bench: shots only, no model, no cost
+ask-kit kit install ./incubator/notes --yes   # installs one
+ask-kit kit link ./incubator/notes            # or use it in place while changing it
 ```
 
 ## How they were chosen
@@ -31,15 +30,20 @@ This is also what makes a kit replace a subagent or a skill. A subagent is a fre
 tools and a prompt; a skill is a playbook. A kit is both, on a cheap model: the scripts are the
 playbook as code, the instructions are the prompt, and the journal and bench say whether it works.
 
-## Built
+## Moved to their own repositories
 
-| Kit | Replaces | Answers | Changes (only when asked) | Offline bench |
-|---|---|---|---|---|
-| [tests](tests/) | a test-runner subagent, a "run the checks" skill | do the tests, build, lint and typecheck pass; which tests fail and why; is a failure new since the last run; is a test flaky; what did the last run say | any other command in the project | 8/8 |
-| [web](web/) | a web-fetch subagent, a docs-lookup skill | what a page says about something; the section of a docs site that answers a question; which page of a site covers a topic | nothing | 7/7 |
-| [repos](repos/) | loops of `git status` over folders | which repositories and worktrees hold uncommitted, unpushed or stashed work; where a branch or commit lives; what was committed today across projects; which branches can go | fetch, pull, push, switch, stash, prune | 10/10 |
-| [sqlite](sqlite/) | runs of `sqlite3` | a SQLite file's tables, columns, rows, which table holds a value, size, health | SQL that writes | 14/14 |
-| [data](data/) | a data-analyst skill, `head`, `jq` and throwaway scripts | a CSV, TSV, JSON or JSON-lines file's columns and types, matching rows, groups, distinct values, how two files differ | a filtered or converted copy | 19/19 |
+These kits were built here and now each has its own repository, with its history. Install one
+with `ask-kit kit install temet-ai/ask-kit-<name>`.
+
+| Kit | Repository | Replaces | Answers | Changes (only when asked) | Offline bench |
+|---|---|---|---|---|---|
+| tests | [temet-ai/ask-kit-tests](https://github.com/temet-ai/ask-kit-tests) | a test-runner subagent, a "run the checks" skill | do the tests, build, lint and typecheck pass; which tests fail and why; is a failure new since the last run; is a test flaky; what did the last run say | any other command in the project | 8/8 |
+| web | [temet-ai/ask-kit-web](https://github.com/temet-ai/ask-kit-web) | a web-fetch subagent, a docs-lookup skill | what a page says about something; the section of a docs site that answers a question; which page of a site covers a topic | nothing | 7/7 |
+| repos | [temet-ai/ask-kit-repos](https://github.com/temet-ai/ask-kit-repos) | loops of `git status` over folders | which repositories and worktrees hold uncommitted, unpushed or stashed work; where a branch or commit lives; what was committed today across projects; which branches can go | fetch, pull, push, switch, stash, prune | 10/10 |
+| sqlite | [temet-ai/ask-kit-sqlite](https://github.com/temet-ai/ask-kit-sqlite) | runs of `sqlite3` | a SQLite file's tables, columns, rows, which table holds a value, size, health | SQL that writes | 14/14 |
+| data | [temet-ai/ask-kit-data](https://github.com/temet-ai/ask-kit-data) | a data-analyst skill, `head`, `jq` and throwaway scripts | a CSV, TSV, JSON or JSON-lines file's columns and types, matching rows, groups, distinct values, how two files differ | a filtered or converted copy | 19/19 |
+| deps | [temet-ai/ask-kit-deps](https://github.com/temet-ai/ask-kit-deps) | a library-docs agent, a dependency-audit skill | which version of a package is installed and why; what is outdated or vulnerable; how to call an installed package, from its own files; for npm, Python, Cargo and Go | | |
+| procs | [temet-ai/ask-kit-procs](https://github.com/temet-ai/ask-kit-procs) | runs of `ps`, `lsof` and `top` | what holds a port; what uses the CPU or memory; whether a program is running; what a session left running | stopping a process | |
 
 Each was also run against real things on the build machine; its README says what. No kit has
 had a model run: the benches are shots (`do`), because ask-kit's rule is that model questions
@@ -50,12 +54,11 @@ needs: five to ten questions from sessions that dug by hand, then `ask-kit kit t
 
 | Kit | Replaces | Answers |
 |---|---|---|
-| deps | a library-docs agent, a dependency-audit skill | which version of a package is installed and why; what is outdated or vulnerable; how to call an installed package, from its own files; for npm, Python, Cargo and Go |
 | net | runs of `dig`, `curl -v`, `openssl s_client`, `lsof -i` | what a name resolves to; whether a host and port answer; what a URL returns; when a certificate expires; what listens on a port; why a URL cannot be reached |
 | files | runs of `find`, `du`, `stat` | where a file is; what uses the space; what changed in a folder; which documents mention something; what a PDF, office file or archive holds |
 | logs | `tail`, `grep` and `sort \| uniq -c` over log files | which errors happen most and which are new; when one first appeared; what happened around a time or request id |
 | api | an MCP server or SDK per HTTP API | anything one API with an OpenAPI document can tell or do |
-| notes | a second-brain skill | what I wrote or decided about something; open tasks; backlinks and tags; a daily note |
+| notes | a second-brain skill | what I wrote or decided about something; open tasks; backlinks and tags; a daily note (has a manifest and scripts; still needs a README, RECIPE, API file, instructions and bench) |
 | shell | scrolling the terminal | what command I ran for something; where an alias or variable is set; why the wrong program is first on PATH |
 
 ## Next

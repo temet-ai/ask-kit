@@ -1,4 +1,0 @@
-# The fixture is a committed fake install: keep what the repository's .gitignore would drop.
-!node_modules/
-!.venv/
-!.env
