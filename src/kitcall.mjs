@@ -2,7 +2,7 @@
 // The target's server starts the way the router starts it (src/server.mjs with ASK_KIT_DOMAIN, outer
 // face, so its `ask` tool answers), is kept for the REPL's life, and runs with ASK_KIT_DEPTH=1: an
 // ask.kit inside it is refused. Each call is journaled through push() with the target kit, seconds
-// and cost read from the answer's footer.
+// and cost read from the answer's _meta (or, from an older host, its footer).
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import path from "node:path";
@@ -48,16 +48,19 @@ export function makeAskKit({ config, from, session, push, act = false, depth = N
     const t0 = Date.now();
     let text = "";
     let failed = null;
+    let run = null;
     try {
       const c = await open(name);
       const out = await c.callTool({ name: "ask", arguments: { question, act: !!act, ...(opts.continue ? { continue: true } : {}) } }, undefined, { timeout: 300_000 });
       text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
+      run = out._meta?.["ask-kit/run"] ?? null;
       if (out.isError) failed = text.slice(0, 300) || "the other kit's ask failed";
     } catch (e) {
       failed = String(e.message ?? e).slice(0, 300);
     }
-    const f = parseFooter(text);
-    push?.({ kind: "ask.kit", kit: name, detail: question.slice(0, 200), ms: Date.now() - t0, seconds: f.seconds ?? Math.round((Date.now() - t0) / 1000), costUsd: f.costUsd ?? 0, ...(f.backend ? { backend: f.backend } : {}), ...(failed ? { error: failed } : {}) });
+    // The run's details: from the answer's _meta, else from a footer (`footer: true`, or an older host).
+    const f = run ? { backend: run.backend, seconds: Math.round(run.ms / 1000), costUsd: run.costUsd ?? null, cells: run.cells } : parseFooter(text);
+    push?.({ kind: "ask.kit", kit: name, detail: question.slice(0, 200), ms: Date.now() - t0, seconds: f.seconds ?? Math.round((Date.now() - t0) / 1000), costUsd: f.costUsd ?? null, ...(f.cells != null ? { cells: f.cells } : {}), ...(f.backend ? { backend: f.backend } : {}), ...(failed ? { error: failed } : {}) });
     if (failed) throw new Error(`ask.kit(${name}) failed: ${failed}`);
     return text;
   }

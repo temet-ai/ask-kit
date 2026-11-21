@@ -16,8 +16,19 @@ import { makeRepo, readOnly } from "../domains/code/repo.mjs";
 import { which } from "./platform.mjs";
 import { checkProvides } from "./capabilities.mjs";
 import { checkActions, compileActions } from "./actions.mjs";
+import { makeLib, notInThisAsk } from "./kitlib/index.mjs";
 
 export const MANIFEST = "ask-kit.toml";
+/** This ask-kit's version, which a kit's `min_ask_kit` is checked against. */
+export const HOST_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
+/** a < b for x.y.z versions. */
+export const olderThan = (a, b) => {
+  const [x, y] = [SEMVER.exec(a), SEMVER.exec(b)];
+  if (!x || !y) return false;
+  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) < Number(y[i]);
+  return false;
+};
 /** Where a kit keeps data of its own (a cache, saved runs): `${STATE_DIR}` and `stateDir` in make(). Removed by `kit remove --purge`. */
 export const kitStateDir = (name) => path.join(STATE_ROOT, "kit-data", name);
 const NAME = /^[a-z][a-z0-9-]*$/;
@@ -58,6 +69,8 @@ export function readManifest(dir) {
   const problems = [];
   if (!NAME.test(m.name ?? "")) problems.push("name: lowercase letters, digits and dashes, starting with a letter");
   if (!m.says) problems.push("says: one line saying what the kit answers (the router reads it)");
+  if (m.id != null && !/^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/.test(m.id)) problems.push('id: <owner>.<name> in lowercase, e.g. "temet.docker": the kit\'s identity, kept when a copy is installed under another name');
+  if (m.min_ask_kit != null && !SEMVER.test(String(m.min_ask_kit))) problems.push('min_ask_kit: the oldest ask-kit version the kit works with, as x.y.z, e.g. "0.3.0"');
   const sources = m.sources ?? [];
   if (!sources.length) problems.push("[[sources]]: at least one");
   for (const [i, s] of sources.entries()) {
@@ -155,9 +168,8 @@ function phraseIn(args, phrases, names) {
   return null;
 }
 
-export const notInThisAsk = (what) =>
-  `not in this ask: ${what} changes things, and the caller did not ask for a change (act: true), so nothing was done. ` +
-  "Answer what you can, and say that this needs `ask` with act: true. Do not look for another way to do it.";
+// One sentence for every withheld call, the host's and lib's (src/kitlib/index.mjs).
+export { notInThisAsk };
 
 // A module source's global with the recognised acts withheld. A Proxy, so the module's own object,
 // its prototype methods and its other values are left as they are.
@@ -440,7 +452,9 @@ async function makeSources(m, dir, settings, mcp = {}) {
         const held = act ? [] : [...acts.methods.filter((x) => x.source === s.name).map((x) => x.name), ...acts.phrases.filter((p) => p.length === 1).map((p) => p[0])];
         g[s.name] = makeMcpGlobal(s, mcp[s.name], settings, push, held);
       } else {
-        const made = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), callerDir: settings.CALLER_DIR, stateDir: settings.STATE_DIR, options: s, act });
+        // lib: the shared library (src/kitlib), its runner holding back this kit's acts phrases without act.
+        const lib = makeLib({ push, act, kit: m.name, callerDir: settings.CALLER_DIR, stateDir: settings.STATE_DIR, held: (argv) => (acts.phrases.length ? phraseIn(argv, acts.phrases, [s.name, path.basename(String(argv[0] ?? ""))]) : null) });
+        const made = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), callerDir: settings.CALLER_DIR, stateDir: settings.STATE_DIR, options: s, act, lib });
         g[s.name] = act ? made : withholding(made, s, acts);
       }
     }
@@ -626,6 +640,7 @@ async function scriptExamples(dirs) {
  * The router offers only kits that can run, so a machine lists what it can answer.
  */
 export function unavailable(m, settings, { lazy = false } = {}) {
+  if (m.min_ask_kit && olderThan(HOST_VERSION, String(m.min_ask_kit))) return `needs ask-kit ${m.min_ask_kit} or later (this is ${HOST_VERSION}): npm install -g @temet-ai/ask-kit`;
   const here = { darwin: "macos", win32: "windows" }[process.platform] ?? process.platform;
   if (m.platforms && ![].concat(m.platforms).includes(here)) return `runs on ${[].concat(m.platforms).join(", ")}, not ${here}`;
   const missing = [].concat(m.requires ?? []).filter((p) => !which(p));

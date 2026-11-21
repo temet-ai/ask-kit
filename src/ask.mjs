@@ -42,6 +42,8 @@ const USUAL_TTL_MS = 600_000;
 const acting = new AsyncLocalStorage();
 const withActing = (handler) => (input, extra) => acting.run({ act: false }, () => handler(input, extra));
 const ACT_KEY = "__act";
+/** The _meta key of an ask's run details: {kit, backend, ms, costUsd?, cells?}. */
+export const RUN_META = "ask-kit/run";
 
 // Held back from the client's tool timeout for the closing "what I found" call.
 const RESERVE_MS = 15_000;
@@ -962,7 +964,10 @@ export function registerAsk(server, ctx) {
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.
           const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
-          return { content: [{ type: "text", text: r.answer + (cited?.line ?? "") + footer }], isError: !r.ok, ...(noData ? { _meta: { [NO_DATA_META]: true } } : {}) };
+          // The run's details also travel in _meta, which callers do not show as text: ask.kit and
+          // the router read the cost and time from there.
+          const run = { kit: domainName, backend, ms: r.ms, ...(r.costUsd != null ? { costUsd: r.costUsd } : {}), ...(r.cells != null ? { cells: r.cells } : {}) };
+          return { content: [{ type: "text", text: r.answer + (cited?.line ?? "") + footer }], isError: !r.ok, _meta: { [RUN_META]: run, ...(noData ? { [NO_DATA_META]: true } : {}) } };
         } catch (e) {
           const cancelled = ac.signal.aborted;
           const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");

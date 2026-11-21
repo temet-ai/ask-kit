@@ -14,7 +14,7 @@
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|enable|disable   kits
+//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|commons|enable|disable   kits
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -538,13 +538,21 @@ async function kitCommand() {
     }
     case "update":
       return print(await (await import("../src/gallery.mjs")).updateKit(positional[1], { yes: !!flag("yes") }));
+    case "commons": {
+      // What kits repeat of each other and of the shared library (docs/design/mesh.md).
+      const { evaluate, formatEvaluation } = await import("../src/commons.mjs");
+      const dir = typeof flag("dir") === "string" ? path.resolve(flag("dir")) : null;
+      const list = dir ? fs.readdirSync(dir).filter((n) => fs.existsSync(path.join(dir, n, "ask-kit.toml"))).map((n) => ({ name: n, dir: path.join(dir, n) })) : undefined;
+      const e = evaluate(list);
+      return flag("json") ? print(positional[1] ? { ...e, byKit: { [positional[1]]: e.byKit[positional[1]] ?? null } } : e) : console.log(formatEvaluation(e, positional[1]));
+    }
     case "suggest": {
       const { suggest, formatSuggest } = await import("../src/suggest.mjs");
       const r = await suggest({ from: typeof flag("from") === "string" ? flag("from") : undefined, ref: typeof flag("ref") === "string" ? flag("ref") : undefined, since: typeof flag("since") === "string" ? flag("since") : "30d" });
       return flag("json") ? print(r) : console.log(formatSuggest(r));
     }
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--ref branch] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--ref branch] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · commons [name] [--dir <folder of kits>] [--json] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 
