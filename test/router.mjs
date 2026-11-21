@@ -49,6 +49,10 @@ assert.match(r.hints.join("\n"), /mike's captured sessions in general are sessio
 assert.equal(r.byRules("which session looked at the guild ledger yesterday?"), "sessions");
 assert.equal(r.byRules("who keeps the guild ledger?"), "guild");
 assert.equal(r.byRules("who is on duty at the watch house?"), "watch");
+// A question with words of two kits goes to the kit more of whose keywords it holds, whichever
+// comes first in the config.
+assert.equal(r.byRules("who is on duty when the guild meets at the watch house?"), "watch");
+assert.equal(r.byRules("is the guild ledger kept at the watch house?"), "guild");
 
 // A pattern claims a question outright only without past-work words; otherwise it is a hint to the model.
 assert.equal(r.byPattern("open case-ab12cd34"), "watch");
