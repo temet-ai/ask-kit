@@ -50,15 +50,23 @@ had a model run: the benches are shots (`do`), because ask-kit's rule is that mo
 come from real sessions, and the build machine had none. That is the first thing each kit still
 needs: five to ten questions from sessions that dug by hand, then `ask-kit kit test <name>`.
 
+## Finished here, not yet in their own repositories
+
+| Kit | Replaces | Answers | Changes (only when asked) | Offline bench |
+|---|---|---|---|---|
+| [api](api/) | an MCP server or SDK per HTTP API | anything one API with an OpenAPI document (3.0, 3.1 or Swagger 2.0, JSON or YAML) can tell: which operation does something, what it takes and returns, calling it, a collection through its pages | POST, PUT, PATCH and DELETE calls | 14/14 |
+| [logs](logs/) | `tail`, `grep` and `sort \| uniq -c` over log files | which errors happen most and which are new; when one first appeared; what happened around a time or request id; an access log's failing and slow paths | nothing | 22/22 |
+| [notes](notes/) | a second-brain skill | what I wrote or decided about something; open tasks; backlinks and tags; a daily note | appending, creating notes, adding and ticking tasks | 14/14 |
+
+The api bench needs `API_SPEC=bench/fixture/watch-api.yaml`, and the notes bench
+`NOTES_DIR=bench/fixture/vault`, because each kit has a required setting; their RECIPEs give the line.
+
 ## In progress
 
 | Kit | Replaces | Answers |
 |---|---|---|
 | net | runs of `dig`, `curl -v`, `openssl s_client`, `lsof -i` | what a name resolves to; whether a host and port answer; what a URL returns; when a certificate expires; what listens on a port; why a URL cannot be reached |
 | files | runs of `find`, `du`, `stat` | where a file is; what uses the space; what changed in a folder; which documents mention something; what a PDF, office file or archive holds |
-| logs | `tail`, `grep` and `sort \| uniq -c` over log files | which errors happen most and which are new; when one first appeared; what happened around a time or request id |
-| api | an MCP server or SDK per HTTP API | anything one API with an OpenAPI document can tell or do |
-| notes | a second-brain skill | what I wrote or decided about something; open tasks; backlinks and tags; a daily note (has a manifest and scripts; still needs a README, RECIPE, API file, instructions and bench) |
 | shell | scrolling the terminal | what command I ran for something; where an alias or variable is set; why the wrong program is first on PATH |
 
 ## Next
