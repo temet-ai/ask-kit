@@ -1,6 +1,7 @@
 // The kits site's data: every public repository with the GitHub topic ask-kit (or ask-kit-domain),
 // read from its default branch: ask-kit.toml (what the kit answers, what it needs, what it can
-// change), the first paragraph of its README, and how many bench questions it carries.
+// change), the first paragraph of its README, its bench questions, and what it carries: scripts
+// (with each one's purpose), skills (playbooks) and roles.
 // Writes site/kits.json. GITHUB_TOKEN raises GitHub's rate limit; private repositories are left out.
 //
 //   node site/build-index.mjs [out.json]
@@ -8,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "smol-toml";
-import { listGallery } from "../src/gallery.mjs";
+import { listGallery, purposeOf } from "../src/gallery.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const out = process.argv[2] ?? path.join(HERE, "kits.json");
@@ -25,6 +26,31 @@ function intro(md) {
   const paras = md.replace(/```[\s\S]*?```/g, "").split(/\n\s*\n/).map((p) => p.trim());
   const p = paras.find((x) => x && !/^(#|!\[|\[!\[|<|>|\||-{3})/.test(x));
   return (p ?? "").replace(/\s*\n\s*/g, " ").slice(0, 600);
+}
+
+/** The files of a repository's branch, as paths (one API call); [] when GitHub does not answer. */
+async function tree(repo, branch) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`, { headers: { ...headers, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
+    return res.ok ? ((await res.json()).tree ?? []).filter((t) => t.type === "blob").map((t) => t.path) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The files directly in `dir` with the extension, by name: [{name, path}]. */
+const inDir = (files, dir, ext) =>
+  files.filter((p) => p.startsWith(`${dir}/`) && p.endsWith(ext) && !p.slice(dir.length + 1).includes("/")).sort().map((p) => ({ name: p.slice(dir.length + 1, -ext.length), path: p }));
+
+/** What a kit carries besides its sources: scripts and skills from its folders, roles from the manifest. */
+async function carries(repo, branch, m) {
+  const files = await tree(repo, branch);
+  const scripts = [];
+  for (const f of inDir(files, typeof m.scripts === "string" ? m.scripts : "scripts", ".mjs")) scripts.push({ name: f.name, purpose: purposeOf(await raw(repo, branch, f.path)) });
+  const skills = [];
+  for (const f of inDir(files, typeof m.skills === "string" ? m.skills : "skills", ".md")) skills.push({ name: f.name, purpose: ((await raw(repo, branch, f.path)) ?? "").split("\n")[0].replace(/^#+\s*/, "").trim().slice(0, 300) });
+  const roles = (m.roles ?? []).map((r) => ({ name: r.name, when: r.when ?? "" }));
+  return { scripts, skills, roles };
 }
 
 const kits = [];
@@ -70,9 +96,10 @@ for (const r of await listGallery()) {
     actions: (m?.actions ?? []).map((a) => ({ name: a.name, title: a.title ?? "", script: a.script, acts: !!a.acts })),
     settings: (m?.settings ?? []).map((s) => ({ key: s.key, about: s.about ?? "", default: s.default ?? "", detect: s.detect ? [].concat(s.detect).join(" ") : "", required: !!s.required, secret: !!s.secret })),
     questions,
+    ...(m ? await carries(r.repo, branch, m) : { scripts: [], skills: [], roles: [] }),
     install: `ask-kit kit install ${r.repo}`,
   });
-  console.log(`${r.repo}: ${m ? "kit" : "domain"}, ${questions.length} bench question(s)`);
+  console.log(`${r.repo}: ${m ? "kit" : "domain"}, ${questions.length} bench question(s), ${kits.at(-1).scripts.length} script(s), ${kits.at(-1).skills.length} skill(s), ${kits.at(-1).roles.length} role(s)`);
 }
 
 // The domains that ship inside ask-kit, read from their domain.mjs.
