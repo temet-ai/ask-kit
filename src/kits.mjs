@@ -18,6 +18,8 @@ import { checkProvides } from "./capabilities.mjs";
 import { checkActions, compileActions } from "./actions.mjs";
 
 export const MANIFEST = "ask-kit.toml";
+/** Where a kit keeps data of its own (a cache, saved runs): `${STATE_DIR}` and `stateDir` in make(). Removed by `kit remove --purge`. */
+export const kitStateDir = (name) => path.join(STATE_ROOT, "kit-data", name);
 const NAME = /^[a-z][a-z0-9-]*$/;
 const SOURCE_KINDS = ["folder", "cli", "module", "mcp"];
 
@@ -69,6 +71,8 @@ export function readManifest(dir) {
   if (m.uses != null && !(Array.isArray(m.uses) && m.uses.every((u) => NAME.test(u)))) problems.push("uses: a list of kit names, e.g. [\"github\"]");
   if (m.uses?.includes?.(m.name)) problems.push("uses: a kit cannot use itself");
   if (m.skills != null && typeof m.skills !== "string") problems.push("skills: the folder of playbooks in the kit (default skills/)");
+  if (m.replaces != null && !(Array.isArray(m.replaces) && m.replaces.every((r) => typeof r === "string" && /^[\w.+-]+( [\w.+:=-]+)?$/.test(r))))
+    problems.push('replaces: a list of the commands this kit answers for, one or two words each, e.g. ["lsof", "npm outdated"]');
   problems.push(...checkProvides(m.provides));
   problems.push(...checkActions(m.actions));
   for (const [i, r] of (m.roles ?? []).entries()) {
@@ -436,7 +440,7 @@ async function makeSources(m, dir, settings, mcp = {}) {
         const held = act ? [] : [...acts.methods.filter((x) => x.source === s.name).map((x) => x.name), ...acts.phrases.filter((p) => p.length === 1).map((p) => p[0])];
         g[s.name] = makeMcpGlobal(s, mcp[s.name], settings, push, held);
       } else {
-        const made = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), options: s, act });
+        const made = modules[s.name].make({ push, config, settings, kitDir: dir, cwd: process.cwd(), callerDir: settings.CALLER_DIR, stateDir: settings.STATE_DIR, options: s, act });
         g[s.name] = act ? made : withholding(made, s, acts);
       }
     }
@@ -660,7 +664,8 @@ export function kitIndex(dir, { config, stack = [] } = {}) {
     if (d.unavailable) why ??= `uses the ${u} kit, which cannot run here: ${d.unavailable}`;
     else usedDirs.push(...d.scriptsDirs);
   }
-  const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config, process.cwd(), { detect: false })).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
+  const builtIns = { KIT_DIR: dir, CALLER_DIR: process.env.ASK_KIT_CALLER_DIR || process.cwd(), STATE_DIR: kitStateDir(m.name) };
+  const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config, process.cwd(), { detect: false })).map(([k, v]) => [k, v.replace(/\$\{(KIT_DIR|CALLER_DIR|STATE_DIR)\}/g, (_, b) => builtIns[b])])), ...builtIns };
   why ??= unavailable(m, settings, { lazy: true });
   const own = path.join(dir, m.scripts ?? "scripts");
   const hostScripts = m.sources.some((s) => s.kind === "folder") && m.folder_scripts !== false ? [path.join(ROOT, "kits", "_host", "folder-scripts")] : [];
@@ -699,8 +704,13 @@ export async function kitDomain(dir, { config, stack = [] } = {}) {
     if (d.unavailable) usedWhy ??= `uses the ${u} kit, which cannot run here: ${d.unavailable}`;
     else used.push(d);
   }
-  // ${KIT_DIR} in a manifest is the kit's own folder (data a [[build]] step downloaded, say).
-  const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config)).map(([k, v]) => [k, v.replace(/\$\{KIT_DIR\}/g, dir)])), KIT_DIR: dir };
+  // ${KIT_DIR} in a manifest is the kit's own folder (data a [[build]] step downloaded, say), and
+  // ${CALLER_DIR} the folder the calling agent works in (the kit's server starts there; the REPL
+  // does not, so it travels in the environment). ${STATE_DIR} is where the kit keeps its own data.
+  const callerDir = process.env.ASK_KIT_CALLER_DIR || process.cwd();
+  const stateDir = kitStateDir(m.name);
+  const builtIns = { KIT_DIR: dir, CALLER_DIR: callerDir, STATE_DIR: stateDir };
+  const settings = { ...Object.fromEntries(Object.entries(resolveSettings(m, config)).map(([k, v]) => [k, v.replace(/\$\{(KIT_DIR|CALLER_DIR|STATE_DIR)\}/g, (_, b) => builtIns[b])])), ...builtIns };
   const outDir = path.join(STATE_ROOT, "kits", m.name, slug(fill(m.state_key ?? "", settings) || "default"));
   fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
   // A kit that cannot run here is described, not built: no MCP server is started, no folder read.
@@ -747,7 +757,7 @@ export async function kitDomain(dir, { config, stack = [] } = {}) {
       const e = entries.find((x) => x.kind === "role" && x.patterns.some((p) => p.test(String(question))));
       return e ? { name: e.name.slice(5), when: e.purpose, file: e.file } : null;
     },
-    childEnv: () => Object.assign({}, ...used.map((d) => d.childEnv()), settings),
+    childEnv: () => Object.assign({}, ...used.map((d) => d.childEnv()), settings, { ASK_KIT_CALLER_DIR: callerDir }),
     scriptsDir: own,
     scriptsDirs,
     apiDoc,

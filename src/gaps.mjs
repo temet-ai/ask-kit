@@ -296,12 +296,17 @@ export const PROGRAMS = {
 };
 const BUILT_IN = ["sessions", "code"];
 
-/** What attribution needs: installed kits, their programs, folders and MCP servers. */
-export function kitRules(config = loadConfig({ required: false }) ?? {}) {
+/**
+ * What attribution needs: installed kits, their programs, folders and MCP servers, and the commands
+ * kits say they answer for (`replaces`: "lsof", "npm outdated"). `catalogue` adds manifests of kits
+ * that are not installed, so digging they would have answered is put down to them by name.
+ */
+export function kitRules(config = loadConfig({ required: false }) ?? {}, { catalogue = [] } = {}) {
   const installed = new Set(BUILT_IN.filter((d) => config.domains?.[d]?.enabled !== false));
   const programs = { ...PROGRAMS };
   const folders = [];
   const servers = {};
+  const commands = {};
   for (const name of listKits()) {
     if (config.domains?.[name]?.enabled === false || (config.domains && !config.domains[name])) continue;
     let m;
@@ -311,6 +316,7 @@ export function kitRules(config = loadConfig({ required: false }) ?? {}) {
       continue;
     }
     installed.add(name);
+    for (const r of [].concat(m.replaces ?? [])) commands[r] = name;
     const settings = { ...Object.fromEntries((m.settings ?? []).filter((s) => s.default != null).map((s) => [s.key, s.default])), ...(config.domains?.[name]?.settings ?? {}) };
     const fill = (s) => String(s).replace(/\$\{([A-Z0-9_]+)\}/g, (_, k) => settings[k] ?? process.env[k] ?? "");
     for (const p of [].concat(m.requires ?? [])) if (!/^mike/.test(p)) programs[p] = name;
@@ -327,11 +333,13 @@ export function kitRules(config = loadConfig({ required: false }) ?? {}) {
       }
     }
   }
+  // An installed kit's claim wins over a catalogue kit's for the same command.
+  for (const m of catalogue) if (!installed.has(m.name)) for (const r of [].concat(m.replaces ?? [])) commands[r] ??= m.name;
   // Transcript stores are what the sessions domain reads.
   for (const a of Object.values(ADAPTERS)) if (installed.has("sessions")) folders.push([a.where(), "sessions"]);
   folders.sort((a, b) => b[0].length - a[0].length);
-  const key = crypto.createHash("sha1").update(JSON.stringify([VERSION, [...installed].sort(), programs, folders, servers])).digest("hex").slice(0, 12);
-  return { installed, programs, folders, servers, key };
+  const key = crypto.createHash("sha1").update(JSON.stringify([VERSION, [...installed].sort(), programs, folders, servers, commands])).digest("hex").slice(0, 12);
+  return { installed, programs, folders, servers, commands, key };
 }
 
 const gitRoots = new Map();
@@ -370,6 +378,13 @@ export function targetOf(u, rules, repo) {
   }
   if (u.tool.startsWith("Web")) return "web";
   if (u.tool === "Bash") {
+    // A command a kit says it answers for, by its first two words ("npm outdated") or its first.
+    for (const seg of segsOf(u.arg)) {
+      const w = wordsOf(seg);
+      const head = (w[0] || "").replace(/^.*\//, "");
+      const t = rules.commands?.[`${head} ${w[1] ?? ""}`.trim()] ?? rules.commands?.[head];
+      if (t) return t;
+    }
     const heads = segsOf(u.arg).map(headOf).filter((h) => !SKIP.has(h));
     // A command run over ssh counts by what it runs there.
     const inner = heads.includes("ssh") ? segsOf(u.arg.replace(/^.*?\bssh\s+(\S+\s+)*?['"]?/, "")).map(headOf) : [];

@@ -14,7 +14,7 @@
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|profile|actions|install|enable|disable   kits: ask-kit.toml folders
+//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|enable|disable   kits
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -442,7 +442,7 @@ async function kitCommand() {
       fs.symlinkSync(dir, dest, "dir");
       enable(m.name, { from: dir });
       (await import("../src/agentsmd.mjs")).writeAgentsMd();
-      return print({ linked: m.name, dir, at: dest, next: `Restart the agents so \`ask\` lists it; changes in ${dir} load on the next question. Then: ask-kit kit test ${m.name}` });
+      return print({ linked: m.name, dir, at: dest, next: `\`ask\` lists it on its next call, and changes in ${dir} load on the next question. Then: ask-kit kit test ${m.name}` });
     }
     case "enable":
     case "disable": {
@@ -526,11 +526,25 @@ async function kitCommand() {
       for (const r of rows) console.log(`${r.on ? "●" : "○"} ${r.name.padEnd(20)} ${r.title}  (script ${r.script}${r.acts ? ", changes things" : ""})\n    ${r.on ? "on" : r.why}\n    last ${r.last20.runs} runs: ${r.last20.answered} answered, ${r.last20.failed} fell through on an error or the shape, ${r.last20.reasked} asked again\n    match: ${r.match.join("  |  ")}`);
       return;
     }
-    case "install":
-      if (!positional[1]) throw new Error("kit install needs a repository (owner/repo) or a folder");
-      return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes") }));
+    case "install": {
+      if (!positional[1]) throw new Error("kit install needs a repository (owner/repo, owner/repo/folder) or a folder");
+      const only = typeof flag("only") === "string" ? flag("only").split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+      return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes"), only, ref: typeof flag("ref") === "string" ? flag("ref") : undefined }));
+    }
+    case "remove":
+    case "uninstall": {
+      if (!positional[1]) throw new Error(`kit ${sub} needs a kit's name`);
+      return print((await import("../src/gallery.mjs")).removeKit(positional[1], { yes: !!flag("yes"), purge: !!flag("purge") }));
+    }
+    case "update":
+      return print(await (await import("../src/gallery.mjs")).updateKit(positional[1], { yes: !!flag("yes") }));
+    case "suggest": {
+      const { suggest, formatSuggest } = await import("../src/suggest.mjs");
+      const r = await suggest({ from: typeof flag("from") === "string" ? flag("from") : undefined, ref: typeof flag("ref") === "string" ? flag("ref") : undefined, since: typeof flag("since") === "string" ? flag("since") : "30d" });
+      return flag("json") ? print(r) : console.log(formatSuggest(r));
+    }
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo> [--yes] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--ref branch] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 

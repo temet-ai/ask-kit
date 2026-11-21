@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CONFIG_FILE, ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
 import { indexDomain, loadDomain } from "./domains.mjs";
+import { kitDirs } from "./kits.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
 import { NO_DATA_META, capabilityLines, providersOf, ranked, scopeOf, tiesOf, winnersOf } from "./capabilities.mjs";
@@ -212,11 +213,40 @@ async function serveNotSetUp() {
   await server.connect(new StdioServerTransport());
 }
 
+// What the router's choices rest on: the config and every kit folder's manifest. When it changes (a
+// kit installed, removed, enabled, disabled or relinked), the router rebuilds on the next ask, so a
+// kit takes effect without restarting the agents.
+export function routerFingerprint() {
+  const parts = [];
+  try {
+    const st = fs.statSync(CONFIG_FILE);
+    parts.push(`config:${st.mtimeMs}:${st.size}`);
+  } catch {
+    parts.push("config:none");
+  }
+  for (const base of kitDirs()) {
+    let names = [];
+    try {
+      names = fs.readdirSync(base).sort();
+    } catch {
+      continue;
+    }
+    for (const n of names) {
+      try {
+        const st = fs.statSync(path.join(base, n, "ask-kit.toml"));
+        parts.push(`${base}/${n}:${st.mtimeMs}:${st.size}`);
+      } catch {}
+    }
+  }
+  return parts.join("|");
+}
+
 export async function serveRouter() {
-  const config = loadConfig({ required: false });
+  let config = loadConfig({ required: false });
   if (!config) return serveNotSetUp();
-  const { enabled, aliases, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
-  const aliasLine = Object.entries(aliases).map(([a, d]) => `"${a}" for ${d}`).join(", ");
+  let { enabled, aliases, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(config);
+  let aliasLine = Object.entries(aliases).map(([a, d]) => `"${a}" for ${d}`).join(", ");
+  let fingerprint = routerFingerprint();
   const SESSION = callerSession();
   const children = new Map();
   const child = (name) => {
@@ -264,10 +294,7 @@ export async function serveRouter() {
         "It is a conversation: continue: true sends a follow-up to the investigator that answered last, which keeps what it found.",
     },
   );
-  server.registerTool(
-    "ask",
-    {
-      description:
+  const describe = () =>
         "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
         "so you pay for one call and the answer. It goes to one of: " +
         enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
@@ -277,8 +304,8 @@ export async function serveRouter() {
         ". For a follow-up, pass continue: true. " +
         "The investigator only reads unless the ask may change things: a request that opens with what to do (\"fix ...\", \"restart ...\", \"send ...\") gets its acting calls, " +
         "and so does any request sent with act: true; a follow-up keeps the act of the ask it continues. " +
-        'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
-      inputSchema: {
+        'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.';
+  const schema = () => ({
         question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
         about: z.enum([...enabled, ...Object.keys(aliases)]).optional().describe("Which investigator; left out, the router chooses"),
         do: z.string().optional().describe('A shot: "<kit>.<script>" runs that kit script with no model and returns its result'),
@@ -288,9 +315,48 @@ export async function serveRouter() {
         backend: z.string().optional().describe("The investigator's model: a backend name from ask-kit's config"),
         timeoutSeconds: z.number().int().min(30).max(900).optional(),
         act: z.boolean().optional().describe("true: the request asks for a change, so the investigator gets its acting calls. Left out, the router sets it when the request opens with what to do (fix, add, restart, send ...); false keeps the ask read-only"),
-      },
+  });
+  let tool = null;
+  // Rebuild when a kit was installed, removed, enabled, disabled or relinked since the last ask. The
+  // servers of kits that went away or whose config entry changed are closed; the others keep their
+  // warm REPLs. The tool's description and its `about` list are updated, and the client is told.
+  const reload = async () => {
+    const now = routerFingerprint();
+    if (now === fingerprint) return null;
+    fingerprint = now;
+    const next = loadConfig({ required: false });
+    if (!next) return null;
+    const before = { enabled, domains: config.domains ?? {} };
+    ({ enabled, aliases, DOMAINS, byModel, byPattern, byAction, fallback, pastWork, resolve, nextAfter, capLines } = await makeRouter(next));
+    config = next;
+    aliasLine = Object.entries(aliases).map(([a, d]) => `"${a}" for ${d}`).join(", ");
+    for (const n of [...children.keys()]) {
+      if (enabled.includes(n) && JSON.stringify(before.domains[n] ?? null) === JSON.stringify(config.domains?.[n] ?? null)) continue;
+      const c = children.get(n);
+      children.delete(n);
+      c.then((x) => x.close()).catch(() => {});
+    }
+    if (last && !enabled.includes(last)) last = null;
+    tool?.update({ description: describe(), paramsSchema: schema() });
+    const added = enabled.filter((n) => !before.enabled.includes(n));
+    const removed = before.enabled.filter((n) => !enabled.includes(n));
+    journal({ reload: true, added, removed });
+    return { added, removed };
+  };
+  tool = server.registerTool(
+    "ask",
+    { description: describe(), inputSchema: schema() },
+    async (input, extra) => {
+      // Checked on every ask: a few stat calls.
+      await reload().catch(() => null);
+      // A kit added since this tool's argument list was sent is not in the client's `about` list;
+      // its schema check passed, so its name reaches here and is checked against the kits now.
+      if (input.about && !enabled.includes(input.about) && !aliases[input.about])
+        return { content: [{ type: "text", text: `ask failed: no kit "${input.about}" here; kits: ${enabled.join(", ")}` }], isError: true };
+      return handle(input, extra);
     },
-    async ({ question = "", about, do: doWhat, params, continue: cont = false, early, backend, timeoutSeconds, act }, extra) => {
+  );
+  async function handle({ question = "", about, do: doWhat, params, continue: cont = false, early, backend, timeoutSeconds, act }, extra) {
       // The caller's words decide whether the investigator may change things: act as given, else a
       // request that opens with what to do. Left unset otherwise, so a follow-up keeps the act of the ask it continues.
       const actBy = act != null ? "caller" : !doWhat && asksForChange(question) ? "request" : null;
@@ -390,8 +456,7 @@ export async function serveRouter() {
         if (DOMAINS[name]?.index) why = await loadDomain(name).then((d) => d.unavailable, () => null);
         return { content: [{ type: "text", text: why ? `ask failed: ${name} cannot run here: ${why}` : `ask failed (${name}): ${e.message ?? e}` }], isError: true };
       }
-    },
-  );
+  }
   for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(0));
   await server.connect(new StdioServerTransport());
 }
