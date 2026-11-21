@@ -79,13 +79,7 @@ Match the request to one of these. Show the user what will change before changin
 - **Find kits worth adding**: \`ask-kit kit suggest\` ranks kits not installed here by the lookups
   the user's agents did by hand that each would have answered (from this machine's transcripts);
   \`ask-kit gallery\` lists shared kits.
-- **Add a kit someone shared** (a GitHub repo with the topic \`ask-kit\`, a folder in one as
-  \`owner/repo/folder\`, or a local folder): \`ask-kit kit install <ref>\` previews what it reaches,
-  what it can change (\`acts\`), what it runs at install, what it needs, whether it can run here,
-  and which files to read first. It is code that runs with the user's rights: read those files,
-  tell the user, and only on their yes run it again with \`--yes\`. \`--only a,b\` picks kits of a
-  pack; \`--as <name>\` installs a second copy with its own settings. \`ask\` offers it on its next
-  call; no restart. A setting it needs: \`ask-kit kit set <kit> KEY=value\`.
+- **Add a kit someone shared**: follow "Add a kit and work it into the system" below.
 - **Update or remove a kit**: \`ask-kit kit update [kit]\` previews what changed, above all what it
   now reaches, changes or runs (\`consent\`): tell the user that before \`--yes\`.
   \`ask-kit kit remove <kit>\` (\`--purge\` also deletes its journals and data) previews, then
@@ -98,6 +92,44 @@ Match the request to one of these. Show the user what will change before changin
 - **Put the skills, agents and rule into an agent installed later**: \`ask-kit init\`.
 - **Remove it**: \`ask-kit uninstall\` (registrations, and the skills, agents and rule it wrote,
   except files the user has edited).
+
+## Add a kit and work it into the system
+
+A kit added on its own sits beside the others: its own copy of code the shared library has, words
+that take another kit's questions, two kits answering the same thing by chance. Adding one means
+working it in. The kit is a GitHub repo with the topic \`ask-kit\`, a folder in one
+(\`owner/repo/folder\`), or a local folder.
+
+1. **Preview**: \`ask-kit kit install <ref>\`. It says what the kit reaches, what it can change
+   (\`acts\`), what it runs at install, what it needs and whether it can run here, and names the
+   files to read (\`readFirst\`). Read them: it is code that runs with the user's rights.
+2. **Evaluate it against what is installed**: \`ask-kit kit mesh <ref>\`. Five joints:
+   - code it repeats of the shared library or of installed kits;
+   - routing: installed kits' questions it would take, and its questions another kit would take;
+   - overlaps: commands or answers it shares with an installed kit;
+   - composition: work it redoes that an installed kit answers for;
+   - readiness: settings it needs, whether it says what it \`replaces\`, its bench.
+3. **Tell the user** in a few lines: what it is for, what it reaches and changes, and what the mesh
+   found that needs a decision (its \`ask\` steps): which of two overlapping kits answers what, a
+   question that would move from one kit to another, a setting only they know. Recommend an answer
+   for each.
+4. **On their yes, install and work it in**: \`ask-kit kit install <ref> --yes\`, then the decisions:
+   settings (\`ask-kit kit set <kit> KEY=value\`), which kit answers first where both provide the
+   same thing (\`domains.<kit>.priority\` in the config), an action that takes a neighbour's
+   questions turned off (\`ask-kit kit actions <kit> --disable <action>\`). Take its \`agent\` steps
+   (bench questions from this machine's sessions: \`ask-kit mine <kit>\`). \`ask\` offers the kit on
+   its next call; no restart.
+5. **Prove it**: \`ask-kit kit mesh <kit>\` again (what you settled is gone) and
+   \`ask-kit kit test <kit>\` (its shots cost nothing; questions for a model cost a little: say so
+   before running them).
+6. **Report**: what the kit added, what you settled, and its \`author\` steps (code it should take
+   from the shared library, route_hint lines for it or a neighbour, \`replaces\` to declare). Those
+   belong to the kit's author or to ask-kit's library: offer to open an issue on the kit's
+   repository; do not edit an installed kit's files, \`ask-kit kit update\` would replace them.
+
+Removing one is the reverse: \`ask-kit kit remove <kit>\` (preview, then \`--yes\`), then
+\`ask-kit kit mesh\` on the kits it overlapped, in case a decision made for it (a priority, an
+action turned off) should be undone.
 
 ## Lines to paste into any agent
 

@@ -88,11 +88,26 @@ for the same code is more to keep in step.
 - `ask-kit kit test`: the same evaluation, so an author sees it before publishing.
 - The kits page: which kits use `lib`, and how much of each kit is its own code.
 
+## Built (2026-11-21)
+
+- `lib` (`src/kitlib/`, `test/kitlib.mjs`): for each job, the best of the kits' copies with what the
+  others did better merged in. Redaction is the host's transcript shapes with the shell kit's name
+  rules; HTTP is the api kit's client with the web kit's private-address guard; the runner is the
+  nine kits' wrapper with the host's act guard, which none of them had.
+- `ask-kit kit commons` (`src/commons.mjs`, `test/commons.mjs`), and `repeats` in the install preview.
+- `ask-kit kit mesh <kit or source>` (`src/mesh.mjs`, `test/kit-mesh.mjs`): all five joints for one
+  kit against the installed ones, with steps marked `agent` (the agent may take it), `ask` (the
+  person decides) and `author` (for the kit's author or for `lib`). It changes nothing.
+- The "Add a kit and work it into the system" steps in the AGENTS.md guide ask-kit writes
+  (`src/agentsmd.mjs`): preview, read, mesh, tell the person, install on their yes, settle the
+  decisions, prove it, report the author steps. This is what an agent follows when a person pastes
+  "Read ~/.config/ask-kit/AGENTS.md, then add this kit: ...".
+
 ## Order of work
 
-1. The evaluator (`src/commons.mjs`), built. Then `lib`, from what the evaluation found: for each
-   job, the best copy, with what the others do better merged in, and offline tests.
-2. The mesh section in the install preview and `kit commons`.
+1. The evaluator, `lib`, `kit mesh` and the AGENTS.md steps: built (above).
+2. Decisions the person makes in `kit mesh` that the config cannot hold yet: a neighbour's
+   `route_hint` or `keywords` overridden locally (today only priority and actions are config).
 3. The incubator kits moved onto `lib` (api, logs, notes, net, files, shell); the kits that moved to
    their own repositories next, each with `min_ask_kit` raised.
 4. The routing joint: every installed kit's bench routed with the new kit present.

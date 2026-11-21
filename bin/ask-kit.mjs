@@ -14,7 +14,7 @@
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
 //   ask-kit gallery              shared kits (GitHub topics ask-kit, ask-kit-domain)
-//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|commons|set|enable|disable   kits
+//   ask-kit kit new|link|list|test|profile|actions|install|update|remove|suggest|mesh|commons|set|enable|disable   kits
 //   ask-kit add <repo> [--yes]   show a shared domain's files; with --yes, install and enable it
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
@@ -574,6 +574,13 @@ async function kitCommand() {
       if (pairs.length || unset.length) console.log("\n`ask` uses the new values on its next call.");
       return;
     }
+    case "mesh": {
+      // How a kit fits with the kits already here, and the steps to work it in (docs/design/mesh.md).
+      if (!positional[1]) throw new Error("kit mesh needs a kit's name or a source (a folder, owner/repo[/folder])");
+      const { mesh, formatMesh } = await import("../src/mesh.mjs");
+      const r = mesh(positional[1], { only: typeof flag("only") === "string" ? flag("only") : undefined, ref: typeof flag("ref") === "string" ? flag("ref") : undefined });
+      return flag("json") ? print(r) : console.log(formatMesh(r));
+    }
     case "commons": {
       // What kits repeat of each other and of the shared library (docs/design/mesh.md).
       const { evaluate, formatEvaluation } = await import("../src/commons.mjs");
@@ -588,7 +595,7 @@ async function kitCommand() {
       return flag("json") ? print(r) : console.log(formatSuggest(r));
     }
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--as name] [--ref branch] [--full] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · commons [name] [--dir <folder of kits>] [--json] · set <name> [KEY=value ...] [--unset KEY] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo[/folder]> [--only a,b] [--as name] [--ref branch] [--full] [--yes] · update [name] [--yes] · remove <name> [--purge] [--yes] · suggest [--from <pack>] [--since 30d] [--json] · mesh <name|source> [--only n] [--json] · commons [name] [--dir <folder of kits>] [--json] · set <name> [KEY=value ...] [--unset KEY] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 

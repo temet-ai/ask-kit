@@ -160,7 +160,7 @@ async function addKits(r, dir, commit, kitDirsFound, { yes, only, full = false, 
   out.claims = await claimsOf(kits.map((k) => k.m), installedNames);
   if (!yes) {
     out.next =
-      "Read each kit's readFirst files, then tell the user what it reaches, what it changes (only when asked), what it runs at install and whether it can run here." +
+      "Read each kit's readFirst files, then run ask-kit kit mesh <the same source> to see how it fits with the installed kits, then tell the user what it reaches, what it changes (only when asked), what it runs at install, whether it can run here, and what the mesh asks them to decide." +
       (out.kits.some((k) => k.clash) ? " A clash means a different kit already has the name: install this one with --as <other name>, or remove the other first." : "") +
       (out.kits.some((k) => k.repeats) ? " repeats: code it carries that ask-kit's shared library already has; worth telling its author." : "") +
       (out.claims.length ? " Also say which questions of installed kits it would take (claims)." : "") +
