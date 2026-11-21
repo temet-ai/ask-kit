@@ -23,7 +23,7 @@ node bin/ask-kit.mjs --help
 ```
 
 A new test file under `test/` runs by being there: there is no list to add it to. CI runs
-`npm test` on Linux, macOS and Windows with Node 22 and 24.
+`npm test` on Linux and macOS with Node 22 and 24.
 
 After changing a file in `bundle/` (skills, the tuner agent, the rule), run
 `node bin/ask-kit.mjs plugin build` to refresh the Claude Code plugin's copies in `plugin/`;
