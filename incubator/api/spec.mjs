@@ -65,7 +65,7 @@ export async function loadSpec(source, { workdir = process.cwd(), push = () => {
     from = plainUrl(src);
     key = `url ${src}`;
     const hit = memo.get(key);
-    if (hit && !fresh && Date.now() - hit.at < URL_TTL_MS) return hit.spec;
+    if (hit?.spec && !fresh && Date.now() - hit.at < URL_TTL_MS) return hit.spec;
     const copy = path.join(stateDir(), "spec", `${sha(src)}.txt`);
     let age = Infinity;
     try {
@@ -99,7 +99,7 @@ export async function loadSpec(source, { workdir = process.cwd(), push = () => {
     if (st.size > 64 << 20) throw new Error(`cannot read the OpenAPI document: ${file} is larger than 64 MB`);
     key = `file ${file}`;
     const hit = memo.get(key);
-    if (hit && hit.mtime === st.mtimeMs && hit.size === st.size) return hit.spec;
+    if (hit?.spec && hit.mtime === st.mtimeMs && hit.size === st.size) return hit.spec;
     const started = Date.now();
     text = fs.readFileSync(file, "utf8");
     push({ kind: "api", detail: `read ${file}`, ms: Date.now() - started, code: 0, size: text.length });

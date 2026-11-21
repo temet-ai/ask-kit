@@ -60,7 +60,7 @@ export const MEANING = {
   HPE_INVALID_CONSTANT: "the answer is not HTTP (another protocol on this port)",
   REFUSED: "refused by this kit",
 };
-const fail = (step, code, message) => ({ step, code: String(code ?? "ERROR"), meaning: MEANING[code] ?? message ?? String(code), ...(message && MEANING[code] ? { message: clip(message, 200) } : {}) });
+const fail = (step, code, message) => ({ step, code: String(code ?? "ERROR"), meaning: MEANING[code] ?? clip(message ?? code, 200) });
 
 // ---- secrets ----
 
@@ -163,18 +163,18 @@ function noProxyHit(host, port) {
 function proxyFor(u) {
   const secure = u.protocol === "https:";
   const variable = secure ? (envOf("HTTPS_PROXY") ? "HTTPS_PROXY" : envOf("ALL_PROXY") ? "ALL_PROXY" : null) : envOf("HTTP_PROXY") ? "HTTP_PROXY" : envOf("ALL_PROXY") ? "ALL_PROXY" : null;
-  if (!variable) return { used: false };
+  if (!variable) return { used: false, via: "direct" };
   let p;
   try {
     p = new URL(envOf(variable).includes("://") ? envOf(variable) : `http://${envOf(variable)}`);
   } catch {
-    return { used: false, variable, note: `${variable} is set but is not a URL; this went direct` };
+    return { used: false, variable, via: `direct (${variable} is set but is not a URL)` };
   }
   const label = `${p.protocol}//${p.host}`;
   const port = Number(u.port) || (secure ? 443 : 80);
   const skip = noProxyHit(u.hostname, port);
-  if (skip) return { used: false, variable, proxy: label, note: `${variable} is set (${label}), but NO_PROXY entry "${skip}" matches this host, so this went direct` };
-  if (p.protocol !== "http:") return { used: false, variable, proxy: label, note: `${variable} is set (${label}), but this kit only speaks to http:// proxies, so this went direct; other tools on this machine go through the proxy and may get a different result` };
+  if (skip) return { used: false, variable, proxy: label, via: `direct (NO_PROXY entry "${skip}" covers this host)` };
+  if (p.protocol !== "http:") return { used: false, variable, proxy: label, via: `direct, although ${variable} is set (${label}): this kit only speaks to http:// proxies, so other tools on this machine may get a different result` };
   return {
     used: true,
     variable,
@@ -183,7 +183,7 @@ function proxyFor(u) {
     port: Number(p.port) || 80,
     tunnel: secure,
     auth: p.username ? `Basic ${Buffer.from(`${decodeURIComponent(p.username)}:${decodeURIComponent(p.password)}`).toString("base64")}` : null,
-    note: `went through the proxy ${label} (${variable})${secure ? "; the proxy resolved the name and made the connection, and a proxy that re-signs TLS shows its own certificate" : ""}`,
+    via: `proxy ${label} (${variable}): the proxy resolved the name and made the connection, not this machine`,
   };
 }
 
@@ -285,11 +285,10 @@ function tunnel(socket, host, port, auth, ms, label) {
 async function open({ host, port, secure, proxy, ms, guard }) {
   const t0 = now();
   const timing = { dns: null, connect: null, tls: null };
-  const out = { timing };
+  const out = { timing, via: proxy?.via ?? "direct" };
   const left = () => Math.max(1, ms - (now() - t0));
   let socket;
   if (proxy?.used) {
-    out.via = proxy.proxy;
     const r = await tcp(proxy.hostname, proxy.port, left());
     if (!r.socket) return { ...out, error: { ...fail("proxy", r.code, r.message), message: `could not connect to the proxy ${proxy.proxy}` } };
     r.socket.on("error", () => {});
@@ -426,13 +425,15 @@ const issuedBy = (child, parent) => {
 // The public CAs Node ships with. A chain that verifies but ends elsewhere was issued by a private CA
 // this machine was told to trust: a company CA, a local development CA, or a proxy that re-signs TLS.
 let publicCache;
-const publicRoots = () => (publicCache ??= new Set(tls.rootCertificates.map((pem) => {
+const publicRoots = () => (publicCache ??= tls.rootCertificates.flatMap((pem) => {
   try {
-    return new X509Certificate(pem).fingerprint256;
+    return [new X509Certificate(pem)];
   } catch {
-    return "";
+    return [];
   }
-})));
+}));
+// The top of a presented chain is a public root itself, or (a cross-signed root) carries one's name, or is signed by one.
+const isPublic = (top) => publicRoots().some((r) => r.fingerprint256 === top.fingerprint256 || r.subject === top.subject || (r.subject === top.issuer && issuedBy(top, r)));
 const link = (x, at) => ({ subject: dn(x.subject), issuer: dn(x.issuer), validTo: new Date(x.validTo).toISOString(), daysLeft: Math.floor((new Date(x.validTo) - at) / DAY) });
 
 function peerInfo(s, name, { at = Date.now(), viaProxy = false } = {}) {
@@ -454,7 +455,7 @@ function peerInfo(s, name, { at = Date.now(), viaProxy = false } = {}) {
   if (chainCode) {
     d.verifyError = chainCode;
     d.chainNote = MEANING[chainCode] ?? chainCode;
-  } else if (!publicRoots().has(xs.at(-1).fingerprint256)) {
+  } else if (!isPublic(xs.at(-1))) {
     d.privateCA = dn(xs.at(-1).subject);
     if (viaProxy) {
       d.intercepted = true;
@@ -463,7 +464,7 @@ function peerInfo(s, name, { at = Date.now(), viaProxy = false } = {}) {
   }
   d.protocol = s.getProtocol();
   d.cipher = s.getCipher()?.name ?? null;
-  d.chain = xs.map((x) => link(x, at));
+  if (xs.length > 1) d.chain = xs.map((x) => link(x, at));
   d.problems = certProblems(d);
   return d;
 }
@@ -573,7 +574,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const ms = clamp(o.timeoutMs, 3000, 100, 20000);
     const t0 = now();
     const l = await sysLookup(h, 5000);
-    const out = { host: h, port: p, resolved: l.addresses.map((a) => a.address), attempts: [], open: false };
+    const out = { host: h, port: p, via: "direct", resolved: l.addresses.map((a) => a.address), attempts: [], open: false };
     if (!l.addresses.length) {
       out.error = fail("dns", l.code, l.message);
       note("tcp", `connect ${h}:${p}`, t0, l.code);
@@ -603,15 +604,14 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const port = Number(u.port) || (secure ? 443 : 80);
     const shown = redactUrl(u.href);
     // realUrl and rawLocation are for request() to follow redirects; it deletes them before returning.
-    const h = { url: shown, method, realUrl: u.href };
+    const h = { url: shown, realUrl: u.href };
     if (isMetadata(host)) return { ...h, error: { step: "refused", code: "REFUSED", meaning: `${host} ${METADATA_WHY}` } };
     const proxy = proxyFor(u);
     const c = await open({ host, port, secure, proxy, ms, guard: true });
     h.timing = { ...c.timing, firstByte: null, total: null };
     if (c.address) h.address = c.address;
-    if (c.via) h.via = c.via;
+    h.via = c.via;
     if (c.failedAddresses) h.failedAddresses = c.failedAddresses;
-    if (proxy.note) h.proxy = proxy.note;
     const finish = (extra) => {
       h.timing.total = since(t0);
       Object.assign(h, extra);
@@ -661,7 +661,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
         end({ error: { step: "http", code: "ETIMEDOUT", meaning: `connected${secure ? " and TLS was set up" : ""}, but no response came within ${ms} ms: the server is slow, hung, or waiting for something` } });
       }, Math.max(1, ms - (now() - t0)));
       try {
-        req = http.request({ createConnection: () => socket, agent: false, method, path: forward ? clean.href : `${u.pathname}${u.search}`, headers: hdrs, setHost: false });
+        // With createConnection and no agent option, Node uses the socket given and opens none of its own.
+        req = http.request({ createConnection: () => socket, method, path: forward ? clean.href : `${u.pathname}${u.search}`, headers: hdrs, setHost: false });
       } catch (e) {
         return end({ error: fail("http", e.code ?? "ERROR", e.message) });
       }
@@ -669,7 +670,6 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       req.on("response", (res) => {
         h.timing.firstByte = since(t0);
         h.status = res.statusCode;
-        h.statusText = res.statusMessage;
         h.rawLocation = res.headers.location ?? null;
         const sh = showHeaders(res.headers, u.href, allHeaders);
         h.headers = sh.headers;
@@ -776,7 +776,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const out = {
       url: hops[0].url,
       method,
-      ok: !!last.status && last.status < 400 && !last.error,
+      ok: !!last.status && last.status < 400 && !last.error && !last.note,
       status: last.status ?? null,
       redirects: hops.length - 1,
       finalUrl: last.url,
@@ -784,7 +784,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       hops,
     };
     if (last.error) out.error = last.error;
-    if (last.body) out.body = last.body;
+    delete last.error;
+    if (last.body && (last.body.bytes || last.body.bytesRead || last.body.note)) out.body = last.body;
     delete last.body;
     const sent = Object.keys(o.headers ?? {});
     if (sent.length) out.sentHeaderNames = sent;
@@ -821,9 +822,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const t0 = now();
     const proxy = proxyFor(new URL(`https://${host.includes(":") ? `[${host}]` : host}:${port}/`));
     const s = await open({ host, port, secure: false, proxy, ms });
-    const out = { source: `${host}:${port}`, servername: name };
+    const out = { source: `${host}:${port}`, servername: name, via: s.via };
     if (s.address) out.address = s.address;
-    if (proxy.note) out.proxy = proxy.note;
     if (s.error) {
       note("tls", `cert ${host}:${port}`, t0, s.error.code);
       return { ...out, error: s.error };
@@ -921,7 +921,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       out.url = redactUrl(u.href);
       out.used = p.used;
       if (p.used) Object.assign(out, { proxy: p.proxy, proxyHost: p.hostname, proxyPort: p.port, how: p.tunnel ? "CONNECT tunnel" : "plain forwarding" });
-      out.note = p.note ?? "no proxy variable applies to this URL; requests go direct";
+      out.via = p.via;
     } else if (!Object.keys(set).length) out.note = "no proxy variables are set; requests go direct";
     return out;
   }

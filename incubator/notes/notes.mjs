@@ -22,7 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const VERSION = 3; // of the index file: raise it when parseNote changes what it stores
+const VERSION = 1; // of the index file: raise it when parseNote changes what it stores
 const NOTE_EXT = new Set([".md", ".markdown", ".txt"]);
 const MAX_NOTE_BYTES = 2 << 20;
 const MAX_FILES = 200_000;
@@ -229,10 +229,10 @@ export function parseNote(text) {
 
     const lineTags = [];
     for (const w of line.replace(WIKI, (x) => " ".repeat(x.length)).replace(/\]\([^)]*\)/g, (x) => " ".repeat(x.length)).matchAll(TAG)) {
-      const before = tags.size;
-      addTag(w[1]);
       const v = w[1].replace(/\/+$/, "").toLowerCase();
-      if (tags.size > before || tags.has(v)) lineTags.push(v);
+      if (!v || !/[^\d/]/.test(v)) continue; // #12 is a number, not a tag
+      tags.add(v);
+      lineTags.push(v);
     }
 
     const box = CHECKBOX.exec(line) ? CHECKBOX.exec(raw) : null;
@@ -396,7 +396,11 @@ function detectDaily(root, files) {
   const counts = new Map();
   for (const f of files) {
     const m = /^(.*\/)?(\d{4})([-_.])(\d\d)\3(\d\d)(\.\w+)$/.exec(f.rel);
-    if (m) counts.set(`${m[1] ?? ""}YYYY${m[3]}MM${m[3]}DD${m[6]}`, (counts.get(`${m[1] ?? ""}YYYY${m[3]}MM${m[3]}DD${m[6]}`) ?? 0) + 1);
+    if (!m) continue;
+    // A year or month folder above the note (journal/2026/11/2026-11-08.md) is part of the pattern.
+    const dir = (m[1] ?? "").split("/").map((x) => (x === m[2] ? "YYYY" : x === m[4] && /^\d\d$/.test(x) ? "MM" : x)).join("/");
+    const key = `${dir}YYYY${m[3]}MM${m[3]}DD${m[6]}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const best = [...counts].sort((a, b) => b[1] - a[1])[0];
   if (best) return { pattern: best[0], from: `${best[1]} notes named like dates` };
@@ -614,7 +618,7 @@ function makeVault({ root, settings, push, act, workdir }) {
     for (const n of s.notes) {
       const mine = [];
       for (const k of n.links) {
-        const r = resolveExact(s, k.t, k.r ? n : undefined) ?? (k.r ? null : resolveExact(s, k.t, n));
+        const r = resolveExact(s, k.t, n);
         const ext = path.posix.extname(k.t).toLowerCase();
         const attachment = !r && /^\.[a-z0-9]{2,5}$/.test(ext) && !NOTE_EXT.has(ext);
         if (attachment) continue;
@@ -1141,6 +1145,7 @@ function makeVault({ root, settings, push, act, workdir }) {
           continue;
         }
         const adr = ADR_PATH.test(n.rel) || /^adr\b/i.test(n.title);
+        const before = found.length;
         if (!adr && !DECISION_LINE.test(text) && !n.headings.some((h) => DECISION_HEAD.test(h.x))) continue;
         const low = text.toLowerCase();
         const head = `${n.name} ${n.title} ${n.aliases.join(" ")} ${n.tags.join(" ")}`.toLowerCase();
@@ -1179,7 +1184,7 @@ function makeVault({ root, settings, push, act, workdir }) {
           for (let j = Math.max(n.fmEnd, i - 2); j <= Math.min(lines.length - 1, i + 5) && reasons.length < 3; j++) if (j !== i && REASON.test(lines[j]) && !/^\s*#{1,6}\s/.test(lines[j])) reasons.push({ line: j + 1, text: clip(safe(lines[j].trim())) });
           add(i + 1, headingAt(n, i + 1), [{ line: i + 1, text: clip(safe(lines[i].trim())) }], reasons);
         }
-        if (adr && !found.some((f) => f.n === n)) {
+        if (adr && found.length === before) {
           const why = n.headings.filter((r) => REASON_HEAD.test(r.x)).flatMap((r) => body(r.l + 1, sectionEnd(r), 2).map((x) => ({ ...x, under: r.x })));
           const lead = body(n.fmEnd + 1, lines.length, 3).filter((x) => !/^#{1,6}\s/.test(x.text));
           if (lead.length) add(lead[0].line, null, lead, why.slice(0, 4));
@@ -1277,8 +1282,7 @@ function makeVault({ root, settings, push, act, workdir }) {
         while (end > h.l - 1 && !doc.lines[end].trim()) end--;
         k = end;
         if (end === h.l - 1 || !(isItem(doc.lines[end]) && isItem(added[0]))) added.unshift("");
-        if (next && doc.lines[end + 1]?.trim()) added.push("");
-        else if (next && end + 1 === next.l - 1) added.push("");
+        if (next && end + 1 === next.l - 1) added.push(""); // the next heading follows at once: keep a blank line before it
         made = false;
         under = h.x;
       } else {

@@ -352,15 +352,15 @@ async function tarWalk(file, onEntry, { gzip, deadline }) {
       buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
       for (;;) {
         if (need) {
-          if (!buf.length) break;
-          const take = Math.min(need.left, buf.length);
-          if (take) {
+          if (need.left) {
+            if (!buf.length) break;
+            const take = Math.min(need.left, buf.length);
             if (need.sink) need.sink.write(buf.subarray(0, take));
             else if (need.meta) need.meta.push(Buffer.from(buf.subarray(0, take)));
             need.left -= take;
             buf = buf.subarray(take);
+            if (need.left) break;
           }
-          if (need.left) break;
           if (buf.length < need.pad) break;
           buf = buf.subarray(need.pad);
           if (need.sink) need.sink.end();
@@ -384,8 +384,7 @@ async function tarWalk(file, onEntry, { gzip, deadline }) {
         const size = num(h, 124, 12);
         const pad = (512 - (size % 512)) % 512;
         if (flag === "L" || flag === "x" || flag === "g" || flag === "K") {
-          need = { left: size, pad, meta: flag === "g" || flag === "K" ? null : [], kind: flag };
-          if (!need.meta) need.meta = flag === "g" || flag === "K" ? undefined : [];
+          need = { left: size, pad, meta: flag === "L" || flag === "x" ? [] : null, kind: flag };
           continue;
         }
         const prefix = text(h, 257, 5) === "ustar" ? text(h, 345, 155) : "";
@@ -406,9 +405,11 @@ async function tarWalk(file, onEntry, { gzip, deadline }) {
       }
     }
   } catch (e) {
+    if (need?.sink) need.sink.end();
     return { entries, stopped: null, error: e.message };
   }
-  return { entries, stopped };
+  if (need?.sink) need.sink.end();
+  return { entries, stopped, ...(need?.left ? { error: "the archive ends in the middle of a file" } : {}) };
 }
 
 // ---------- text out of office files ----------
@@ -503,7 +504,9 @@ function officeText(file, ext) {
     }
     if (t.trim()) flush();
   }
-  return lines.join("\n").split("\n");
+  const all = lines.join("\n").split("\n");
+  while (all.length && !all.at(-1).trim()) all.pop();
+  return all;
 }
 const OFFICE = new Set(["docx", "xlsx", "pptx", "odt", "ods", "odp"]);
 const DOC_EXT = new Set(["pdf", ...OFFICE]);
@@ -797,9 +800,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     const buckets = { exact: [], words: [], path: [] };
     const time = (s) => (created ? Math.max(s.mtimeMs, s.birthtimeMs || 0) : s.mtimeMs);
     const consider = (p, name, isDir, s0) => {
-      if (isDir !== wantFolders && !(wantFolders && extSet && !isDir)) return;
-      if (extSet && !isDir && !extSet.has(extOf(name))) return;
-      if (extSet && isDir && !wantFolders) return;
+      if (isDir !== wantFolders) return;
+      if (!isDir && extSet && !extSet.has(extOf(name))) return;
       let bucket = "words";
       if (test) {
         if (test.base) {
@@ -927,6 +929,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     };
     const opts = { depth: 64, ms: o.ms ?? 10_000, maxEntries: o.maxEntries ?? 2_000_000, all: true, mounts: !!o.mounts };
     const privateDirs = [];
+    const hard = Date.now() + opts.ms + 2000;
     walk(start, opts, {
       onFile: (p, name, _l, dir) => addFile(p, name, dir, true),
       onDir: (p, _n, level, _s, dir) => dirs.set(p, { bytes: 0, files: 0, level, parent: dir }),
@@ -935,7 +938,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     // A private folder is measured, never listed: its bytes go to the folder that holds it.
     for (const [p, dir] of privateDirs) {
       const stack = [p];
-      while (stack.length && Date.now() < opts.stats.deadlineHard) {
+      while (stack.length && Date.now() < hard) {
         const d = stack.pop();
         let ents = [];
         try {
@@ -1193,7 +1196,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       } catch {
         return;
       }
-      if (body.subarray(0, 8192).includes(0)) return;
+      if (body.subarray(0, 8192).includes(0) || body.subarray(0, 5).toString("latin1") === "%PDF-") return;
       const text = body.toString("utf8");
       if (KEY_BLOCK.test(text)) return;
       const r = linesOf(text.split(/\r?\n/));
@@ -1217,13 +1220,9 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
       else {
         if (r.timedOut) stopped = `rg was stopped after ${Math.round((budget - 2000) / 1000)} s; the result is partial: name a smaller folder with \`under\`, or raise \`ms\``;
         const cands = [];
-        let secret = 0;
         for (const p of r.out.split("\n")) {
-          if (!p) continue;
-          if (secretWhy(p)) {
-            secret++;
-            continue;
-          }
+          // A private file that matched is dropped without a count: a count would tell what it holds.
+          if (!p || secretWhy(p)) continue;
           if (!o.all && PRUNE_PATH.test(posix(path.dirname(p)))) continue;
           const s = lstat(p);
           if (s?.isFile()) cands.push({ p, s });
@@ -1236,7 +1235,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
           }
           tryText(c.p, c.s);
         }
-        report = { skipped: secret ? { private: secret } : {} };
+        report = {};
       }
     }
     if (engine === "node") {
@@ -1308,7 +1307,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
   function du(p, o = {}) {
     const started = Date.now();
     const now = toNow(o.now);
-    const abs = locate(p ?? "~", { what: "path" });
+    const abs = locate(p ?? roots[0], { what: "path" });
     const s = lstat(abs);
     if (!s) return missing(abs);
     if (!s.isDirectory()) return { ...row(abs, s, now), kind: "file", note: "a file, not a folder" };
@@ -1428,12 +1427,8 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
     try {
       const h = crypto.createHash("sha256");
       const b = Buffer.alloc(Math.min(block, size));
-      fs.readSync(fd, b, 0, b.length, 0);
-      h.update(b);
-      if (size > block) {
-        fs.readSync(fd, b, 0, b.length, Math.max(block, size - block));
-        h.update(b);
-      }
+      h.update(b.subarray(0, fs.readSync(fd, b, 0, b.length, 0)));
+      if (size > block) h.update(b.subarray(0, fs.readSync(fd, b, 0, b.length, Math.max(block, size - block))));
       return h.digest("hex");
     } finally {
       fs.closeSync(fd);
@@ -1502,7 +1497,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
           parts.set(h, [...(parts.get(h) ?? []), f]);
         } catch {}
       }
-      for (const same of parts.values()) {
+      for (const [part, same] of parts) {
         if (same.length < 2) continue;
         const full = new Map();
         let confirmed = true;
@@ -1520,7 +1515,7 @@ export function make({ settings = {}, push = () => {}, act = false } = {}) {
             }
             full.set(h, [...(full.get(h) ?? []), f]);
           }
-        } else full.set(hashPart(same[0].p, size), same); // both blocks cover the whole file
+        } else full.set(part, same); // the two blocks cover the whole file
         if (!confirmed) {
           unconfirmed++;
           groups.push({ size, files: same, hash: null });
