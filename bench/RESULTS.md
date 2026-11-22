@@ -1,6 +1,7 @@
 ---
 session_id:
   - 96f346df-32ec-4e11-9157-e9e8b51f6244
+  - 9ab9c8fc-ddc2-406a-960d-e0cf6e0b5306
 ---
 
 # ask-kit benchmark, 2026-11-18
@@ -37,6 +38,83 @@ scored 21/21. Accuracy came out the same. The difference is in the calling agent
 The saving is context, not accuracy. Per question, the calling agent takes in 14 to 26 times fewer
 tokens with ask. It also pays a fifth to a third as much, even inside a session that is already
 open.
+
+## Rerun, 22 November 2026
+
+The 21 public questions were run again on 22 Nov, once each. Three ways answered them:
+- ask on deepseek-v4.1-flash, the default since 18 Nov;
+- ask on glm-5.3-flash;
+- Sonnet 5.5 digging itself with Read, Grep, Glob and Bash.
+
+The scripts, the clones (ask-kit b6c1e5f, omarchy a8f0d21) and the method are the ones described below. Both API backends are pinned to DeepInfra, as in daily use.
+
+Between 18 and 22 Nov, ask gained:
+- kit routing;
+- early answers;
+- time as the only budget, in place of the step limit;
+- replies without footers;
+- background tasks for slow asks.
+
+The question note also asks the investigator to ignore the session that ran the rerun. The rows are in `results/2026-11-22/`, and `python3 bench/results/2026-11-22/tables.py` prints these tables from them.
+
+| Questions | Way | Score | Median time | Cost / question (median) | Total cost | Context added / question (median) | Context added (total) |
+|---|---|---|---|---|---|---|---|
+| dated sessions | ask → deepseek-v4.1-flash | 10/10 | 45 s | $0.0027 | $0.029 | 541 | 5.6k |
+| dated sessions | ask → glm-5.3-flash | 9/10 | 32 s | $0.0069 | $0.092 | 579 | 5.3k |
+| dated sessions | Sonnet 5.5 digs itself | 10/10 | 27 s | $0.1281 | $1.179 | 9,478 | 94.0k |
+| undated sessions | ask → deepseek-v4.1-flash | 2/3 | 195 s | $0.0129 | $0.028 | 889 | 2.2k |
+| undated sessions | ask → glm-5.3-flash | 3/3 | 83 s | $0.0129 | $0.050 | 681 | 2.1k |
+| undated sessions | Sonnet 5.5 digs itself | 1.5/3 | 255 s | $0.1463 | $0.518 | 15,511 | 63.8k |
+| code | ask → deepseek-v4.1-flash | 8/8 | 21 s | $0.0015 | $0.013 | 496 | 4.5k |
+| code | ask → glm-5.3-flash | 7.5/8 | 18 s | $0.0027 | $0.046 | 439 | 3.8k |
+| code | Sonnet 5.5 digs itself | 8/8 | 12 s | $0.0573 | $0.481 | 5,642 | 46.7k |
+| all 21 | ask → deepseek-v4.1-flash | 20/21 | 34 s | $0.0020 | $0.071 | 507 | 12.3k |
+| all 21 | ask → glm-5.3-flash | 19.5/21 | 23 s | $0.0047 | $0.188 | 564 | 11.2k |
+| all 21 | Sonnet 5.5 digs itself | 19.5/21 | 16 s | $0.1092 | $2.178 | 7,186 | 204.5k |
+
+| Question | ask → deepseek-v4.1-flash | ask → glm-5.3-flash | Sonnet 5.5 digs itself |
+|---|---|---|---|
+| s03-quickshell-crash | C | C | C |
+| s03f-pinned-items | C | C | C |
+| s04-mac-keyboard | C | C | C |
+| s09-herdr-vs-orca | C | C | C |
+| s10-herdr-sounds | C | C | C |
+| n01-hypr-pairs | C | C | C |
+| n02-herdr-icon | C | C | C |
+| n02f-herdr-mods-css | C | x | C |
+| n03-tab-label | C | C | C |
+| n04-dock-clocks | C | C | C |
+| h05-karabiner | C | C | C |
+| h06-herdr-editor | C | C | x |
+| n05-agent-crashed-shell | x | C | p |
+| k01-loop-limits | C | C | C |
+| k02-claude-fork | C | C | C |
+| k03-router | C | C | C |
+| k04-env-strip | C | C | C |
+| o01-sync-commands | C | C | C |
+| o02-sync-excludes | C | C | C |
+| o03-sync-map | C | p | C |
+| o04-pairs-load-order | C | C | C |
+
+Over the 21 questions, ask on deepseek added 12.3k tokens to the caller against Sonnet's 204.5k, about 17 times fewer. It cost $0.071 against $2.18 and scored 20/21 against 19.5/21. On 18 Nov, glm against Sonnet was 8.3k against 225k. ask's answers are longer now: the median on dated session questions went from 391 to 579 tokens. The undated session questions show the largest gap. Per question, Sonnet added 15.5k tokens and took 255 s, against 700–900 tokens and 83–195 s for ask.
+
+**Read by hand.** Two verdicts differ from the judge's:
+- k01 counts as correct for all three. Its expected answer was rewritten on 19 Nov (d03b82e) for code newer than the pinned b6c1e5f, which still has `MAX_STEPS = 20`, and all three answered the pinned code correctly (#15).
+- Sonnet's s10 counts as correct. Its recorded answer is its last message, a remark on a background search that timed out, and the full answer is the message before it (#16).
+
+**Misses:**
+- deepseek missed n05: it found a crash from 20 Nov and none of the three expected.
+- glm missed n02f, which got the rest of n02's early answer instead of an answer to its own question (#13). Its o03 was partial: it left out the folder-versus-file rule.
+- Sonnet missed h06, where it found no session (there are two), and its n05 was partial.
+
+**Early answers:**
+- glm answered early on n02 (19 s; the full run took 41 s), n03 (21 s / 42 s), o02 (14 s / 22 s), o03 (16 s / 30 s) and k04.
+- Time in the table is what the caller waited.
+- Cost is the full run's, taken from the run's later journal line (`runCostUsd` in the rows).
+- k04's run never wrote that line, because the bench closes the server when it moves on, so glm's total is a little low (#16).
+- deepseek sent no early answers.
+
+**Spend:** ask runs $0.26, the Sonnet baseline $2.18, the LLM judge $0.42.
 
 ## What was asked
 
