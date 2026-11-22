@@ -87,6 +87,11 @@ async function main() {
       const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d" });
       if (flag("json")) return print(r);
       console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, ${r.shots} shots, ${r.actionAnswers} answered by actions (${Math.round((r.noModelShare ?? 0) * 100)}% with no model; ${r.realNoModelShare == null ? "-" : `${Math.round(r.realNoModelShare * 100)}%`} on real use), $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
+      if (r.tasks) {
+        const ended = [r.tasksFailed && `${r.tasksFailed} failed`, r.tasksCancelled && `${r.tasksCancelled} cancelled`, r.tasksStopped && `${r.tasksStopped} stopped with the agent`].filter(Boolean);
+        console.log(`Background tasks: ${r.tasks} asks became tasks (median ${r.taskMedianHandoffSeconds} s before hand-off); ${r.tasksAnswered} answered${ended.length ? `, ${ended.join(", ")}` : ""}`);
+      }
+      if (r.asksStuck || r.asksUnreached) console.log(`Stuck or unreachable: ${r.asksStuck} of ${r.asks} asks were told to stop because their cells kept repeating, ${r.asksUnreached} had a cell that could not reach a source`);
       const cites = Object.entries(r.citations);
       if (cites.length) console.log(`Citations that did not resolve: ${cites.map(([d, c]) => `${d} ${c.failed} of ${c.checked} (${Math.round(c.failedRate * 100)}%, ${c.asksWithFailures} of ${c.asks} asks)`).join(", ")}`);
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);

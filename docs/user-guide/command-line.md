@@ -10,6 +10,10 @@ ask-kit doctor                   check sources, backends and tools
 ask-kit ask "<question>" [--domain sessions|code] [--backend name] [--continue]
 ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
 ask-kit report [--since 7d|<date>|<sha>] [--json]   flagged asks (including answers whose citations did not resolve), failed-citation rate by domain,
+                                 asks that became background tasks and how they ended,
+                                 asks told to stop for repeating cells, asks with a cell that could not reach a source
+                                 (one line, "Stuck or unreachable: ...", printed only when either count is above zero;
+                                 `--json` has `asksStuck` and `asksUnreached`),
                                  scripts used, routes worth a script, misroutes,
                                  actions (runs, fall-throughs, turned off: why), shadow runs, worth an action
 ask-kit kit actions <kit> [--enable|--disable <action>] [--json]   a kit's [[actions]]: status and last 20 runs

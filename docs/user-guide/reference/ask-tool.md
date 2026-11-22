@@ -30,7 +30,8 @@ Both forms need a config file. Without one the server exits at start with
 |---|---|---|---|
 | `question` | string | yes | The question or request in plain words, with any ids, names or dates you know. |
 | `about` | one of the enabled domain names | no | Which investigator answers. Left out, the router chooses. |
-| `continue` | boolean | no, default `false` | Send this as a follow-up to the investigator that answered your last question. |
+| `continue` | boolean or string | no, default `false` | `true`: send this as a follow-up to the investigator that answered your last question. A task id such as `"ask-67821061f8d0"`: send it to the investigator of that ask. See [Follow-ups](#follow-ups). |
+| `wait` | boolean | no | `false`: hand the ask back as a task at once, with no 10-second wait. Used by a client that takes tasks; any other caller waits for the answer. See [A slow ask answered as a task](#a-slow-ask-answered-as-a-task). |
 | `backend` | string | no | A backend name from the config. Left out, the domain's backend is used. |
 | `timeoutSeconds` | integer, 30 to 900 | no | How long the investigation may run. The domain's `ask` defaults to 300. |
 | `act` | boolean | no | `true`: the request asks for a change, so the investigator gets the calls that change things. Left out, the router sets it to `true` when the request opens with what to do; `false` keeps the ask read-only. See [Asking for a change](#asking-for-a-change-act). |
@@ -55,6 +56,7 @@ In this order, first match wins:
 | `timeout` | The router model did not answer within `router.timeoutMs`: session history (`sessions`) answers. |
 | `rules` | The model call failed or said something else, or no router model is set. Keyword rules: past-work words first, then kit `keywords`, then code words, else the first enabled domain. |
 | `fallback` | The domain chosen answered with no data, and the next provider of its capability answered instead. |
+| `down` | The kit chosen names its service (`up` in its manifest) and the service was not answering, so the next provider of its capability got the question without the kit being asked. The answer ends with a line saying so. |
 
 Then capabilities: when the domain chosen by `caller`, `pattern`, `model`, `timeout` or `rules`
 provides a capability (`[[provides]]`), the question goes to the best provider of it for the
@@ -112,6 +114,39 @@ each cell result tells the model to answer. When the limit arrives, or when the 
 returned the same result three times, the model gets one more call to say what it found. For the agent CLIs the limit is the process timeout, with
 13 seconds added for the CLI to finish.
 
+### A slow ask answered as a task
+
+When an ask has run for 10 seconds, the router answers the call with an MCP task and the ask
+carries on. The caller gets a task id such as `ask-67821061f8d0` and goes on working, and its
+client collects the answer when the ask ends. Claude Code then gives the answer to the agent and
+starts a turn if the session is idle. An ask that ends inside the 10 seconds is answered in the
+call as before.
+
+This needs a client that takes tasks: one that connects on MCP protocol revision 2026-07-28 and
+names the Tasks extension (`io.modelcontextprotocol/tasks`) in the request. Claude Code does from
+v2.1.304, in the main conversation of a terminal session. Every other caller (a subagent, an
+earlier Claude Code, Codex, the shell) waits for the answer in the call.
+
+| What | How |
+|---|---|
+| The delay | `taskAfterSeconds` in the config, default `10`. `0` turns tasks off. `wait: false` on an ask skips the delay for that ask. |
+| Status while it runs | `tasks/get` reports `working`, with the latest cell as `statusMessage` on an API backend. |
+| The answer | `tasks/get` reports `completed` with the same result the call would have returned. A failed ask is `completed` with `isError: true`. |
+| Stopping it | `tasks/cancel` stops the investigator, and the task stays `cancelled`. |
+| How long it is kept | One hour after the ask ends, in the router's memory. The router process ends with the agent session, and its tasks with it. |
+
+The task answer itself carries no words for the agent, so the tool's description and the server's
+instructions say what to do with one: do the work that does not depend on the answer (read the files about to
+change, send the other asks), don't wait or ask again, start on each answer as it arrives, and end
+the turn only when every step left needs an answer that has not come. The rule `ask-kit init` installs says the same.
+
+Several asks can run at once this way. Claude Code sends one `ask` call at a time and holds the
+next until the first returns, so two slow questions each wait their 10 seconds before the second
+starts. Sent with `wait: false`, each comes back as a task at once and they run side by side.
+
+Each task has its own investigator, and its id is how a follow-up reaches it: see
+[Follow-ups](#follow-ups).
+
 ### Follow-ups
 
 `continue: true` goes back to the last investigator ask-kit ran for this calling session on the
@@ -121,6 +156,22 @@ same backend. The caller's session is the first of these environment variables t
 
 A follow-up needs an earlier question on the same backend. Without one it fails with
 `nothing to continue: no earlier <backend> question in this session`.
+
+With several asks running or answered, `continue: true` means the domain asked last and, there,
+the investigator that finished last. To follow up on a particular ask, pass its task id:
+
+```json
+{ "question": "which test covers that function?", "continue": "ask-67821061f8d0" }
+```
+
+| What | How |
+|---|---|
+| Where it goes | To the domain and backend that took that ask, and the conversation that investigator held, whatever was asked in between. `about` is ignored. |
+| An ask still running | The follow-up waits for it to end, then goes to the same investigator. |
+| A slow follow-up | It becomes a task with an id of its own. That id and the first one both reach the conversation. |
+| The bracketed lines | An answer delivered as a task says `continue: "<its id>"` where an answer in the call says `continue: true`. |
+| How long an id works | A day. The router keeps the ids in `<STATE_ROOT>/router/threads-<caller>.json`, so one still works after the agent restarts its `ask` server. |
+| An id that is not kept | The ask fails with `no ask with the id "<id>" is kept here` and lists the latest ids that are, each with its domain and the start of its question. |
 
 ### Asking for a change (`act`)
 

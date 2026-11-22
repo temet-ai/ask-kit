@@ -247,37 +247,70 @@ export async function filesMayMatch(files, needles) {
   }
   // The same escaped form fileMayMatch looks for.
   needles = rarestFirst(needles);
-  const first = JSON.stringify(needles[0]).slice(1, -1);
+  const forms = needles.map((n) => JSON.stringify(n).slice(1, -1));
   out.needle = needles[0];
   out.listed = 0;
-  const batches = [];
-  let cur = [];
-  let len = 0;
-  for (const f of files) {
-    if (cur.length && len + f.length + 3 > 24_000) {
-      batches.push(cur);
-      cur = [];
-      len = 0;
+  const batchesOf = (list) => {
+    const batches = [];
+    let cur = [];
+    let len = 0;
+    for (const f of list) {
+      if (cur.length && len + f.length + 3 > 24_000) {
+        batches.push(cur);
+        cur = [];
+        len = 0;
+      }
+      cur.push(f);
+      len += f.length + 3;
     }
-    cur.push(f);
-    len += f.length + 3;
-  }
-  if (cur.length) batches.push(cur);
-  for (const batch of batches) {
-    const listed = await new Promise((resolve) => {
-      execFile(rg, ["-l", "-i", "-F", "-a", "--no-config", "--no-messages", "--null", "-e", first, "--", ...batch], { maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
+    if (cur.length) batches.push(cur);
+    return batches;
+  };
+  // The files of `batch` holding `form`, or null when ripgrep failed on it.
+  const holding = (form, batch) =>
+    new Promise((resolve) => {
+      execFile(rg, ["-l", "-i", "-F", "-a", "--no-config", "--no-messages", "--null", "-e", form, "--", ...batch], { maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
         // exit 1 is "no file matched"; anything else is a failure for this batch.
         if (err && err.code !== 1) return resolve(null);
-        resolve(String(stdout).split("\0").filter(Boolean));
+        const known = new Set(batch);
+        resolve(String(stdout).split("\0").filter((f) => f && known.has(f)));
       });
     });
-    if (listed === null) {
-      viaJs(batch);
-      continue;
+  // Ripgrep narrows by one word after another, rarest first, so the line check below (which reads
+  // each file whole) runs only on files that hold every word somewhere.
+  let left = [];
+  for (const batch of batchesOf(files)) {
+    const listed = await holding(forms[0], batch);
+    if (listed === null) viaJs(batch);
+    else {
+      out.listed += listed.length;
+      left.push(...listed);
     }
-    const known = new Set(batch);
-    out.listed += listed.length;
-    for (const f of listed) if (known.has(f) && (needles.length === 1 || fileMayMatch(f, needles))) out.add(f);
+  }
+  for (const form of forms.slice(1)) {
+    const next = [];
+    for (const batch of batchesOf(left)) next.push(...((await holding(form, batch)) ?? batch));
+    left = next;
+  }
+  if (needles.length === 1) {
+    for (const f of left) out.add(f);
+    return out;
+  }
+  // Every word on one line, in any order: one ripgrep regex over the three rarest words (six
+  // orders). With more words this keeps a few files too many, which the event check then drops.
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const orders = (list) => (list.length < 2 ? [list] : list.flatMap((w, i) => orders([...list.slice(0, i), ...list.slice(i + 1)]).map((rest) => [w, ...rest])));
+  const sameLine = orders(forms.slice(0, 3).map(esc)).map((o) => o.join(".*")).join("|");
+  for (const batch of batchesOf(left)) {
+    const listed = await new Promise((resolve) => {
+      execFile(rg, ["-l", "-i", "-a", "--no-config", "--no-messages", "--null", "-e", sameLine, "--", ...batch], { maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
+        if (err && err.code !== 1) return resolve(null);
+        const known = new Set(batch);
+        resolve(String(stdout).split("\0").filter((f) => f && known.has(f)));
+      });
+    });
+    if (listed === null) viaJs(batch);
+    else for (const f of listed) out.add(f);
   }
   return out;
 }

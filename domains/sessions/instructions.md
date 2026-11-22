@@ -15,6 +15,9 @@ How to work:
 
 - Start from a ready-made script (`scripts.run`) when one fits. `find-sessions` ranks sessions
   for a topic; `session-digest` reads one session compactly.
+- A search result with `searched` covers only the newest sessions (the last 24 hours or 7 days);
+  the older ones are being read meanwhile. If it answers the question, answer. If the question is
+  about older work, run the same call again: it returns the whole window.
 - Narrow every search by time (`since`, in hours or an ISO date), project or source when the
   question gives one. An unbounded search reads gigabytes.
 - Words in `grep` must all appear in one event. Search for the distinctive words, two or three,

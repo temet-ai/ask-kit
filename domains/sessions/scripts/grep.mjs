@@ -1,8 +1,8 @@
 export const meta = {
   purpose:
     "Exact text anywhere in the transcripts, tool output included: error messages, versions, ids, file names, commands. Words must all appear in one event; pass regex for a pattern.",
-  params: { query: "words", regex: "a RegExp source instead of words, optional", hours: "window, default 24*30 (the same as find-sessions; a count needs the whole period asked about)", session: "one session, optional", project: "optional", source: "optional", roles: "e.g. ['tool_result'], optional", max: "default 40" },
-  returns: "{window:{since}, total, complete, scanned, hits:[{source,session,project,i,ts,role,tool,snippet}]}",
+  params: { query: "words", regex: "a RegExp source instead of words, optional", hours: "window, default 24*30 (the same as find-sessions)", session: "one session, optional", project: "optional", source: "optional", roles: "e.g. ['tool_result'], optional", max: "default 40" },
+  returns: "{window:{since}, total, complete, scanned, searched?, older?, hits:[{source,session,project,i,ts,role,tool,snippet}]}",
   example: 'await scripts.run("grep", { query: "EADDRINUSE", hours: 72 })',
 };
 
@@ -16,6 +16,8 @@ export default async function ({ history }, { query, regex, hours = 24 * 30, ses
     complete: hits.complete,
     scanned: hits.scanned,
     ...(hits.stoppedEarly ? { stoppedEarly: hits.stoppedEarly } : {}),
+    // A slow search answers from its newest sessions first; the same call again returns the whole window.
+    ...(hits.searched ? { searched: hits.searched, older: hits.older } : {}),
     hits: hits.map(({ title, ...h }) => ({ ...h, snippet: h.snippet.slice(0, 240) })),
   };
 }
