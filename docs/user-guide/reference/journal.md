@@ -43,6 +43,7 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `kind` | string | `api`, `claude-cli`, `codex-cli` or `copilot-cli`. |
 | `ok` | boolean | `false` when the ask failed. |
 | `continued` | boolean | A follow-up. |
+| `thread` | string | The id the router gave the ask (a task id when the ask became a task). On a follow-up sent with a task id: the id of the first ask of that conversation. |
 | `act` | boolean | The investigator had the calls that change things: the caller asked for a change. See [Asking for a change](ask-tool.md#asking-for-a-change-act). |
 | `ms` | number | Duration of the ask. For the CLIs that warm a session it leaves out the warm-up. |
 | `answerChars` | number | Length of the answer text. The answer itself is not stored unless `journal.trajectories` is on. |
@@ -70,6 +71,8 @@ The rest depend on the kind. A field that a kind does not produce is absent.
 | `atLimit` | `api` | The answer came with under 30 seconds left, or within two calls of the repeat stop. |
 | `providers` | `api` | The providers that served the calls, where the API says (OpenRouter does). |
 | `missteps` | `api` | Replies that were empty or held tool-call markup instead of a tool call. |
+| `stuck` | `api` | How many times the ask was told to stop searching because a cell repeated an earlier one with the same result for the third time. Written only when above zero. With `escalate`, both backends' counts together. |
+| `unreached` | `api` | How many cells could not reach a source (a stopped service, a host that is off). From the second the investigator is told not to wait; after the fifth it gets two more steps. Written only when above zero; with `escalate`, both backends' counts together. |
 | `opened` | `api` | A kit action's pattern was found inside the question, and its script ran before the first model call: `{ action, script, params, ms }`. Counted in `cells`. |
 | `escalated` | `api` | The ask went to the `escalate` backend: `{ to, atMs, cells, model }`, where `atMs` is when it was handed over, `cells` how many the first backend had run and `model` the stronger backend's model. `turns`, `cells`, `usage` and `costUsd` are both backends' together; `model` stays the first backend's. When the hand-over failed: `{ to, atMs, error }`. |
 | `hedge` | all | A `hedge` backend was started: `{ backend, atMs, winner }`, where `atMs` is when it started and `winner` the backend whose answer was returned. The other fields are the winner's. |
@@ -117,12 +120,22 @@ Written by the router before it forwards a call.
 | `at` | ISO time. |
 | `question` | The question, cut at 500 characters. |
 | `domain` | The domain chosen. |
-| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout`, `rules` or `fallback`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
+| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout`, `rules`, `fallback` or `down`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
 | `resolvedFrom` | When capabilities sent the question to a better provider: the domain chosen first. |
-| `from` | On a `fallback` record: the provider that had no data. |
+| `from` | On a `fallback` record: the provider that had no data. On a `down` record: the kit whose service was not answering (`domain` is the provider that got the question, or null when there was none). |
 | `routeMs` | Time the choice took. |
 | `routeError` | When the router model failed and the fallback decided: why, cut at 160 characters. |
 | `act`, `actBy` | When the ask was sent with `act`: its value, and `caller` (passed by the caller) or `request` (the router set it because the request opens with what to do). |
+
+When an ask is answered with a task, the router writes a second line with only `at`, `task` (the
+task id) and `afterMs` (how long the ask had run when the call returned). A follow-up sent with a
+task id has `continues` on its record: the id of the ask whose conversation it carries on. Its
+own task line has `continues` too.
+
+When the task ends, the router writes one more line with `at`, `task`, `done` (`answered`,
+`failed`, `cancelled` or `stopped`) and `ms` (how long the ask ran in all). A task still running
+has no such line. `stopped` is a task that was running when the router process ended, which it
+does with the agent session. A task whose result is an error (`ask failed ...`) is `failed`.
 
 ### Misroute record
 
@@ -242,6 +255,8 @@ Misroutes: 1 of 9 routed by the router (router bench rows: <state>/router/bench.
 | `scripts` | `[{ name, runs, failed }]`, most used first. |
 | `worthAScript` | `[{ shape, n }]`. |
 | `routed` | Routes the router decided itself (`action`, `pattern`, `model`, `timeout`, `rules`) in range. |
+| `tasks` | Asks that became background tasks in range, from the router's `task` and `afterMs` rows. `taskMedianHandoffSeconds` is the median `afterMs` in seconds, or `null` with none. |
+| `tasksAnswered`, `tasksFailed`, `tasksCancelled`, `tasksStopped` | Tasks that ended in range, from the router's `done` rows. A task still running has none, so these can add up to less than `tasks`. |
 | `misroutes` | `[{ at, question, routed, how, correct, why, journal }]`, oldest first. |
 | `actionAnswers` | Asks an action answered. `noModelShare` counts them with shots; `realNoModelShare` is the same share with kit-test and benchmark sessions left out. |
 | `actions` | `[{ kit, action, runs, answered, fellThrough, reasked, window, off, offAt }]`. |

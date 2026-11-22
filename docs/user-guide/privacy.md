@@ -29,6 +29,9 @@ that CLI's service under its own terms, and the sessions appear in its history.
   whether it could change things, `act`), REPL snapshots, warm investigator sessions and the
   transcript index. The router keeps each routed question, and in
   `router/bench.jsonl` every misrouted question with where it went and where it should have gone.
+  For follow-ups, `warm/last-<caller>.json` holds the last conversation with each backend, and for
+  an agent that takes tasks `warm/threads/` holds one per ask for a day; `router/threads-<caller>.json`
+  lists the asks that became tasks, each with the first 80 characters of its question.
   An ask's row also holds how many of the answer's citations resolved and up to ten that did not
   (`path:line`, or source, session and event). The check reads local files and transcripts, and
   calls no model.

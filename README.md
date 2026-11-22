@@ -137,7 +137,7 @@ general version. It needs no mike and no server.
 It sends your question, and the excerpts the investigator reads, to the model you chose (and, for
 a slow ask, to the second backend you set with `escalate` or `hedge`). Keys, tokens and passwords
 in transcript excerpts are masked before the model sees them. There's no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
-including the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
+including each ask's conversation with its investigator (kept for follow-ups; one per ask for a day when the agent takes tasks), the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
 session `find-sessions` matched (title, first prompt, top words), a lookup counter per
 Claude Code session and a log of the nudges the plugin's hook gave (time, session id, kind of
 lookup; no commands or prompts) and, for the one in 20

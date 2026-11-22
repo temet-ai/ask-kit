@@ -56,6 +56,9 @@ export function readOnly(repo, name = "repo") {
 
 export function makeRepo({ root, push }) {
   const ROOT = fs.realpathSync(root);
+  // A search aimed at a path git ignores (a dependency under node_modules, build output) reads it;
+  // every other search skips ignored files.
+  const aimedAtIgnored = (p) => (p ? exec("git", ["check-ignore", "-q", "--", p], { cwd: ROOT }).then(() => true, () => false) : false);
   const inside = (p = ".") => {
     const full = path.resolve(ROOT, p);
     const rel = path.relative(ROOT, full);
@@ -77,6 +80,7 @@ export function makeRepo({ root, push }) {
       for (const g of [].concat(o.glob ?? [])) args.push("-g", g);
       for (const t of [].concat(o.type ?? [])) args.push("-t", t);
       if (o.hidden) args.push("--hidden");
+      if (await aimedAtIgnored(o.path)) args.push("--no-ignore");
       // Always a path: with none, rg reads stdin (a pipe here) and waits on it.
       args.push("-e", pattern, "--", inside(o.path).rel);
       const out = await exec("rg", args, { cwd: ROOT });
@@ -134,6 +138,7 @@ export function makeRepo({ root, push }) {
       const args = ["--files"];
       if (glob) args.push("-g", glob);
       if (o.hidden) args.push("--hidden");
+      if (await aimedAtIgnored(o.path)) args.push("--no-ignore");
       args.push("--", inside(o.path).rel);
       const list = (await exec("rg", args, { cwd: ROOT })).split("\n").filter(Boolean).map((f) => f.replace(/^\.\//, "")).sort();
       note("files", glob ?? "*", started, list.length);

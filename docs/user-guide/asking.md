@@ -69,6 +69,19 @@ Say "follow up" and the agent passes `continue: true`. If the answer ends with
 
 For an unrelated question, start a new ask.
 
+## Keep working while it digs
+
+In Claude Code, an ask that takes longer than 10 seconds hands back a task id and the agent carries
+on with other work, including other asks. The answer is delivered to the agent when it is ready.
+Other agents wait for the answer as usual. The
+[reference](reference/ask-tool.md#a-slow-ask-answered-as-a-task) has the details.
+
+- **Several questions at once**: sent with `wait: false`, each ask comes back as a task straight
+  away and they run side by side.
+- **A follow-up to one of them**: pass that task's id as `continue`, for example
+  `continue: "ask-67821061f8d0"`. It goes to the investigator of that ask, which still holds what
+  it found, whatever was asked since.
+
 ## Get better answers
 
 - **Say what you already know**: a date, a branch, a file, a session id. The search starts

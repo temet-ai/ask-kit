@@ -119,6 +119,40 @@ const rep = report({ since: "1h" });
 assert.equal(rep.routed, 1);
 assert.equal(rep.misroutes.length, 1);
 assert.equal(rep.misroutes[0].correct, "watch");
+assert.equal(rep.asksStuck, 0);
+assert.equal(rep.asksUnreached, 0);
+// Asks whose journal row has stuck or unreached are counted once each.
+const jl = path.join(state, "watch", "stuck-test.jsonl");
+fs.mkdirSync(path.dirname(jl), { recursive: true });
+const mk = (extra) => JSON.stringify({ ts: new Date().toISOString(), session: "stuck-test", type: "ask", question: "q", ok: true, ms: 1, answerChars: 5, ...extra }) + "\n";
+fs.appendFileSync(jl, mk({ stuck: 2 }) + mk({ unreached: 3 }) + mk({ stuck: 1, unreached: 2 }) + mk({}));
+const rep2 = report({ since: "1h" });
+assert.equal(rep2.asksStuck, 2);
+assert.equal(rep2.asksUnreached, 2);
+const cliOut = (await import("node:child_process")).execFileSync(process.execPath, [path.join(ROOT, "bin", "ask-kit.mjs"), "report", "--since", "1h"], { encoding: "utf8", env });
+assert.match(cliOut, /Stuck or unreachable: 2 of \d+ asks were told to stop because their cells kept repeating, 2 had a cell that could not reach a source/);
+
+// The report counts the asks that became background tasks, and how those tasks ended.
+{
+  const at = new Date().toISOString();
+  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const rows = [
+    { at, task: "ask-000000000001", afterMs: 10_000 },
+    { at, task: "ask-000000000002", afterMs: 14_000 },
+    { at, task: "ask-000000000003", afterMs: 12_000, continues: "ask-000000000001" },
+    { at, task: "ask-000000000001", done: "answered", ms: 40_000 },
+    { at, task: "ask-000000000002", done: "failed", ms: 20_000 },
+    { at, task: "ask-000000000003", done: "stopped", ms: 15_000 },
+    { at: old, task: "ask-000000000009", afterMs: 99_000 },
+  ];
+  fs.writeFileSync(path.join(state, "router", "planted.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  const t = report({ since: "1h" });
+  assert.equal(t.tasks, 3, "three asks became tasks in the window; the old one is left out");
+  assert.equal(t.taskMedianHandoffSeconds, 12);
+  assert.deepEqual([t.tasksAnswered, t.tasksFailed, t.tasksCancelled, t.tasksStopped], [1, 1, 0, 1]);
+  assert.equal(t.routed, 1, "task rows do not count as routes");
+  fs.rmSync(path.join(state, "router", "planted.jsonl"));
+}
 
 // ---- capabilities: [[provides]] ranked before routing ----
 // recall is mike-like: Claude Code history on every machine, priority 100; the built-in sessions
@@ -198,6 +232,100 @@ assert.equal(frows[1].why, "no data");
 const recallAsk = fs.readFileSync(path.join(state, "recall", "router-fallback.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((x) => x.type === "ask");
 assert.equal(recallAsk.noData, true);
 await fb.close();
+
+// A follow-up by task id, sent while its ask is still with the provider that will fall back: it
+// waits for the fallback too, then goes to the investigator that answered, with the conversation.
+{
+  const isRecall = (body) => body.messages[0].content.includes("every machine") || body.messages[0].content.includes("the recall of");
+  const fb2 = await fakeBackend([
+    (body) =>
+      isRecall(body)
+        ? { delayMs: 1200, answer: "No Claude Code session here mentions the ledger.\n[no data]" }
+        : { answer: body.messages.at(-1).content.includes("Who checked it") ? "Carrot Ironfoundersson checked it." : "From the transcripts: Sam Vimes kept the ledger." },
+  ]);
+  fs.writeFileSync(path.join(config, "config.json"), JSON.stringify({ ...capCfg({ sessions: {}, recall: {} }), backends: { default: "fake", list: { fake: fb2.backend } }, taskAfterSeconds: 0.2 }));
+  const { spawn } = await import("node:child_process");
+  const proc = spawn(process.execPath, [path.join(ROOT, "bin", "ask-kit.mjs"), "serve"], { env: { ...env, ASK_KIT_SESSION: "router-fallback-queue" }, stdio: ["pipe", "pipe", "inherit"] });
+  const waiting = new Map();
+  let buf = "";
+  let rid = 0;
+  proc.stdout.on("data", (d) => {
+    buf += d;
+    for (let i; (i = buf.indexOf("\n")) >= 0; ) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      if (!line.trim()) continue;
+      const m = JSON.parse(line);
+      waiting.get(m.id)?.(m);
+      waiting.delete(m.id);
+    }
+  });
+  const meta = {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": { name: "test", version: "0" },
+    "io.modelcontextprotocol/clientCapabilities": { extensions: { "io.modelcontextprotocol/tasks": {} } },
+  };
+  const request = (method, params = {}) =>
+    new Promise((resolve) => {
+      waiting.set(++rid, resolve);
+      proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: rid, method, params: { ...params, _meta: meta } }) + "\n");
+    });
+  const done = async (taskId) => {
+    for (const end = Date.now() + 20_000; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) {
+      const r = (await request("tasks/get", { taskId })).result;
+      if (r.status !== "working") return r.result.content.map((c) => c.text).join("\n");
+    }
+    assert.fail("the task did not end");
+  };
+  const first = (await request("tools/call", { name: "ask", arguments: { question: "what did we decide about the ledger yesterday?", early: false } })).result;
+  assert.equal(first.resultType, "task");
+  const second = (await request("tools/call", { name: "ask", arguments: { question: "Who checked it?", continue: first.taskId, early: false } })).result;
+  assert.equal(second.resultType, "task", "the follow-up waits behind its ask");
+  assert.match(await done(first.taskId), /Sam Vimes kept the ledger/);
+  assert.match(await done(second.taskId), /Carrot Ironfoundersson checked it/);
+  assert.equal(fb2.requests.length, 3, "recall, then sessions, then the follow-up");
+  assert.ok(isRecall(fb2.requests[0]) && !isRecall(fb2.requests[1]), "the ask fell back from recall to sessions");
+  assert.ok(!isRecall(fb2.requests[2]), "the follow-up went to sessions, which answered");
+  assert.ok(fb2.requests[2].messages.some((m) => String(m.content).includes("Sam Vimes kept the ledger")), "with the conversation it follows");
+  proc.kill();
+  await fb2.close();
+}
+
+// A kit that names its service (`up`): while the service does not answer, the question goes straight
+// to the next provider and no investigator is started for the kit; with no other provider the caller
+// is told at once. While it answers, the kit gets the question.
+{
+  const http = await import("node:http");
+  const svc = http.createServer((req, res) => res.end("{}"));
+  await new Promise((r) => svc.listen(0, "127.0.0.1", r));
+  const svcUrl = `http://127.0.0.1:${svc.address().port}/api/stats`;
+  kit("recall", `up = "\${RECALL_URL}/api/stats"\n[[settings]]\nkey = "RECALL_URL"\ndefault = "${svcUrl.replace("/api/stats", "")}"\n${provides(100)}`);
+  kit("ledger", `up = "${svcUrl}"`);
+  const isRecall = (body) => body.messages[0].content.includes("the recall of");
+  const fb3 = await fakeBackend([(body) => ({ answer: isRecall(body) ? "From recall: Sam Vimes kept the ledger." : "From the transcripts: Sam Vimes kept the ledger." })]);
+  fs.writeFileSync(path.join(config, "config.json"), JSON.stringify({ ...capCfg({ sessions: {}, recall: {}, ledger: {} }), backends: { default: "fake", list: { fake: fb3.backend } } }));
+  const ask = async (session, args) => {
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, "bin", "ask-kit.mjs"), "serve"], env: { ...env, ASK_KIT_SESSION: session }, stderr: "inherit" }));
+    const out = await c.callTool({ name: "ask", arguments: { early: false, ...args } });
+    await c.close();
+    return out;
+  };
+  const text = (o) => o.content.map((c) => c.text).join("\n");
+  assert.equal(text(await ask("router-up", { question: "what did we decide about the ledger yesterday?" })), "From recall: Sam Vimes kept the ledger.", "the service answers: the kit gets the question");
+  await new Promise((r) => svc.close(r));
+  const t0 = Date.now();
+  const down = await ask("router-down", { question: "what did we decide about the ledger yesterday?" });
+  assert.equal(text(down), "From the transcripts: Sam Vimes kept the ledger.\n\n[recall's service is not answering, so this was answered by sessions]");
+  assert.ok(Date.now() - t0 < 10_000);
+  assert.equal(fb3.requests.filter(isRecall).length, 1, "no investigator was started for the kit while its service was down");
+  const drows = fs.readFileSync(path.join(state, "router", "router-down.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(drows.filter((x) => x.how === "down").map((x) => [x.domain, x.from]), [["sessions", "recall"]]);
+  const none = await ask("router-down-only", { question: "who signed the ledger?", about: "ledger" });
+  assert.ok(none.isError);
+  assert.match(text(none), /^ask failed: ledger's service is not answering \(http:\/\/127\.0\.0\.1:\d+\), and nothing else here covers this question\. Start it and ask again\.$/);
+  await fb3.close();
+}
 
 await fake.close();
 fs.rmSync(tmp, { recursive: true, force: true });

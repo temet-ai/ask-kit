@@ -4,7 +4,8 @@ interface Hit { file: string; line: number; text: string; context?: true }
 
 declare const repo: {
   root: string; // absolute path of the repository
-  // ripgrep; `pattern` is a regex unless fixed. Paths in results are relative to root.
+  // ripgrep; `pattern` is a regex unless fixed. Paths in results are relative to root. Files git
+  // ignores (node_modules, build output) are skipped, except when `path` points into them (path: "node_modules/some-package").
   rg(pattern: string, o?: { fixed?: boolean; ignoreCase?: boolean; word?: boolean; context?: number;
     glob?: string | string[]; type?: string | string[]; path?: string; hidden?: boolean; max?: number }):
     Promise<Hit[] & { total: number; complete: boolean }>;

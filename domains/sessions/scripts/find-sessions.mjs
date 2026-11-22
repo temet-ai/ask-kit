@@ -9,7 +9,7 @@ export const meta = {
     tools: "also search tool calls and results, default false",
     any: "match sessions holding any one word (default: each event must hold all words; retried with fewer words when nothing matches)",
   },
-  returns: "{query, total, complete, sessions:[{source,id,project,title,startedAt,hits,userHits,score,digest:{terms,firstPrompt,startedAt,updatedAt},first:{i,role,snippet}}]}",
+  returns: "{query, total, complete, searched?, older?, sessions:[{source,id,project,title,startedAt,hits,userHits,score,digest:{terms,firstPrompt,startedAt,updatedAt},first:{i,role,snippet}}]}. searched is there when a slow search answered from its newest sessions (the last 24 hours or 7 days) while the older ones are still being read; the same call again returns the whole window.",
   example: 'await scripts.run("find-sessions", { topic: "keyboard layout" })',
 };
 
@@ -59,5 +59,7 @@ export default async function ({ history }, { topic, hours = 24 * 30, project, s
     if (d) s.digest = { terms: d.terms.slice(0, 6), firstPrompt: d.firstPrompt?.slice(0, 120) ?? null, startedAt: d.startedAt, updatedAt: d.updatedAt };
   });
   const sessions = found.sort((a, b) => b.score - a.score || b.hits - a.hits).slice(0, 15);
-  return { query, total: by.size, complete: hits.complete !== false, sessions };
+  // A slow search answers from its newest sessions first and finishes the window in the background.
+  const partial = hits.searched ? { searched: hits.searched, older: `the rest of the ${Math.round(hours / 24)} days is ${hits.older}` } : {};
+  return { query, total: by.size, complete: hits.complete !== false, ...partial, sessions };
 }

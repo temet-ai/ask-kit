@@ -6,6 +6,8 @@ import { adapter as copilotCli } from "./copilot-cli.mjs";
 import { adapter as geminiCli } from "./gemini-cli.mjs";
 import { adapter as opencode } from "./opencode.mjs";
 import fs from "node:fs";
+import os from "node:os";
+import { Worker } from "node:worker_threads";
 import { clip, filesMayMatch, literalOf } from "./common.mjs";
 import { buildDigest, loadDigests, saveDigests, stampOf } from "./digest.mjs";
 import { scrubDeep, scrubSecrets } from "./scrub.mjs";
@@ -84,9 +86,94 @@ export async function listSessions(sources) {
 
 const toMs = (x) => (x == null ? null : typeof x === "number" ? Date.now() - x * 3600_000 : Date.parse(x));
 
+/**
+ * The events of `sessions` that match `spec` ({ words | re: {source, flags}, roles, max, snippet }),
+ * as hits. Each session carries `order`, its place in the search, so parts searched apart can be
+ * put back in order. Used in this process and in the search workers.
+ */
+export async function scanSessions(sessions, spec, deadline = Infinity) {
+  const re = spec.re ? new RegExp(spec.re.source, spec.re.flags) : null;
+  const words = spec.words ?? [];
+  const test = re ? (t) => re.test(t) : (t) => { const l = t.toLowerCase(); return words.every((w) => l.includes(w)); };
+  const hits = [];
+  let total = 0;
+  let scanned = 0;
+  let timedOut = false;
+  for (const s of sessions) {
+    scanned++;
+    for (const e of await parsed(s)) {
+      if (!spec.roles.includes(e.role) || !e.text || !test(e.text)) continue;
+      total++;
+      if (hits.length < spec.max) {
+        const text = scrubSecrets(e.text);
+        const at = re ? text.search(re) : text.toLowerCase().indexOf(words[0]);
+        hits.push({ source: s.source, session: s.id, project: s.project, title: scrubSecrets(s.title), i: e.i, ts: e.ts, role: e.role, tool: e.tool, snippet: clip(text.slice(Math.max(0, at - 120)), spec.snippet ?? 240), order: s.order });
+      }
+    }
+    if (Date.now() > deadline) {
+      timedOut = true;
+      break;
+    }
+  }
+  return { hits, total, scanned, timedOut };
+}
+
+// Search workers, started at the first search with enough sessions to be worth splitting
+// (PARALLEL_FROM) and kept for the life of the process: up to four, one fewer than the cores.
+const PARALLEL_FROM = 32;
+// How long a search of a time window runs before it answers from its newest part.
+const QUICK_MS = 1500;
+let pool;
+function searchWorkers() {
+  if (pool !== undefined) return pool;
+  const want = Math.min(4, os.availableParallelism() - 1);
+  if (!(want >= 2)) return (pool = null);
+  try {
+    const jobs = new Map();
+    let seq = 0;
+    const env = { ...process.env, ASK_KIT_PARSE_CACHE_MB: String(Math.max(16, Math.floor(capBytes() / 1024 / 1024 / want))) };
+    const list = Array.from({ length: want }, () => {
+      const w = new Worker(new URL("./scan-worker.mjs", import.meta.url), { env });
+      // An idle worker does not keep the process alive: it is held (ref) only while it has a job.
+      const idle = () => ![...jobs.values()].some((j) => j.w === w) && w.unref();
+      w.on("message", ({ id, result, error }) => {
+        const job = jobs.get(id);
+        jobs.delete(id);
+        idle();
+        if (job) error ? job.reject(new Error(error)) : job.resolve(result);
+      });
+      w.on("error", (e) => {
+        for (const [id, job] of jobs) if (job.w === w) (jobs.delete(id), job.reject(e));
+        pool = null;
+        w.unref();
+      });
+      w.unref();
+      return w;
+    });
+    const run = (k, sessions, spec, deadline) =>
+      new Promise((resolve, reject) => {
+        const id = ++seq;
+        jobs.set(id, { resolve, reject, w: list[k] });
+        list[k].ref();
+        list[k].postMessage({ id, sessions, spec, deadline });
+      });
+    return (pool = { size: want, run });
+  } catch {
+    return (pool = null);
+  }
+}
+// The same session always goes to the same worker, whose parse cache then holds it.
+const workerOf = (s, n) => {
+  let h = 0;
+  for (const c of `${s.source}:${s.id}`) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % n;
+};
+
 export function makeHistory({ sources, push = () => {} }) {
   const enabled = (sources ?? Object.keys(ADAPTERS)).filter((n) => ADAPTERS[n]);
   let cache = null;
+  // Searches that answered from their newest step and are finishing the rest, by what was asked.
+  const wider = new Map();
   const note = (kind, detail, started, size) => push({ kind, detail, ms: Date.now() - started, size });
 
   async function all() {
@@ -202,38 +289,69 @@ export function makeHistory({ sources, push = () => {} }) {
       const started = Date.now();
       const re = query instanceof RegExp ? query : null;
       const words = re ? [] : String(query).toLowerCase().split(/\s+/).filter(Boolean);
-      const test = re ? (t) => re.test(t) : (t) => { const l = t.toLowerCase(); return words.every((w) => l.includes(w)); };
       let list = filter(await all(), o);
       if (o.session) list = [await find(o.session)];
       const roles = o.roles ? [].concat(o.roles) : ["user", "assistant", "tool_call", "tool_result"];
       const max = o.max ?? 100;
-      const hits = [];
-      let scanned = 0;
-      let total = 0;
       const lit = re ? literalOf(re) : null;
       const needles = re ? (lit ? [lit] : []) : words;
+      // The last 24 hours, the last 7 days and the rest of the window are searched at the same
+      // time. Once the newest part is done, has hits and QUICK_MS have passed while an older part
+      // is still running, its hits are returned with `searched` naming it; the search carries on,
+      // and the same call again returns the whole window combined. (o.quickMs is for tests.)
+      const quick = o.session ? 0 : (o.quickMs ?? QUICK_MS);
+      const key = quick ? JSON.stringify([String(query), o.since ?? null, o.until ?? null, o.project ?? null, o.source ?? null, roles, max]) : null;
+      // The rest of a search that answered early is collected once; after that the call searches afresh.
+      if (key && wider.has(key)) {
+        const rest = wider.get(key);
+        wider.delete(key);
+        return rest;
+      }
       const maybe = await filesMayMatch(list.filter((s) => !ADAPTERS[s.source].noPrefilter).map((s) => s.file), needles);
       // What the pre-filter used: the word it searched files for and how many files held it.
       const prefilter = { needle: maybe.needle ?? needles[0] ?? null, listed: maybe.listed ?? null, kept: maybe.size };
-      for (const s of list) {
-        if (!ADAPTERS[s.source].noPrefilter && !maybe.has(s.file)) continue;
-        scanned++;
-        for (const e of await parsed(s)) {
-          if (!roles.includes(e.role) || !e.text || !test(e.text)) continue;
-          total++;
-          if (hits.length < max) {
-            const text = scrubSecrets(e.text);
-            const at = re ? text.search(re) : text.toLowerCase().indexOf(words[0]);
-            hits.push({ source: s.source, session: s.id, project: s.project, title: scrubSecrets(s.title), i: e.i, ts: e.ts, role: e.role, tool: e.tool, snippet: clip(text.slice(Math.max(0, at - 120)), o.snippet ?? 300) });
-          }
-        }
-        if (Date.now() - started > (o.budgetMs ?? 40_000)) {
-          note("grep", String(query), started, total);
-          return Object.assign(hits, { total, complete: false, scanned, prefilter, stoppedEarly: "time budget: narrow with since/project/source" });
+      const cand = list.filter((s) => ADAPTERS[s.source].noPrefilter || maybe.has(s.file)).map((s, order) => ({ ...s, order }));
+      const spec = { words, re: re ? { source: re.source, flags: re.flags } : null, roles, max, snippet: o.snippet };
+      const deadline = started + (o.budgetMs ?? 40_000);
+      // With enough sessions the parsing is shared between the search workers; a part is done when every worker's share of it is.
+      const workers = cand.length >= PARALLEL_FROM ? searchWorkers() : null;
+      const join = (parts) => {
+        const hits = parts.flatMap((p) => p.hits).sort((a, b) => a.order - b.order || a.i - b.i).slice(0, max).map(({ order, ...h }) => h);
+        const total = parts.reduce((n, p) => n + p.total, 0);
+        const timedOut = parts.some((p) => p.timedOut);
+        return Object.assign(hits, { total, complete: !timedOut && total <= max, scanned: parts.reduce((n, p) => n + p.scanned, 0), prefilter, ...(timedOut ? { stoppedEarly: "time budget: narrow with since/project/source" } : {}) });
+      };
+      const search = (sessions) => {
+        if (!workers || !sessions.length) return scanSessions(sessions, spec, deadline).then((r) => [r]);
+        const shares = Array.from({ length: workers.size }, () => []);
+        for (const s of sessions) shares[workerOf(s, workers.size)].push(s);
+        // A worker that fails leaves its share to this process.
+        return Promise.all(shares.map((share, k) => (share.length ? workers.run(k, share, spec, deadline).catch(() => scanSessions(share, spec, deadline)) : { hits: [], total: 0, scanned: 0 })));
+      };
+      const age = (s) => started - Date.parse(s.updatedAt);
+      const steps = quick
+        ? [["the last 24 hours", cand.filter((s) => age(s) <= 86400_000)], ["the last 7 days", cand.filter((s) => age(s) > 86400_000 && age(s) <= 7 * 86400_000)], [null, cand.filter((s) => !(age(s) <= 7 * 86400_000))]]
+        : [[null, cand]];
+      const running = steps.map(([, sessions]) => search(sessions));
+      const whole = Promise.all(running).then((parts) => {
+        note("grep", String(query), started, parts.flat().reduce((n, p) => n + p.total, 0));
+        return join(parts.flat());
+      });
+      if (!quick) return whole;
+      let finished = false;
+      whole.then(() => (finished = true), () => (finished = true));
+      const done = [];
+      for (let k = 0; k < steps.length - 1; k++) {
+        done.push(...(await running[k]));
+        // Hits from the newest sessions, time is up, and an older part with sessions in it is still being read.
+        const older = steps.slice(k + 1).some(([, sessions]) => sessions.length);
+        if (!finished && older && done.some((p) => p.hits.length) && Date.now() - started > quick) {
+          wider.set(key, whole);
+          if (wider.size > 20) wider.delete(wider.keys().next().value);
+          return Object.assign(join(done), { complete: false, searched: steps[k][0], older: "still being searched: the same call again returns the whole window" });
         }
       }
-      note("grep", String(query), started, total);
-      return Object.assign(hits, { total, complete: total <= max, scanned, prefilter });
+      return whole;
     },
   };
 }

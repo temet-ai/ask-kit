@@ -22,6 +22,15 @@ Then read the files yourself when you are about to edit them.
 - `ask` is a conversation: `continue: true` sends a follow-up to the same investigator, which
   still holds what it found. Use it to dig into something the answer named or to finish an answer
   that stopped short; it is quicker and cheaper than a new question.
+- A slow `ask` may come back as a background task instead of an answer. The investigator is still
+  digging, and its answer is delivered to you when it is ready. While it digs, do the work
+  that does not depend on its answer: read the files you are about to change, prepare what the
+  answer will not alter, send your other asks. Don't wait for it, poll it or ask the same thing
+  again, and start on an answer as soon as it arrives, without waiting for the others. End your
+  turn only when every step left needs an answer that has not arrived; it will be delivered.
+- With more than one question, send each with `wait: false`: they come back as tasks at once and
+  run side by side. To follow up on a task's answer, pass its task id (it starts with `ask-`) as
+  `continue`; `continue: true` means only your last ask.
 - Leave `backend` at its default unless a question is hard and the default fell short.
 - If an answer looks wrong, follow up and say what is missing before searching yourself.
 - ask-kit's own guide, for changing what it uses or adding to it: {{AGENTS_MD}}

@@ -675,6 +675,8 @@ export function kitIndex(dir, { config, stack = [] } = {}) {
     keywords: why ? [] : (m.keywords ?? []),
     patterns: why ? [] : (m.patterns ?? []).map((p) => new RegExp(p, "i")),
     routeHint: m.route_hint ?? null,
+    // `up`: a URL of the service behind the kit; the router asks it before sending the kit an ask.
+    up: m.up && !why ? fill(String(m.up), settings) : null,
     provides: m.provides ?? [],
     actions: why ? [] : compileActions(m),
     scriptsDir: own,

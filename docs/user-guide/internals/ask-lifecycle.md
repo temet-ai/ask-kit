@@ -77,6 +77,15 @@ answer unless `how` is `caller` or `only`. It writes one line per ask to `STATE_
 The router waits for the domain server with a timeout of `(timeoutSeconds ?? 300) * 1000 + 30000`
 ms and passes the client's cancellation signal on.
 
+The router's caller side is built on `@modelcontextprotocol/server` (the v2 SDK) and started with
+`serveStdio`, so it serves protocol revision 2026-07-28 and the earlier revisions from one
+factory. The domain children and the investigator's REPL stay on `@modelcontextprotocol/sdk` 1.x.
+On 2026-07-28, a request that names the Tasks extension goes through `taskBoard` in
+`src/router.mjs`: it races the ask against `taskAfterSeconds`, and when the delay wins it returns
+`resultType: "task"` and keeps the ask's promise under the task id for `tasks/get` and
+`tasks/cancel`. From then on the client's cancellation signal no longer reaches the ask, and the
+investigator's progress notes become the task's `statusMessage`.
+
 ## 2. The domain server's `ask` tool
 
 `registerAsk` in `src/ask.mjs` registers `ask` on the domain server. Its inputs are `question`
@@ -202,7 +211,10 @@ There is no step limit. After each cell the result gets a suffix: `About Ns left
 `WRAP_MS` (30 s) are left, `Answer now with what you have, saying what you could not confirm.`
 When the REPL reports a cell that repeats an earlier one with the same result for the third time,
 the result also says to stop searching, and the loop is allowed two more model calls (`stopAt`),
-both of which get the "Answer now" suffix. If the answer arrives with under 30 s left,
+both of which get the "Answer now" suffix. A cell result that shows a connection failing
+(`fetch failed`, `ECONNREFUSED` and the like, `UNREACHABLE`) is counted: from the second such cell
+the result says the source will not come back during the ask and not to wait for it, and from the
+fifth the loop gets the same two last calls. If the answer arrives with under 30 s left,
 or within those two calls, `atLimit` is set and the answer gets `[answered near the time limit:
 if something is missing, ask again with continue: true]`.
 

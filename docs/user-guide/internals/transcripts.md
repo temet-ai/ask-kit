@@ -118,9 +118,17 @@ all call `sessions()`, so they write this cache too.
   word holding a digit, dot, dash, slash or underscore; ties keep the caller's order. For words
   the needles are the words; for a `RegExp` the one needle is `literalOf(re)`, the longest plain
   run the pattern requires (outside groups and classes, at least 3 characters, none with a
-  top-level `|`). With several needles, each file ripgrep lists goes through
-  `fileMayMatch(file, needles)`, which lower-cases the file and looks for one raw line that holds
-  every needle. Without ripgrep, with `ASK_KIT_NO_RG=1`, or when a batch fails, `fileMayMatch` runs
+  top-level `|`). With several needles, ripgrep then narrows the listed files by each further
+  needle in turn, and a last ripgrep keeps the files with one raw line holding the three rarest
+  needles in any order (one pattern of their six orders); a fourth needle is left to the event
+  check. Reading each candidate whole in JavaScript took 20 s over 865 files; this takes about one.
+  From 32 candidate sessions on, parsing is shared between search workers (`scan-worker.mjs`, up to
+  four threads): a session always goes to the same worker, which keeps
+  its own parse cache, and the parts are put back in order. A search over a time window reads the last 24 hours, the
+  last 7 days and the rest at the same time: once the newest part is
+  done, has hits and 1.5 s have passed while an older part is still running, its hits are
+  returned with `.searched` and `.older`; the search carries on, and the same call again returns
+  the whole window combined. Without ripgrep, with `ASK_KIT_NO_RG=1`, or when a batch fails, `fileMayMatch` runs
   on every file. A file that fails is skipped. A `RegExp` with no literal, or an adapter with
   `noPrefilter`, skips it. The result's `.prefilter` is `{needle, listed, kept}`. Otherwise the
   adapter parses the file (or the cache answers) and each event of the wanted roles is

@@ -166,7 +166,9 @@ the agent (Claude Code, Codex, ...)
   `ask`; with `ASK_KIT_INNER=1` it is the investigator's REPL. Neither face registers the other's
   tools.
 - `src/router.mjs` chooses the domain from the caller's `about`, a follow-up (`continue: true`), a
-  router model or keyword rules.
+  router model or keyword rules. Its caller side uses `@modelcontextprotocol/server` (SDK v2,
+  protocol revision 2026-07-28) so a slow ask can be answered with an MCP task (`taskBoard`);
+  everything below it uses `@modelcontextprotocol/sdk` 1.x.
 - `src/ask.mjs` holds the backends (three agent CLIs and an OpenAI-compatible API loop), the warm
   session, follow-ups, escalate and hedge for slow asks, cost and step accounting, and the journal
   row each ask writes. `ask-kit report` (`src/report.mjs`) reads those journals.

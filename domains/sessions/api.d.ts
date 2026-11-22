@@ -46,8 +46,10 @@ declare const history: {
   // Narrow with a window: an unbounded search reads every transcript. Stops at a 40 s budget.
   // Files are pre-filtered by the rarest word (or a literal the RegExp requires); `.prefilter` says which.
   // Parsed events stay in memory between cells, so a repeat search over the same sessions parses nothing.
+  // A slow search over a time window answers from its newest sessions first: `.searched` names what it covers (the last
+  // 24 hours or 7 days) and the same call again returns the whole window. Without `.searched` the result is the whole window.
   grep(query: string | RegExp, o?: Window & { session?: string; roles?: string | string[]; max?: number; snippet?: number; budgetMs?: number }):
-    Promise<Hit[] & { total: number; complete: boolean; scanned: number; prefilter: { needle: string | null; listed: number | null; kept: number }; stoppedEarly?: string }>;
+    Promise<Hit[] & { total: number; complete: boolean; scanned: number; prefilter: { needle: string | null; listed: number | null; kept: number }; stoppedEarly?: string; searched?: string; older?: string }>;
   // A digest per session, built once per file version and kept on disk. `refs` are sessions or {source, id}.
   digests(refs: (Session | { source: Source; id: string })[]): Promise<(Digest | null)[] & { built: number; reused: number }>;
 };

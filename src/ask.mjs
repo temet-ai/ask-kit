@@ -57,11 +57,13 @@ export const cliLimitMs = (timeoutMs, clientMs = 0) => {
 const stoppedAtLimit = (b, r) => `${b} was stopped at the time limit before it answered. Ask again with a narrower question, or raise timeoutSeconds if the client allows it.`;
 // No step limit: time is the budget. With this much left the investigator is told to answer.
 const WRAP_MS = 30_000;
+// A cell result that shows a connection failing, as fetch and node:net word it.
+const UNREACHABLE = /\bfetch failed\b|\bECONNREFUSED\b|\bENOTFOUND\b|\bEHOSTUNREACH\b|\bconnect ETIMEDOUT\b/;
 const SERVER = path.join(ROOT, "src", "server.mjs");
 // The no-data signal: an answer from a capability provider that ends with this line held nothing
 // for the question. The line is cut from the answer, journaled as noData, and returned to the
 // router in the result's _meta, which then asks the next provider once.
-const NO_DATA_RULE = "\nIf your sources hold nothing for this question (a session, agent, machine or time they do not cover), say what you searched and end the answer with the line [no data].";
+const NO_DATA_RULE = "\nIf your sources hold nothing for this question (a session, agent, machine or time they do not cover, or a source that cannot be reached), say what you searched and end the answer with the line [no data].";
 export const NO_DATA = /\n?[ \t]*\[no data\][ \t.]*$/i;
 // Claude Code's own tools, left out so the investigator works through the REPL, where every call is journaled.
 const CLAUDE_DENY = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "Task", "Skill", "TodoWrite"];
@@ -132,23 +134,52 @@ export function registerAsk(server, ctx) {
   });
   // Every ask row says whether the ask could change things.
   const keepRow = ctx.keep;
-  ctx.keep = (entry) => keepRow({ ...entry, act: acting.getStore()?.act === true });
+  ctx.keep = (entry) => keepRow({ ...entry, act: acting.getStore()?.act === true, ...(acting.getStore()?.thread ? { thread: acting.getStore().thread } : {}) });
 
   // The last investigator each backend ran for this calling session, so a follow-up can continue it.
   const lastFile = path.join(WARM_DIR, `last-${SESSION.replace(/[^A-Za-z0-9._-]/g, "-")}.json`);
-  const readLast = () => {
+  // An ask the caller can name (`thread`, the id the router gave it) keeps the same record in a file
+  // of its own, so a follow-up by that id reaches it whatever was asked in between. A day is kept.
+  const THREAD_DIR = path.join(WARM_DIR, "threads");
+  const THREAD_KEEP_MS = 86_400_000;
+  const threadFile = (t) => path.join(THREAD_DIR, `${SESSION.replace(/[^A-Za-z0-9._-]/g, "-")}--${String(t).replace(/[^A-Za-z0-9._-]/g, "-")}.json`);
+  let prunedAt = 0;
+  const pruneThreads = () => {
+    if (Date.now() - prunedAt < 3_600_000) return;
+    prunedAt = Date.now();
     try {
-      return JSON.parse(fs.readFileSync(lastFile, "utf8"));
+      for (const f of fs.readdirSync(THREAD_DIR)) {
+        const file = path.join(THREAD_DIR, f);
+        if (Date.now() - fs.statSync(file).mtimeMs > THREAD_KEEP_MS) fs.rmSync(file, { force: true });
+      }
+    } catch {}
+  };
+  pruneThreads();
+  const readJson = (file) => {
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8"));
     } catch {
       return {};
     }
+  };
+  // A follow-up by id reads its own ask's record; shots stay with the caller, whichever ask uses them.
+  const readLast = () => {
+    const main = readJson(lastFile);
+    const s = acting.getStore();
+    if (!s?.thread || !s.fromThread) return main;
+    return { ...readJson(threadFile(s.thread)), ...(main.__shots ? { __shots: main.__shots } : {}) };
   };
   // A shadow run (an action's answer checked by the model in the background) leaves the caller's
   // follow-up where the action put it.
   const writeLast = (b, value) => {
     const bg = shadowing.getStore();
     if (bg) return void (bg.last && (bg.last[b] = value));
-    fs.writeFileSync(lastFile, JSON.stringify({ ...readLast(), [b]: value }), { mode: 0o600 });
+    fs.writeFileSync(lastFile, JSON.stringify({ ...readJson(lastFile), [b]: value }), { mode: 0o600 });
+    const thread = acting.getStore()?.thread;
+    if (!thread || b === "__shots") return;
+    fs.mkdirSync(THREAD_DIR, { recursive: true, mode: 0o700 });
+    pruneThreads();
+    fs.writeFileSync(threadFile(thread), JSON.stringify({ ...readJson(threadFile(thread)), [b]: value }), { mode: 0o600 });
   };
   // Run `fn` in the background: what it saves for a follow-up goes to `last`, if given, not the file.
   const inBackground = (fn, last) => shadowing.run(last ? { last } : true, fn);
@@ -465,6 +496,7 @@ export function registerAsk(server, ctx) {
     const leftMs = () => timeoutMs - (Date.now() - started);
     let answer = null;
     let cells = 0;
+    let unreached = 0;
     let earlySent = false;
     // A history that holds an early_answer call keeps the tool declared, or a provider may refuse it.
     const earlyTool = !!onEarly || messages.some((m) => m.tool_calls?.some((c) => c.function?.name === "early_answer"));
@@ -577,6 +609,13 @@ export function registerAsk(server, ctx) {
             const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
             const text = out.content.map((c) => c.text).join("\n");
             tried.push({ code, text });
+            // A source that does not answer (a stopped service, a host that is off) will not come back
+            // during the ask: from the second such cell the investigator is told not to wait, and after
+            // the fifth it is given two more steps.
+            if (UNREACHABLE.test(text) && ++unreached >= 2) {
+              if (unreached >= 5) stopAt = Math.min(stopAt, step + 2);
+              return text + `\n\n[${unreached} cells could not reach a source. It will not come back during this ask: do not wait for it or try it again. ${unreached >= 5 ? "Answer now" : "Use what does answer, or answer now"}, naming what could not be reached.]`;
+            }
             // The REPL says when a cell repeats an earlier one with the same result; on the third, stop searching.
             if (Number(/one you already ran \((\d+) times now/.exec(text)?.[1] ?? 0) >= 3) {
               totals.stuck = (totals.stuck ?? 0) + 1;
@@ -685,6 +724,8 @@ export function registerAsk(server, ctx) {
           usage: { input: sum("input"), cacheRead: sum("cacheRead"), cacheWrite: sum("cacheWrite"), output: sum("output") },
           providers: [...new Set([...totals.providers, ...(r.providers ?? [])])],
           missteps: totals.missteps + (r.missteps ?? 0),
+          ...(totals.stuck || r.stuck ? { stuck: (totals.stuck ?? 0) + (r.stuck ?? 0) } : {}),
+          ...(unreached || r.unreached ? { unreached: unreached + (r.unreached ?? 0) } : {}),
           ...(opened ? { opened } : {}),
           escalated: { to: escTo, atMs, cells, model: r.model },
           model: be.model,
@@ -736,6 +777,8 @@ export function registerAsk(server, ctx) {
       usage: { input: totals.input, cacheRead: totals.cacheRead, cacheWrite: totals.cacheWrite, output: totals.output },
       providers: [...totals.providers],
       missteps: totals.missteps,
+      ...(totals.stuck ? { stuck: totals.stuck } : {}),
+      ...(unreached ? { unreached } : {}),
       ...(opened ? { opened } : {}),
       ...(escError ? { escalated: escError } : {}),
     };
@@ -849,15 +892,24 @@ export function registerAsk(server, ctx) {
         do: z.string().optional().describe(`A shot: "<script>" or "${domainName}.<script>" runs that script with no model and returns its result`),
         params: z.record(z.string(), z.any()).optional().describe("The shot script's parameters"),
         backend: z.enum(NAMES).optional(),
-        continue: z.boolean().optional().describe("Ask the same investigator as your last question on this backend, so it keeps what it found"),
+        continue: z.union([z.boolean(), z.string()]).optional().describe("true: ask the same investigator as your last question on this backend, so it keeps what it found. An ask's id (its `thread`): ask the investigator of that ask"),
         early: z.boolean().optional().describe("Let the investigator send the main fact before it finishes (default true); continue: true then collects the rest"),
         timeoutSeconds: z.number().int().min(30).max(900).optional().describe("Default 300"),
         act: z.boolean().optional().describe("true: this request asks for a change, so the investigator gets its acting calls (write, edit, run, a kit's acts). Left out, it is true when the request opens with what to do, or continues an ask that could act; false keeps it read-only"),
+        thread: z.string().max(80).optional().describe("An id to keep this ask under (the router's), so a later continue: \"<id>\" reaches it"),
       },
     },
-    withActing(async ({ question: q, request, prompt, do: doWhat, params = {}, backend = DEFAULT, continue: cont = false, early = true, timeoutSeconds = 300, act }, extra) => {
+    withActing(async ({ question: q, request, prompt, do: doWhat, params = {}, backend = DEFAULT, continue: contArg = false, early = true, timeoutSeconds = 300, act, thread: threadArg }, extra) => {
+      const cont = !!contArg;
+      const fromThread = typeof contArg === "string" && !!contArg.trim();
+      const thread = fromThread ? contArg.trim() : threadArg;
       const question = [q, request, prompt].find((v) => typeof v === "string" && v.trim());
       const started = Date.now();
+      if (thread) Object.assign(acting.getStore(), { thread, fromThread });
+      // An early answer's run waits for its follow-up under the backend, and under the ask's id when it has one.
+      // A follow-up by id looks under that id; continue: true looks under the backend, as before.
+      const ownKey = thread ? `${backend}\n${thread}` : backend;
+      const waitKey = fromThread ? ownKey : backend;
       // Only the caller's words decide: act as given, else the request itself (or the ask it continues).
       // A shot runs the script the caller named, with no model, so it may act unless act is false.
       const state = acting.getStore();
@@ -921,9 +973,13 @@ export function registerAsk(server, ctx) {
         }
       }
       // A follow-up to an ask that answered early collects the rest of that run first.
-      if (cont && pending.has(backend)) {
-        const out = await pending.get(backend);
-        pending.delete(backend);
+      if (cont && pending.has(waitKey)) {
+        const held = pending.get(waitKey);
+        const out = await held.run;
+        for (const [k, v] of pending) if (v === held) pending.delete(k);
+        // The run filed its conversation under its own id; this call's id reaches it too.
+        const rec = (held.thread ? readJson(threadFile(held.thread)) : readJson(lastFile))[backend];
+        if (rec && thread && thread !== held.thread) writeLast(backend, rec);
         const text = (out.content ?? []).map((c) => c.text).join("\n");
         return { ...out, content: [{ type: "text", text: `${text}\n\n[the rest of your earlier question; to ask something new of it, send that with continue: true]` }] };
       }
@@ -977,7 +1033,11 @@ export function registerAsk(server, ctx) {
       detached = true;
       detachedMs = first.early.ms;
       extra?.signal?.removeEventListener("abort", onAbort);
-      pending.set(backend, run);
+      const waiting = { run, thread };
+      pending.set(backend, waiting);
+      pending.set(ownKey, waiting);
+      // A rest nobody collects is dropped an hour after the run ends.
+      run.finally(() => setTimeout(() => { for (const [k, v] of pending) if (v === waiting) pending.delete(k); }, 3_600_000).unref());
       ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text, ...(fell ? { actionFellThrough: fell } : {}) });
       return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + (config.footer ? `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` : "") }] };
     }),

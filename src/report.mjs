@@ -214,6 +214,10 @@ export function report({ since = "7d" } = {}) {
   const misroutes = [];
   const cellsByDir = {};
   let routed = 0;
+  // afterMs of each ask that became a background task (the router's {task, afterMs} row).
+  const taskHandoffs = [];
+  // How those tasks ended (the router's {task, done, ms} row); a task still running has no row yet.
+  const taskEnds = { answered: 0, failed: 0, cancelled: 0, stopped: 0 };
   for (const file of journals(STATE_ROOT)) {
     const domain = path.relative(STATE_ROOT, file).split(path.sep)[0];
     const dir = path.dirname(file);
@@ -231,6 +235,8 @@ export function report({ since = "7d" } = {}) {
       if (isRouter) {
         if (!(Date.parse(r.at) >= from)) continue;
         if (r.type === "misroute") misroutes.push({ at: r.at, question: String(r.question ?? "").slice(0, 140), routed: r.routed, how: r.how, correct: r.correct, why: r.why, journal: file });
+        else if (typeof r.task === "string" && Number.isFinite(r.afterMs)) taskHandoffs.push(r.afterMs);
+        else if (typeof r.task === "string" && r.done in taskEnds) taskEnds[r.done]++;
         else if (["model", "rules", "pattern", "timeout", "action"].includes(r.how)) routed++;
         continue;
       }
@@ -296,11 +302,21 @@ export function report({ since = "7d" } = {}) {
     costUsd: Math.round(total * 1e4) / 1e4,
     medianSeconds: rows.length ? Math.round([...rows].sort((a, b) => a.ms - b.ms)[Math.floor(rows.length / 2)].ms / 1000) : null,
     flaggedAsks: flagged,
+    // Asks told to stop searching because their cells kept repeating, and asks with a cell that could not reach a source.
+    asksStuck: asks.filter((a) => a.stuck > 0).length,
+    asksUnreached: asks.filter((a) => a.unreached > 0).length,
     citations,
     scripts: Object.entries(scripts).sort((a, b) => b[1].runs - a[1].runs).map(([name, s]) => ({ name, ...s })),
     worthAScript: Object.entries(handCells).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([shape, n]) => ({ shape, n })),
     // Routes the router chose itself (model, rules, pattern, timeout) and those that were wrong.
     routed,
+    // Asks that ran past the hand-off delay and were answered as background tasks.
+    tasks: taskHandoffs.length,
+    tasksAnswered: taskEnds.answered,
+    tasksFailed: taskEnds.failed,
+    tasksCancelled: taskEnds.cancelled,
+    tasksStopped: taskEnds.stopped,
+    taskMedianHandoffSeconds: taskHandoffs.length ? Math.round([...taskHandoffs].sort((a, b) => a - b)[Math.floor(taskHandoffs.length / 2)] / 1000) : null,
     misroutes: misroutes.sort((a, b) => a.at.localeCompare(b.at)),
     // Actions: runs and fall-throughs, those turned off and why, and shadow runs (both answers).
     actions,

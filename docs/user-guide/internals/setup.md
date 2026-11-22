@@ -275,6 +275,10 @@ starts the MCP server. The skills and the rule point agents at this file through
   (`partial`); `answered near the time limit` (`atLimit`); `slow` over 90 s; `costly` over $0.02;
   `missteps` over 2; `empty answer`; and `re-asked` when the same session asks again within 3
   minutes without `continue` (`re-asked on another backend` when the backend differs).
+- Background tasks come from the router's own rows (filtered on `at`): a row with `task` and
+  `afterMs` counts toward `tasks` and `taskMedianHandoffSeconds`, and a row with `task` and `done`
+  counts toward `tasksAnswered`, `tasksFailed`, `tasksCancelled` or `tasksStopped`. The two kinds are counted
+  separately, so `tasks` minus those four is what is still running or ended outside the window.
 - The result: totals, `medianSeconds`, `flaggedAsks`, `scripts` by runs, and `worthAScript`, the
   shapes written by hand three or more times (at most 10).
 
