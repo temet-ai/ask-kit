@@ -4,7 +4,7 @@ export const meta = {
   purpose:
     "What a file or folder holds: its top-level definitions (fn, struct, enum, trait, impl, class, function, const, def, export, SQL create) with line numbers, and for a folder the same per file.",
   params: { path: "file or folder", max: "definitions returned, default 120" },
-  returns: "{path, files, definitions:[{file,line,text}], complete}",
+  returns: "{path, files:number (count), definitions:[{file,line,text}], complete}",
   example: 'await scripts.run("outline", { path: "src/billing" })',
 };
 

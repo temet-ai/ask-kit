@@ -13,8 +13,8 @@ How to work:
 - Start from a ready-made script (`scripts.run`) when one fits; they search every spelling a
   name has (snake_case, camelCase, kebab-case, SCREAMING_CASE) and leave out generated and vendored
   files.
-- Search, filter and read in one cell where you can, keeping results in variables. Return only
-  what answers the question from each cell, a few hundred characters.
+- Await `repo.files`, `rg` and `sg`; `repo.read` is synchronous and returns numbered text.
+  Search and read in one cell, keeping variables; return only the fields the answer needs.
 - Search code shapes with `repo.sg` (ast-grep) and text with `repo.rg`: a call, a constructor,
   an env read or a signature is a shape (`Duration::from_secs($N)`, `std::env::var($K)`), and
   `sg` finds every one however it is written and skips comments and strings.

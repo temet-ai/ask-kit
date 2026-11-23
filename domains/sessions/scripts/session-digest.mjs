@@ -2,7 +2,7 @@ export const meta = {
   purpose:
     "One session, compactly: every prompt the person typed, the agent's replies (clipped), and the tools it used with counts and failures. Optionally only events from..to, or a focus word.",
   params: { session: "id or prefix", from: "first event, optional", to: "last event, optional", focus: "a word: keep only events holding it, plus every prompt", reply: "chars kept per reply, default 500" },
-  returns: "{session:{source,id,project,title,startedAt,updatedAt}, events, prompts:[{i,ts,text}], replies:[{i,text}], tools:{name:{calls,failed}}}",
+  returns: "{session:{source,id,project,title,startedAt,updatedAt}, events:number (count), prompts:[{i,ts,text}], replies:[{i,text}], repliesSkipped?:number, tools:{name:{calls,failed}}}",
   example: 'await scripts.run("session-digest", { session: "5ca1ab1e" })',
 };
 
@@ -25,7 +25,8 @@ export default async function ({ history }, { session, from, to, focus, reply = 
     session: { source, id, project, title, startedAt, updatedAt },
     events: ev.total,
     prompts,
-    replies: replies.length > 40 ? [...replies.slice(0, 10), { skipped: replies.length - 30 }, ...replies.slice(-20)] : replies,
+    replies: replies.length > 40 ? [...replies.slice(0, 10), ...replies.slice(-20)] : replies,
+    ...(replies.length > 40 ? { repliesSkipped: replies.length - 30 } : {}),
     tools,
   };
 }

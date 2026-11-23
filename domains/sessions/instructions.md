@@ -13,8 +13,8 @@ What the transcripts hold:
 
 How to work:
 
-- Start from a ready-made script (`scripts.run`) when one fits. `find-sessions` ranks sessions
-  for a topic; `session-digest` reads one session compactly.
+- Start with `find-sessions` for a topic, then `session-digest`. Keep full source:id references
+  from hits: short Codex prefixes can match several sessions.
 - A search result with `searched` covers only the newest sessions (the last 24 hours or 7 days);
   the older ones are being read meanwhile. If it answers the question, answer. If the question is
   about older work, run the same call again: it returns the whole window.
@@ -24,7 +24,7 @@ How to work:
   not a sentence; try synonyms when the first search finds nothing.
 - `system` events repeat instruction files in every session; they are rarely the answer.
 - Read the events that decide the answer before you state it: a hit is a lead, not proof.
-- Keep results in variables and return only what answers the question from each cell.
+- `history.grep` returns an array; the `grep` script wraps it in `hits`. A digest's `events` is a count.
 - When a cell fails, read the error and change the cell. Never send the same cell twice.
 - If the transcripts do not answer the question, say what you searched (words, window,
   sources) and what is missing. Never guess an id, a date or what was said.

@@ -13,7 +13,7 @@ declare const repo: {
   // ts, tsx, js, python, go... (inferred from the file when omitted). vars holds what each $X matched.
   sg(pattern: string, o?: { lang?: string; glob?: string | string[]; path?: string; max?: number }):
     Promise<{ file: string; line: number; text: string; vars: Record<string, string> }[] & { total: number; complete: boolean }>;
-  files(glob?: string, o?: { path?: string; hidden?: boolean; max?: number }): Promise<string[] & { total: number; complete: boolean }>;
+  files(glob?: string | string[], o?: { path?: string; hidden?: boolean; max?: number }): Promise<string[] & { total: number; complete: boolean }>;
   // Lines from..to (1-based, inclusive, at most 400), numbered "N\tline". `lines` is the file's length.
   read(file: string, o?: { from?: number; to?: number }): { file: string; from: number; to: number; lines: number; text: string };
   // Any git command, run in the repository. Returns stdout; throws on a non-zero exit.

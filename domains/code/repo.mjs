@@ -136,7 +136,7 @@ export function makeRepo({ root, push }) {
     async files(glob, o = {}) {
       const started = Date.now();
       const args = ["--files"];
-      if (glob) args.push("-g", glob);
+      for (const g of [].concat(glob ?? []).filter(Boolean)) args.push("-g", g);
       if (o.hidden) args.push("--hidden");
       if (await aimedAtIgnored(o.path)) args.push("--no-ignore");
       args.push("--", inside(o.path).rel);
