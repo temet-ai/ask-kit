@@ -10,15 +10,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "smol-toml";
 import { listGallery, purposeOf } from "../src/gallery.mjs";
+import { publicFile as raw } from "./github.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const out = process.argv[2] ?? path.join(HERE, "kits.json");
 const headers = { "user-agent": "ask-kit-site", ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) };
-
-async function raw(repo, branch, file) {
-  const res = await fetch(`https://raw.githubusercontent.com/${repo}/${branch}/${file}`, { headers, signal: AbortSignal.timeout(10_000) });
-  return res.ok ? res.text() : null;
-}
 
 /** The README's first paragraph of prose: no heading, badge, image or code. */
 function intro(md) {
@@ -28,14 +24,13 @@ function intro(md) {
   return (p ?? "").replace(/\s*\n\s*/g, " ").slice(0, 600);
 }
 
-/** The files of a repository's branch, as paths (one API call); [] when GitHub does not answer. */
+/** The files of a repository's branch. An API failure must not erase its scripts and skills. */
 async function tree(repo, branch) {
-  try {
-    const res = await fetch(`https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`, { headers: { ...headers, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
-    return res.ok ? ((await res.json()).tree ?? []).filter((t) => t.type === "blob").map((t) => t.path) : [];
-  } catch {
-    return [];
-  }
+  const res = await fetch(`https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`, { headers: { ...headers, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) throw new Error(`${repo}: tree HTTP ${res.status}; gallery was not rebuilt`);
+  const body = await res.json();
+  if (!Array.isArray(body.tree) || body.truncated) throw new Error(`${repo}: incomplete file tree; gallery was not rebuilt`);
+  return body.tree.filter((t) => t.type === "blob").map((t) => t.path);
 }
 
 /** The files directly in `dir` with the extension, by name: [{name, path}]. */
