@@ -37,7 +37,7 @@
     "ask-kit": "bin/ask-kit.mjs"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=26.0.0 <27"
   },
   "scripts": {
     "test": "node test/run.mjs",

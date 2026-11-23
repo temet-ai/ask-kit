@@ -10,7 +10,7 @@ Source: [`package.json`](https://github.com/temet-ai/ask-kit/blob/main/package.j
 
 ## Run them
 
-You need Node 22.13 or newer. From the repository root:
+You need Node 26. From the repository root:
 
 ```sh
 npm ci
@@ -116,11 +116,11 @@ runs on every push and pull request:
 | Setting | Value |
 |---|---|
 | Systems | `ubuntu-latest`, `macos-latest` |
-| Node | 22.x and 24.x |
-| Matrix | four jobs; `fail-fast: false`, so one failing job does not stop the others |
-| Steps | `actions/checkout@v4`, `actions/setup-node@v4` with the npm cache, `npm ci`, then `node test/fixtures.mjs`, `node test/setup.mjs`, `node test/repl.mjs` and `node test/bundle.mjs` |
+| Node | 26.x |
+| Matrix | two jobs; `fail-fast: false`, so one failing job does not stop the others |
+| Steps | `actions/checkout@v7`, `actions/setup-node@v7` with the npm cache, `npm ci`, then `npm test` |
 
-The bundle step runs only when `test/bundle.mjs` exists. CI does not run `test:machine`, because
+CI does not run `test:machine`, because
 it needs real transcripts, and does not lint or type-check.
 
 Failures that appear on one system only are usually paths (backslashes in JSON, a temporary folder

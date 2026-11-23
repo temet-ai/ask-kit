@@ -70,7 +70,7 @@ It shows what it will change before it changes anything. Restart your agents aft
 they call `ask` by themselves when they need to find something out.
 
 In Claude Code you can install it as a plugin instead. Its npm packages come with the install, and
-it needs Node.js 22.13 or newer:
+it needs Node.js 26:
 
 ```
 /plugin marketplace add temet-ai/ask-kit
@@ -89,7 +89,7 @@ tool, run through `npx @temet-ai/ask-kit`. Run `npx @temet-ai/ask-kit setup` onc
 model.
 
 Without an agent: `npm install -g @temet-ai/ask-kit`, then `ask-kit init` and `ask-kit setup`.
-It needs Node.js 22.13 or newer, and git for the code domain's history and for shared kits. If npm answers `EACCES`, add
+It needs Node.js 26, and git for the code domain's history and for shared kits. If npm answers `EACCES`, add
 `--prefix ~/.local` to the install command.
 [Set it up](docs/user-guide/setup.md) has the details.
 

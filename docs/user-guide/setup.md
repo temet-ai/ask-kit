@@ -9,7 +9,7 @@ Read https://github.com/temet-ai/ask-kit/blob/main/AGENTS.md, then set up ask-ki
 
 The agent then:
 
-1. **Checks** that you have Node.js 22.13 or newer and git. It offers to install anything that's
+1. **Checks** that you have Node.js 26 and git. It offers to install anything that's
    missing, and installs it only if you say yes.
 2. **Installs** ask-kit and runs `ask-kit init`. That adds the `ask` tool, a rule for when to
    use it, and three skills to every coding agent on the machine. It writes no file that you've

@@ -12,7 +12,7 @@ under the MIT licence too. There is no contributor licence agreement to sign.
 
 ## Building and testing
 
-Node.js 22.13 or newer and git. From the repository root:
+Node.js 26 and git. From the repository root:
 
 ```sh
 npm ci
@@ -23,7 +23,7 @@ node bin/ask-kit.mjs --help
 ```
 
 A new test file under `test/` runs by being there: there is no list to add it to. CI runs
-`npm test` on Linux and macOS with Node 22 and 24.
+`npm test` on Linux and macOS with Node 26.
 
 After changing a file in `bundle/` (skills, the tuner agent, the rule), run
 `node bin/ask-kit.mjs plugin build` to refresh the Claude Code plugin's copies in `plugin/`;

@@ -19,9 +19,8 @@ opencode already write; it needs no server and no account of its own.
 
 ## 1. Check what it needs
 
-- **Node.js 22.13 or newer**: `node --version`. If it is missing or older, tell the person and
-  offer the usual way for their system (macOS: `brew install node`; Linux: their
-  package manager, or `mise use -g node@lts`).
+- **Node.js 26**: `node --version`. If it is missing or a different major version, tell the
+  person and offer Node 26 through their package manager, or `mise use -g node@26`.
   Install it only on their yes.
 - **git**: needed to fetch ask-kit and shared domains. ripgrep is bundled; nothing else is needed.
 
@@ -112,7 +111,7 @@ people, and releasing.
 
 ## Commands
 
-Node.js 22.13 or newer, ESM, no build step, no linter, no formatter. Keep each file's style:
+Node.js 26, ESM, no build step, no linter, no formatter. Keep each file's style:
 two-space indent, double quotes, long lines.
 
 ```sh
@@ -127,7 +126,7 @@ node bin/ask-kit.mjs --help # run this checkout
 
 - `ask-kit` on PATH is the global npm install. Run this checkout as `node bin/ask-kit.mjs`.
 - Tests are plain Node scripts using `node:assert/strict`. A new file under `test/` runs by being
-  there. CI runs `npm test` on Linux and macOS with Node 22 and 24.
+  there. CI runs `npm test` on Linux and macOS with Node 26.
 - `serve`, `ask`, `init`, `setup`, `apply`, `kit link|enable|disable|install` and `kit test` write
   the live `~/.config/ask-kit` (config.json, and AGENTS.md rewritten with this checkout's paths).
   When trying them from this checkout, set `ASK_KIT_CONFIG` and `ASK_KIT_STATE` to a scratch

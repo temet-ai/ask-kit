@@ -71,7 +71,7 @@ existing}`. It runs programs and probes ports, so it is not free of side effects
 - **apis:** for each non-local preset in `API_PRESETS`, whether its key variable is set in the
   environment, in one of the preset's `keyFiles`, or in `keys.env`. It stores where, never the value.
 - **local:** `GET <baseUrl>/models` on Ollama and LM Studio, with an 800 ms timeout.
-- **tools:** Node version (`nodeOk` means 22.13 or newer), `rgPath()`, `which("git")`, platform.
+- **tools:** Node version (`nodeOk` means Node 26), `rgPath()`, `which("git")`, platform.
 - **existing:** the parsed `config.json` if one exists.
 
 `ask-kit detect` prints it (`--json` for the data). `ask-kit questions` runs it with counts and

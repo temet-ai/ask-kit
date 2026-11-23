@@ -86,10 +86,10 @@ export async function detect({ counts = true } = {}) {
     existing = fs.existsSync(CONFIG_FILE) ? loadConfig() : null;
   } catch {}
   // What the code domain needs: ripgrep (bundled through @vscode/ripgrep when the system has none)
-  // and git for history. Node's own version decides node:sqlite (opencode).
+  // and git for history. The supported runtime is Node 26.
   const tools = {
     node: process.version,
-    nodeOk: Number(process.versions.node.split(".")[0]) > 22 || (Number(process.versions.node.split(".")[0]) === 22 && Number(process.versions.node.split(".")[1]) >= 13),
+    nodeOk: Number(process.versions.node.split(".")[0]) === 26,
     ripgrep: rgPath(),
     git: whichSync("git"),
     platform: `${process.platform}-${process.arch}`,

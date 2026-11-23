@@ -24,7 +24,7 @@ session in `~/.acme/sessions/`. It touches the files below. For how they fit tog
 
 ## Before you start
 
-- Node 22.13 or newer, and a clone of ask-kit with `npm ci` run.
+- Node 26, and a clone of ask-kit with `npm ci` run.
 - A real transcript file from the agent. Read it before you write code: you need to know where it
   stores the working directory, the start time, the first prompt, tool calls and their results,
   and token usage.

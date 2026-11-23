@@ -214,7 +214,7 @@ all call `sessions()`, so they write this cache too.
 
 - **Where:** one SQLite file, `~/.local/share/opencode/opencode.db`. `OPENCODE_DB` replaces the
   file, and `XDG_DATA_HOME` replaces `~/.local/share`. The adapter has no Windows-specific path.
-- **Format:** read-only through `node:sqlite` (the reason ask-kit needs Node 22.13 or newer).
+- **Format:** read-only through `node:sqlite`.
   `session_v2` holds sessions (`directory`, `title`, times in milliseconds, token totals, `cost`,
   `model` as JSON); sessions with `time_archived` set are left out. `session_message` holds
   messages (`type`, `seq`, `data` as JSON).

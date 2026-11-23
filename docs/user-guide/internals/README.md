@@ -144,7 +144,7 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 
 `package.json` (the `test` script, the `files` list, dependencies), `AGENTS.md` (the install
 instructions an agent reads), `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `README.md`, and
-`.github/workflows/ci.yml` (runs the four test files on Linux and macOS, Node 22 and 24).
+`.github/workflows/ci.yml` (runs all test files on Linux and macOS, Node 26).
 
 ## Reading order for a new contributor
 
