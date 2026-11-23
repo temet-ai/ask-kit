@@ -1,11 +1,11 @@
 {
   "name": "ask-kit",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "One ask tool: a cheap model with a REPL answers about your code and your past agent sessions, outside your agent's context.",
   "mcpServers": {
     "ask": {
       "command": "npx",
-      "args": ["-y", "@temet-ai/ask-kit@0.4.0", "serve"],
+      "args": ["-y", "@temet-ai/ask-kit@0.5.0", "serve"],
       "timeout": 600000
     }
   }
