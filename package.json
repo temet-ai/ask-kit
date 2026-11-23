@@ -1,6 +1,6 @@
 {
   "name": "@temet-ai/ask-kit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "mcpName": "io.github.temet-ai/ask-kit",
   "description": "One plain-language `ask` tool for coding agents: a cheap model with a REPL and scripts answers about your past sessions and your code, outside your agent's context.",
   "keywords": [
