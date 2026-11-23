@@ -20,6 +20,7 @@ import { toolkit } from "./core/toolkit.mjs";
 import { loadDomain } from "./domains.mjs";
 import { makeAskKit } from "./kitcall.mjs";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, slug } from "./config.mjs";
+import { reviewOf, REVIEW_META } from "./review.mjs";
 
 const CONFIG = loadConfig();
 // `journal.trajectories: true` also keeps each cell's printed result and the answer on the ask row.
@@ -121,7 +122,8 @@ const scripts = {
     const started = Date.now();
     try {
       const value = await s.fn({ ...GLOBALS, tk: toolkit }, params ?? {});
-      cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started, ...paramsOf(params) });
+      const review = reviewOf(value);
+      cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started, ...paramsOf(params), ...(review ? { review } : {}) });
       return value;
     } catch (e) {
       cellScripts.push({ name, draft: s.draft, ok: false, ms: Date.now() - started, error: e.message, ...paramsOf(params) });
@@ -370,6 +372,7 @@ async function runCell(code, maxChars, timeoutSeconds) {
   journal({
     ts: new Date().toISOString(),
     session: SESSION,
+    ...(CALLER ? { caller: CALLER } : {}),
     ok,
     ms,
     code,
@@ -384,7 +387,8 @@ async function runCell(code, maxChars, timeoutSeconds) {
     restored: restoreInfo,
   });
   restoreInfo = null;
-  return { text: parts.join("\n\n"), isError: !ok };
+  const reviews = cellScripts.filter((s) => s.review).map((s) => ({ script: s.name, ...s.review }));
+  return { text: parts.join("\n\n"), isError: !ok, ...(reviews.length ? { _meta: { [REVIEW_META]: reviews } } : {}) };
 }
 
 function helpText() {
@@ -439,8 +443,8 @@ replTool(
   async ({ code, maxChars, timeoutSeconds }) => {
     const run = queue.then(() => runCell(code, maxChars ?? DEFAULT_MAX_CHARS, timeoutSeconds ?? 120));
     queue = run.catch(() => {});
-    const { text, isError } = await run;
-    return { content: [{ type: "text", text }], isError };
+    const { text, isError, _meta } = await run;
+    return { content: [{ type: "text", text }], isError, ...(_meta ? { _meta } : {}) };
   },
 );
 

@@ -27,7 +27,8 @@ Files are created with mode `0600` and only ever appended to.
 Nothing rotates or deletes a journal. To see which journal a record is in, look at the `journal`
 field of `ask-kit report --json`.
 
-A line that is not valid JSON is skipped by the report.
+Malformed lines, non-object rows, invalid timestamps and non-text cell code are skipped by the
+report.
 
 ## Ask record
 
@@ -36,6 +37,7 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | Field | Type | Meaning |
 |---|---|---|
 | `ts` | string | ISO time the record was written (the end of the ask). |
+| `startedAt` | string | ISO time the outer ask began; used to associate only the cells of this run with its review verdicts. |
 | `session` | string | The calling session. |
 | `type` | `"ask"` | Marks the record. |
 | `question` | string | The question, in full. |
@@ -54,7 +56,8 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `action` | string | The kit's action that answered with no model. The row has `do` (the script), `params`, `ms` and `cells: 1`, and no backend, model or cost. See [Actions](../kits.md#actions). |
 | `actionFellThrough` | object | On a model ask: `{ action, why }` for the action that matched first and fell through (`why` is `error`, `empty` or `expect`), with `turnedOff` when that run turned the action off. |
 | `citations` | object | `{ checked, failed, failedList? }`: the host resolved the answer's citations with no model (`code`: `path:line` or `path:line-line`, the file exists and has that line; `sessions`: `<source> <session> #<event>`, the session has that event). At most 20 are checked, within 3 seconds; those not reached are not counted. `failedList` holds up to 10 that did not resolve. Absent when the answer cites nothing checkable. When `failed` is above 0 the reply ends with `[<failed> of <checked> citations did not resolve: ...]`. |
-| `askId` | string | `api` asks: the investigator's REPL session is `ask-<askId>`, so `report` finds the ask's cells. |
+| `reviews` | object[] | Shots and actions: explicit script reviews, each `{ script, status, warnings?, notes? }`. Status is `pass`, `needs_review` or `unverified`. Execution `ok` remains separate. |
+| `askId` | string | Shots, actions and `api` asks: the investigator's REPL session is `ask-<askId>`, so `report` finds the ask's cells. |
 
 The rest depend on the kind. A field that a kind does not produce is absent.
 
@@ -86,6 +89,7 @@ Written after every REPL cell. It has `code` and no `type`.
 |---|---|---|
 | `ts` | string | ISO time the cell ended. |
 | `session` | string | The investigator's session. |
+| `caller` | string | The caller session, when the REPL was started for an ask. Used to separate benchmark cells from real use. |
 | `ok` | boolean | `false` when the cell threw or timed out. |
 | `ms` | number | Duration. |
 | `code` | string | The cell's code, as sent. |
@@ -94,7 +98,7 @@ Written after every REPL cell. It has `code` and no `type`.
 | `result` | string | Only with `journal.trajectories: true`: the text the cell returned, cut at 4,000 characters. It can hold excerpts of what the cell read. |
 | `repeat` | number | Present when this cell, with its variable names blanked, has run before in this REPL: how many times now. |
 | `error` | string or `null` | The error's first lines. |
-| `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `params` when the run had any (as a string cut at 300 characters when longer) and `error` on failure. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. |
+| `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `params` when the run had any (as a string cut at 300 characters when longer) and `error` on failure. An explicit result `review` keeps `status`, up to eight warnings (300 characters each) and notes (300 characters), even with trajectories off. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. |
 | `calls` | object[] | Calls the domain's globals made: `{ kind, detail, ms, size }`. For `repo`: `rg`, `files`, `read`, `git`. For `history`: `sessions`, `events`, `grep`. `size` is the number of results or lines. |
 | `snapshot` | object | `{ vars, fns, bytes, dropped }` after the cell, or `{ error }`. `dropped` names variables that could not be saved. |
 | `restored` | object or `null` | On the first cell after a start: `{ from, savedAt, names }`, the variables brought back. |
@@ -110,6 +114,23 @@ A cell record, trimmed:
           {"kind":"search","detail":"action items","ms":0,"size":2}],
  "snapshot":{"vars":1,"fns":0,"bytes":220,"dropped":[]},"restored":null}
 ```
+
+## Background outcome record
+
+A kit with detached work can append one `type: "outcome"` record per completed job to its own
+journal folder, using the job's original caller session. This lets a review find a bad result
+when the submitting ask returned before the job finished and the caller never polled it.
+
+```json
+{"type":"outcome","ts":"2026-11-18T09:30:08.474Z","session":"vimes","jobId":"badge-1",
+ "ok":true,"ms":62000,"review":{"status":"needs_review","warnings":["The badge has the wrong dimensions."]}}
+```
+
+`ok` describes execution. `review` uses the bounded script-review fields above; `error` on a
+failed execution is at most 300 characters. Keep prompts, images and full results out of this
+record. Pass the original caller session to a detached worker so benchmark outcomes can be
+excluded. The report counts outcomes separately from asks and lists failed or non-pass outcomes
+in `flaggedOutcomes`.
 
 ## Routing record
 
@@ -161,14 +182,21 @@ The report counts the routes the router decided and lists the misroutes.
 ## `ask-kit report`
 
 ```sh
-ask-kit report [--since 7d|<date>|<sha or ref>] [--json]
+ask-kit report [--kit <name>] [--real] [--since 7d|<date>|<sha or ref>] [--json]
 ```
+
+`--kit` filters asks, cells, routes and action summaries to one kit or domain. `--real` excludes
+kit-test and benchmark callers, including linked investigator cells. Older CLI cells without a
+caller or ask id are counted only when they fit one ask's time window; ambiguous and unmatched
+cells are excluded and counted as `unattributedCells`, with up to 20 `unattributedExamples`. These options are used by
+the [per-kit improvement workflow](../tuning.md). A re-ask must be in the same kit and state
+folder as the earlier question.
 
 `--since` takes `<n>h`, `<n>d`, a date, or a git commit sha or ref, which it turns into the
 commit's date (`git log -1 --format=%cI`, in the repository of the current folder), so
 `ask-kit report --since <sha>` shows real use after that change. The default is `7d`. Any other value stops with
 `--since <value>: use 24h, 7d, a date, or a git commit sha or ref (run in its repository)`. The command reads every journal in the state folder
-(folders `warm`, `drafts`, `gallery`, `index` and `actions` are skipped), keeps records whose `ts` is in
+(folders `warm`, `drafts`, `gallery`, `index`, `actions`, `nudges`, `improvements` and kit-test results are skipped), keeps records whose `ts` is in
 range, and builds the sections below. The action sections read `<state>/actions/` separately.
 
 ### Flagged asks
@@ -185,6 +213,7 @@ Each `ask` record gets zero or more signals. An ask with any signal is listed.
 | `slow (<n>s)` | `ms` over 90 000. |
 | `costly ($<n>)` | `costUsd` over 0.02. |
 | `<n> missteps` | `missteps` over 2. |
+| `review needs_review`, `review unverified` | A script result explicitly carries that verdict, including a script run within a model ask. |
 | `empty answer` | `ok` is true and `answerChars` is 0. |
 | `re-asked` | The same calling session asked again within three minutes, and not as a follow-up. A sign the first answer fell short. |
 | `re-asked on another backend` | Same, and the second ask used a different backend. |
@@ -250,6 +279,9 @@ Misroutes: 1 of 9 routed by the router (router bench rows: <state>/router/bench.
 | `flagged` | Asks with a signal. |
 | `costUsd` | Sum of `costUsd`. |
 | `medianSeconds` | Median duration in seconds, or `null` with no asks. |
+| `outcomes`, `flaggedOutcomes` | Number of completed background outcomes, and the outcomes with execution errors or a non-pass review. These do not increase `asks`. |
+| `reviewFindings` | Script verdicts needing review, with kit, script, status, bounded notes/warnings, timestamp and journal. They remain visible even without a matching ask row. |
+| `realOnly`, `kit` | Whether synthetic sessions were excluded, and the kit filter when supplied. |
 | `flaggedAsks` | `[{ ts, domain, backend, session, question, ms, costUsd, cells, signals, journal }]`. `cells` is `cells` or else `turns`. |
 | `citations` | By domain, from the asks that have a `citations` field: `{ <domain>: { asks, checked, failed, failedRate, asksWithFailures } }`. `failedRate` is `failed / checked`. |
 | `scripts` | `[{ name, runs, failed }]`, most used first. |

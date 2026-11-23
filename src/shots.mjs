@@ -4,6 +4,8 @@
 // snapshot, so a later `continue: true` question finds it as `shots.<script>` without running it
 // again. Nothing here calls a backend; the cell is journaled like any other.
 
+import { REVIEW_META } from "./review.mjs";
+
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 /** "status" or "github.status" → { kit, script }; kit is null when not given. */
@@ -62,7 +64,8 @@ export async function runShot(repl, { script, params = {}, maxChars = 4000, time
   const out = await repl.callTool({ name: "repl", arguments: { code: shotCell(script, params), maxChars, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000 });
   const text = bareResult((out.content ?? []).map((c) => c.text ?? "").join("\n"));
   // A failed script's stack and shape notes are for an investigator; the caller gets the message.
-  return { text: out.isError ? text.split("\n")[0] : text, ok: !out.isError, ms: Date.now() - started };
+  const reviews = out._meta?.[REVIEW_META];
+  return { text: out.isError ? text.split("\n")[0] : text, ok: !out.isError, ms: Date.now() - started, ...(reviews?.length ? { reviews } : {}) };
 }
 
 export const shotFooter = (kit, script, ms) => `\n\n[${kit} · shot ${script} · ${Math.round(ms / 1000)}s]`;

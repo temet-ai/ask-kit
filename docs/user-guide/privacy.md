@@ -37,6 +37,15 @@ that CLI's service under its own terms, and the sessions appear in its history.
   An ask's row also holds how many of the answer's citations resolved and up to ten that did not
   (`path:line`, or source, session and event). The check reads local files and transcripts, and
   calls no model.
+- A script result with an explicit `review` stores its status (`pass`, `needs_review` or
+  `unverified`), up to eight warnings of 300 characters each and notes of up to 300 characters.
+  Cell records name their calling session when available. These fields are kept with trajectories
+  off; the full result is not. Background kits can append `outcome` records with job id, caller,
+  execution status, duration and the same review summary, without prompts or images.
+- `ask-kit improve <kit> --record <file>` keeps the agent’s per-kit review under
+  `improvements/<kit>.jsonl`: window, outcome, summary, journal paths and timestamps, changed
+  paths, check commands and reported results, and commit. The command makes no model calls and
+  does not run the listed checks. Review records should stay outside public repositories.
 - With `journal.trajectories: true` in the config (off by default), those journals also hold each
   cell's printed result, cut at 4,000 characters, and each answer, cut at 8,000: excerpts of
   what the investigator read. `ask-kit doctor` says whether it is on.

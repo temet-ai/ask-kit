@@ -1,49 +1,74 @@
 ---
 name: ask-kit-improve
-description: Improve ask-kit's `ask` from its own usage - read the journal for asks that failed, stopped short, were slow, costly or wrong, find the layer that caused it (instructions, a script, the backend), fix it there and prove the fix by asking the same question again. Use when asked to improve, tune or speed up ask, when an ask answer was wrong or slow, or to turn a repeated investigation into a script.
+description: Improve a kit from its own journal, or review every kit in the per-kit queue. Trace failed, slow, repeated or poorly reviewed results to their cause, make a measured change, verify it and record the outcome so the next review starts with new evidence.
 ---
 
-# Improving ask from its journal
+# Improving kits from their journals
 
-The command is `{{ASK_KIT}}` (below: `ask-kit`). ask-kit's guide, with every path on this machine,
-is {{AGENTS_MD}}: read it first.
+The command is `{{ASK_KIT}}` (below: `ask-kit`). Read {{AGENTS_MD}} for this machine's paths.
 
-## 1. Find what went wrong
+## 1. Take one kit's evidence
 
-`ask-kit report --since 7d` lists every ask with its signals: failed, stopped short (out of time or repeating), cut
-off, slow, costly, many missteps (the model wrote markup instead of calling the tool), and
-re-asked (the same session asked again soon after, often a sign the first answer fell short). It
-ends with which scripts were used and the cells that ran most often without a script: routes
-worth a script.
+For one kit, run `ask-kit improve <name>`. For all kits, start with `ask-kit improve --json`.
+The queue includes each installed kit and domain, using its real journal since its last completed
+review (30 days on the first run). Tests and benchmarks are excluded. `--since 7d` overrides the
+window. A kit with no new evidence needs no changes.
 
-For one flagged ask, read its cells in the journal it names (one JSON line per cell: code,
-error, result size, scripts). What the caller did next is in its own transcript: ask the
-sessions investigator ("what did session X do after its ask at 10:42?").
+When the user requests a fleet, assign each pending kit its own task and repository ownership.
+Each task reads `ask-kit improve <name>`, then the kit's instructions, roles, skills and scripts.
+Do not use one kit's failures to rewrite another. Keep host fixes in a separate task when several
+kits share the same defect. Otherwise work through the same queue one kit at a time.
 
-## 2. Fix it in the layer it points at
+The brief names journals and timestamps, and includes a completion-record template. It shows
+at most 30 entries per evidence section; `ask-kit report --kit <name> --real --since <date> --json`
+gives the full report. Read the selected rows and the investigator's cells. Ask the sessions
+investigator what the caller did next when the answer's quality is unclear. Treat a re-ask as a
+lead to inspect, not proof that the answer was wrong.
 
-- **The investigator misread the question or skipped a step** → its instructions,
-  `domains/<name>/instructions.md`, or the `openWith` list in `domain.mjs`. One sentence, aimed at
-  the failure. Do not grow the file: replace a line where you can.
-- **It rebuilt the same thing in raw cells** (the report's "routes worth a script") → a script
-  in `domains/<name>/scripts/`. Copy the shape of an existing one: `meta` (purpose, params,
-  returns, example) and a default export taking the domain's globals. Check for an investigator's
-  draft first: drafts live under the state folder's `drafts/` and may already be the script.
-- **It was slow because a search read too much** → make the script narrow by default (a time
-  window, a source, a project).
-- **The model itself** (missteps, cut off at length, empty replies) → try another backend for
-  that domain: set `domains.<name>.backend` in the config.
+A script's successful execution can still return `review.status: needs_review` or `unverified`.
+These are recorded separately from execution errors. Background jobs may also write `outcome`
+rows when they finish; inspect those even if the submitting ask succeeded.
 
-Any change to instructions, scripts or the API re-warms the investigator on the next question;
-nothing needs restarting.
+## 2. Fix the cause
 
-## 3. Check it
+Select up to three supported problems **per kit**, with journal evidence for each.
 
-Make all the fixes first, then check them together in one pass. Ask each flagged question again
-once, through the same backend, from the shell:
-`ask-kit ask --domain <name> --backend <backend> "<the question>"`. Compare the answer, steps,
-time and cost with the journal's row. Don't ask after each fix, and don't stop to ask the user
-before the pass. Report the before and after.
+- A missed step or misunderstanding: replace a line in `instructions.md`, the matching role or
+  skill. Keep the instructions specific and remove obsolete advice.
+- Repeated hand-written cells: improve or add a script. Check the journal's `drafts/` first.
+- A search that reads too much: narrow the script's default scope or make independent reads
+  together. Preserve the result and its evidence.
+- A model/backend failure: distinguish credentials, unavailable sources and limits from a kit
+  defect. Change a backend only within the user's requested scope.
+- A saved result that fails review: fix the generation, validation or delivery step responsible;
+  preserve the review verdict in the script's structured return.
 
-Whether a fix broke other questions shows in real use: run `ask-kit report --since <the date of
-the change>` after a few days of use and compare its flags with the report you started from.
+If the evidence does not justify a change, record `no-change` with the reason. If a needed source
+or decision is missing, or supported issues remain unresolved after the selected fixes, record
+`blocked` with the remaining work; its evidence stays in the next queue.
+
+## 3. Verify and record
+
+Reproduce the problem with a small synthetic offline fixture and run the repository's required
+checks. Follow its local test instructions. Run paid `kit test` or benchmark suites only when the
+maintainer asks for that specific run. A model replay, when requested, uses the original backend
+and reports answer quality, steps, time and cost. An offline regression proves the code behavior;
+it does not establish a model-quality or latency improvement.
+
+Commit verified changes in the kit's repository when the user requested commits. Fill in the
+brief's `record` object with `since`, `through`, `outcome`, `summary`, `evidence` (`journal`, `ts`),
+`changes`, `checks` (`command`, observed `result`, `ok`) and the commit sha for `changed`. Save it
+outside the repository: it names private journals. Run:
+
+```sh
+ask-kit improve <name> --record <record.json>
+```
+
+A changed record needs changed paths, passing checks and a commit. A completed record advances
+only this kit's review cutoff; new asks and job outcomes form its next review. A blocked record
+does not advance it. If commits were not requested, keep the brief open and report the verified
+working-tree change rather than marking it completed.
+
+Run the queue again after new real use. Compare the next questions and result reviews with the
+previous evidence before claiming improvement. This workflow runs when invoked; it does not
+start a daemon, schedule work, call a model or edit kits by itself.

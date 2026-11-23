@@ -74,8 +74,8 @@ Match the request to one of these. Show the user what will change before changin
 - **Ask something from the shell**: \`ask-kit ask [--domain sessions|code] [--backend name] "question"\`;
   \`--continue\` follows up.
 - **Check it**: \`ask-kit doctor\`.
-- **It answered badly, or is slow**: \`ask-kit report --since 7d\`, then the ask-kit-improve skill
-  (or the ask-kit-tuner agent).
+- **Improve kits from use**: \`ask-kit improve\` lists each kit’s pending journal; \`ask-kit improve <name>\`
+  gives its evidence and completion record. Follow the ask-kit-improve skill or ask-kit-tuner agent.
 - **Add a kit someone shared** (a GitHub repo with the topic \`ask-kit\`, or \`ask-kit-domain\`):
   \`ask-kit kit install <repo>\` shows its sources, what it can change (\`acts\`) and what it runs
   at install; it is code that runs with the user's rights, so tell the user, and only on their

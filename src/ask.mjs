@@ -854,7 +854,7 @@ export function registerAsk(server, ctx) {
       const names = held?.askId === askId ? (held.names ?? []).filter((n) => n !== script) : [];
       writeLast(SHOTS_KEY, { askId, names: [...names, script], at: new Date().toISOString() });
     }
-    return r;
+    return { ...r, askId };
   }
 
   // One line for a follow-up: the shots it can use, and where they are when its REPL is another one.
@@ -921,11 +921,11 @@ export function registerAsk(server, ctx) {
           target = parseDo(doWhat);
           if (target.kit && target.kit !== domainName) throw new Error(`this is the ${domainName} kit; ${target.kit}.${target.script} belongs to another (send it through the router's ask)`);
           const r = await shoot(backend, target.script, params, timeoutSeconds);
-          ctx.keep({ question: question ?? `do ${domainName}.${target.script}`, shot: true, do: target.script, params, ok: r.ok, ms: r.ms, cells: 1, answer: r.text, ...(r.ok ? {} : { error: r.text.slice(0, 300) }) });
+          ctx.keep({ startedAt: new Date(started).toISOString(), question: question ?? `do ${domainName}.${target.script}`, shot: true, do: target.script, params, askId: r.askId, reviews: r.reviews ?? [], ok: r.ok, ms: r.ms, cells: 1, answer: r.text, ...(r.ok ? {} : { error: r.text.slice(0, 300) }) });
           return { content: [{ type: "text", text: r.text + (config.footer ? shotFooter(domainName, target.script, Date.now() - started) : "") }], isError: !r.ok };
         } catch (e) {
           const message = String(e?.message ?? e);
-          ctx.keep({ question: question ?? `do ${doWhat}`, shot: true, do: target?.script ?? String(doWhat), ok: false, error: message.slice(0, 300), ms: Date.now() - started });
+          ctx.keep({ startedAt: new Date(started).toISOString(), question: question ?? `do ${doWhat}`, shot: true, do: target?.script ?? String(doWhat), ok: false, error: message.slice(0, 300), ms: Date.now() - started });
           return { content: [{ type: "text", text: `shot failed (${domainName}): ${message}` }], isError: true };
         }
       }
@@ -950,7 +950,7 @@ export function registerAsk(server, ctx) {
           const why = r.ok ? shapeProblem(action, r.text) : "error";
           const run = logRun(domainName, { action: action.name, script: action.script, session: SESSION, question: question.slice(0, 500), params: p, ms: r.ms, ...(why ? { fellThrough: why } : {}), ...(why === "error" ? { error: r.text.slice(0, 300) } : {}) });
           if (!why) {
-            ctx.keep({ question, action: action.name, do: action.script, params: p, ok: true, ms: Date.now() - started, cells: 1, answer: r.text });
+            ctx.keep({ startedAt: new Date(started).toISOString(), question, action: action.name, do: action.script, params: p, askId: r.askId, reviews: r.reviews ?? [], ok: true, ms: Date.now() - started, cells: 1, answer: r.text });
             // A shadow check, one run in SHADOW_EVERY: the model answers the same question in the
             // background, and both answers go to the action log for `report` to show side by side.
             const every = cfg.actions?.shadowEvery ?? SHADOW_EVERY;
@@ -1014,7 +1014,7 @@ export function registerAsk(server, ctx) {
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
           const cited = r.ok ? await checkCitations(r.answer, D, config).catch(() => null) : null; // src/citations.mjs
-          ctx.keep({ question, backend, kind, ...r, ...(cited ? { citations: cited.journal } : {}), ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
+          ctx.keep({ startedAt: new Date(started).toISOString(), question, backend, kind, ...r, ...(cited ? { citations: cited.journal } : {}), ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.
           const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
@@ -1022,7 +1022,7 @@ export function registerAsk(server, ctx) {
         } catch (e) {
           const cancelled = ac.signal.aborted;
           const message = cancelled ? "the calling client cancelled the ask" : String(e?.message ?? e ?? "unknown error");
-          ctx.keep({ question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started, ...(fell ? { actionFellThrough: fell } : {}) });
+          ctx.keep({ startedAt: new Date(started).toISOString(), question, backend, kind, ok: false, cancelled, continued: cont, error: message.slice(0, 300), ms: Date.now() - started, ...(fell ? { actionFellThrough: fell } : {}) });
           return { content: [{ type: "text", text: `ask failed (${backend}): ${message}` }], isError: true };
         } finally {
           extra?.signal?.removeEventListener("abort", onAbort);
@@ -1038,7 +1038,7 @@ export function registerAsk(server, ctx) {
       pending.set(ownKey, waiting);
       // A rest nobody collects is dropped an hour after the run ends.
       run.finally(() => setTimeout(() => { for (const [k, v] of pending) if (v === waiting) pending.delete(k); }, 3_600_000).unref());
-      ctx.keep({ question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text, ...(fell ? { actionFellThrough: fell } : {}) });
+      ctx.keep({ startedAt: new Date(started).toISOString(), question, backend, kind, early: true, partial: true, continued: cont, ok: true, ms: first.early.ms, answer: first.early.text, ...(fell ? { actionFellThrough: fell } : {}) });
       return { content: [{ type: "text", text: first.early.text + PARTIAL_NOTE + (config.footer ? `\n\n[${domainName} · ${backend} · early · ${Math.round(first.early.ms / 1000)}s]` : "") }] };
     }),
   );

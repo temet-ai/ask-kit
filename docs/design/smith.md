@@ -2,13 +2,16 @@
 title: smith - the kit that builds kits
 status: draft
 created: 2026-11-18
-updated: 2026-11-18
+updated: 2026-11-23
 summary: smith is an ask-kit kit whose sources are the machine, the agents' transcripts, the journals and the kits folder. It finds where agents keep digging with no kit to ask, proposes a kit with the real questions it would have answered, builds it, tests it against those questions, installs it and keeps improving it. ask-kit grows its own kits from what agents actually do.
 session_id:
   - 4e289079-da5f-498b-bd4d-facad52bf096
 ---
 
 # smith: the kit that builds kits
+
+This is a design draft. The implemented tuning route is `ask-kit improve [kit]`, with per-kit
+review records and the ask-kit-improve skill. `smith tune` and scheduled tuning are not commands.
 
 Read [kits.md](kits.md) first. smith is an ordinary kit. What it knows about is kits, and what it
 does is make them.
@@ -71,7 +74,7 @@ acts = ["askkit.kit.link", "askkit.kit.install", "kits.write"]
 | `mine <source>` | Real questions about the source from the transcripts. The answer each chain reached becomes the expected answer, with the transcript it came from. |
 | `scaffold` | `ask-kit kit new --from ...`, then `says` and `instructions.md` drafted from the mined questions, not from guesses |
 | `prove` | `ask-kit kit test` on the mined bench once, on the default backend, and only when the operator asks for that run; each answer is judged against what the agent found by hand. Failures change the instructions once, as added, changed or removed lines each tied to the question it fixes (a whole-file rewrite each time loses detail), logged in `instructions.changes.md`; nothing is re-run, because the kit's real use is the next measure. Built: `ask-kit smith prove`. |
-| `tune <kit>` | Takes the journal's flagged asks (failed, out of steps, re-asked, slow), finds which layer caused each and fixes it there. It doesn't rerun the bench; the kit's real use after the fix is the measure |
+| Tuning | Implemented as `ask-kit improve [kit]`: per-kit real-use briefs, result-review signals and completion records. The tuner skill makes and verifies the changes. |
 | `promote` | Scripts that investigators keep running unchanged become `[[actions]]` (answers with no model call). Drafts that keep being rewritten become scripts. |
 | `split` / `retire` | Splits a kit whose routed questions fall into two clusters. Retires a kit nobody has asked in N weeks, after asking. |
 
@@ -102,7 +105,7 @@ digging after install.
 
 smith has a bench too: "build a kit for X" tasks over sources with known questions (a folder, the
 `gh` CLI, an MCP server, an OpenAPI service). It passes when the built kit passes its own mined
-bench. `tune smith` improves the builder the same way it improves any kit.
+bench. Journal-based tuning follows the implemented `ask-kit improve` workflow.
 
 ## Order
 
@@ -110,5 +113,6 @@ bench. `tune smith` improves the builder the same way it improves any kit.
    evidence. They need only today's ask-kit.
 2. `scaffold` and `prove`, once the manifest and `kit new` / `kit test` exist (kits.md steps 1-3).
    First targets, from where the digging is: `herdr` (CLI plus llms.txt), `gh`, and mike's own MCP.
-3. `tune` and `promote` replace `ask-kit-tuner` and the `ask-kit-improve` skill.
+3. `promote` creates actions. `ask-kit improve` supplies the per-kit evidence and review records;
+   `ask-kit-tuner` and the `ask-kit-improve` skill remain the editing workflow.
 4. The scheduled run that proposes the top gap.

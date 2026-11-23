@@ -145,7 +145,10 @@ Claude Code session and a log of the nudges the plugin's hook gave (time, sessio
 lookup; no commands or prompts) and, for the one in 20
 action answers that a model checks in the background, both answers. Each ask's journal row
 holds how many of the answer's citations resolved, and the ones that did not (a path and line,
-or a session and event); the check reads local files and transcripts only. With `journal.trajectories:
+or a session and event); the check reads local files and transcripts only. Script results with an
+explicit `review` keep their status and bounded warnings and notes, even when trajectories are
+off. Background kits may journal job outcomes without prompts or images. `ask-kit improve`
+records each kit’s review evidence, reported checks and commit in the local state folder. With `journal.trajectories:
 true` (off by default) the journals also keep each cell's printed result and each answer, so they
 then hold excerpts of what was read.
 [What it stores and sends](docs/user-guide/privacy.md) has the full list.

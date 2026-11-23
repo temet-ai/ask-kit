@@ -9,7 +9,8 @@
 //   ask-kit doctor               check the config: sources, backends, tools
 //   ask-kit ask "<question>" [--domain d] [--backend b] [--continue] [--act|--no-act]   ask from the shell (--act: it may change things)
 //   ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
-//   ask-kit report [--since 7d|<date>|<git sha or ref>]  how ask is doing: flagged asks, scripts used, routes worth a script
+//   ask-kit report [--kit name] [--real] [--since 7d|<date>|<git sha or ref>]  flagged asks, result reviews and repeated work
+//   ask-kit improve [kit] [--since 30d] [--json] [--record file]   per-kit review queue, brief or completion record
 //   ask-kit gaps [--since 30d] [--json]   digging agents did by hand instead of ask, by kit
 //   ask-kit mine <kit> [--since 30d] [--n 20] [--json]   that digging's questions as draft bench rows
 //   ask-kit smith scaffold <source> [--name n] · prove <name> · install <name> · promote <kit>   kits from that digging
@@ -33,7 +34,7 @@ const flag = (name) => {
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? undefined : argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : true;
 };
-const positional = argv.slice(1).filter((a, i, all) => !a.startsWith("--") && !(all[i - 1]?.startsWith("--") && !["--json", "--dry-run", "--continue", "--yes", "--act", "--no-act"].includes(all[i - 1])));
+const positional = argv.slice(1).filter((a, i, all) => !a.startsWith("--") && !(all[i - 1]?.startsWith("--") && !["--json", "--dry-run", "--continue", "--yes", "--act", "--no-act", "--real"].includes(all[i - 1])));
 
 async function main() {
   switch (cmd) {
@@ -84,17 +85,21 @@ async function main() {
       return runShotFromShell();
     case "report": {
       const { report } = await import("../src/report.mjs");
-      const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d" });
+      if (flag("kit") === true) throw new Error("--kit needs a kit or domain name");
+      const r = report({ since: typeof flag("since") === "string" ? flag("since") : "7d", kit: flag("kit") ?? null, real: !!flag("real") });
       if (flag("json")) return print(r);
       console.log(`Since ${r.since}: ${r.asks} asks, ${r.flagged} flagged, ${r.shots} shots, ${r.actionAnswers} answered by actions (${Math.round((r.noModelShare ?? 0) * 100)}% with no model; ${r.realNoModelShare == null ? "-" : `${Math.round(r.realNoModelShare * 100)}%`} on real use), $${r.costUsd}, median ${r.medianSeconds ?? "-"} s`);
       if (r.tasks) {
         const ended = [r.tasksFailed && `${r.tasksFailed} failed`, r.tasksCancelled && `${r.tasksCancelled} cancelled`, r.tasksStopped && `${r.tasksStopped} stopped with the agent`].filter(Boolean);
         console.log(`Background tasks: ${r.tasks} asks became tasks (median ${r.taskMedianHandoffSeconds} s before hand-off); ${r.tasksAnswered} answered${ended.length ? `, ${ended.join(", ")}` : ""}`);
       }
+      if (r.unattributedCells) console.log(`Excluded ${r.unattributedCells} older cells whose caller could not be identified; --json includes examples.`);
       if (r.asksStuck || r.asksUnreached) console.log(`Stuck or unreachable: ${r.asksStuck} of ${r.asks} asks were told to stop because their cells kept repeating, ${r.asksUnreached} had a cell that could not reach a source`);
       const cites = Object.entries(r.citations);
       if (cites.length) console.log(`Citations that did not resolve: ${cites.map(([d, c]) => `${d} ${c.failed} of ${c.checked} (${Math.round(c.failedRate * 100)}%, ${c.asksWithFailures} of ${c.asks} asks)`).join(", ")}`);
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);
+      for (const o of r.flaggedOutcomes) console.log(`\n${o.ts}  ${o.domain} · outcome ${o.jobId ?? ""}  ${o.signals.join("; ")}\n  ${[o.review?.notes, ...(o.review?.warnings ?? [])].filter(Boolean).join("; ")}\n  ${o.journal}`);
+      if (r.reviewFindings.length) console.log(`\nScript results needing review:\n${r.reviewFindings.map((r) => `  ${r.ts}  ${r.domain}/${r.script}: ${r.status}\n    ${r.journal}`).join("\n")}`);
       if (r.scripts.length) console.log(`\nScripts: ${r.scripts.map((s) => `${s.name} ${s.runs}${s.failed ? ` (${s.failed} failed)` : ""}`).join(", ")}`);
       if (r.worthAScript.length) console.log(`\nWritten by hand 3+ times (worth a script):\n${r.worthAScript.map((w) => `  ${w.n}×  ${w.shape}`).join("\n")}`);
       if (r.routed || r.misroutes.length) {
@@ -113,6 +118,22 @@ async function main() {
         console.log("\nWorth an action (real questions asked again whose cells ran the same script; ranked by count × cost):");
         for (const w of r.worthAnAction) console.log(`  ${w.n}× in ${w.sessions} session(s)  ${w.kit} · ${w.script}  $${w.costUsd}, median ${w.medianSeconds ?? "-"} s\n    "${w.template}"\n    e.g. ${w.questions[0]}${w.params.length ? `\n    params seen: ${w.params.join("  ")}` : ""}`);
       }
+      return;
+    }
+    case "improve": {
+      const { improvementQueue, improvementBrief, recordImprovement } = await import("../src/improve.mjs");
+      const kit = positional[0];
+      const options = { ...(typeof flag("since") === "string" ? { since: flag("since") } : {}) };
+      if (flag("record")) {
+        if (!kit || typeof flag("record") !== "string") throw new Error("improve <kit> --record <file.json>");
+        return print(recordImprovement(kit, JSON.parse(fs.readFileSync(flag("record"), "utf8"))));
+      }
+      if (kit) return print(improvementBrief(kit, options));
+      const q = improvementQueue(options);
+      if (flag("json")) return print(q);
+      console.log("Per-kit review queue (real use only; since each completed review, or 30d on the first run)");
+      for (const k of q.kits) console.log(`${k.kit.padEnd(18)} ${k.state.padEnd(15)} ${k.asks} asks, ${k.outcomes} outcomes, ${k.signals} signals${k.previous?.outcome === "blocked" ? " (last review blocked)" : ""}`);
+      console.log("\nRead one kit: ask-kit improve <kit>\nAfter verification: ask-kit improve <kit> --record <file.json>");
       return;
     }
     case "gaps": {
