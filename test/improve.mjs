@@ -57,7 +57,7 @@ assert.equal(cli.asks, 1);
 assert.equal(cli.outcomes, 2);
 const brief = improvementBrief("watch", { since: "1h", through: at(11) });
 assert.equal(brief.state, "pending");
-assert.equal(brief.source, path.join(CONFIG_DIR, "kits", "watch"));
+assert.equal(brief.source, fs.realpathSync(path.join(CONFIG_DIR, "kits", "watch")));
 const record = { since: brief.since, through: brief.through, outcome: "blocked", summary: "Need the source of the badge dimensions.", evidence: [{ journal: outcomeFile, ts: at(7) }], changes: [], checks: [] };
 recordImprovement("watch", { ...record, evidence: [{ journal: routerFile, ts: at(7) }] });
 assert.equal(improvementBrief("watch").asks, 1, "blocked reviews do not advance the cutoff");
