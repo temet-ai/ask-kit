@@ -109,9 +109,11 @@ follow-up with `continue: true` uses the saved state of the backend that is chos
 different `backend` on a follow-up has nothing to continue
 (`nothing to continue: no earlier <backend> question in this session`).
 
-The router's own model is separate: `config.router.backend` must name an `api` backend, and
-`config.router.model` can override its model. `plan()` sets `router.backend` to the first API
-backend in the list, or `null` when there is none.
+The router's own model is separate: `config.router.backend` names an `api`, `claude-cli`,
+`codex-cli` or `copilot-cli` backend, and `config.router.model` can override its model. With no
+`router.backend`, the default backend routes; `router: false` routes by keyword rules only.
+`plan()` writes what the person answered to the `router` setup question, the investigator's
+backend by default. See [`router`](../reference/config.md#router).
 
 ## API backends
 

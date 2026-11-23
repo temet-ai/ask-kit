@@ -36,7 +36,7 @@ const d = {
 };
 
 const { questions: qs, suggested } = questions(d);
-assert.deepEqual(qs.map((q) => q.id), ["sources", "clients", "investigator", "extras", "domains"]);
+assert.deepEqual(qs.map((q) => q.id), ["sources", "clients", "investigator", "extras", "router", "domains"]);
 assert.deepEqual(suggested.sources, ["codex", "copilot-cli"]);
 assert.deepEqual(suggested.clients, ["codex", "copilot-cli"]);
 // No key anywhere: the first ready choice is the Codex subscription, not an API that needs a key.

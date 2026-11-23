@@ -27,7 +27,7 @@ Source: [`src/config.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/con
 | `clients` | string[] | `[]` (written by setup) | Agents that got the `ask` tool. `ask-kit uninstall` walks this list to remove the registrations, and the guide (`AGENTS.md`) prints it. |
 | `backends` | object | none, required | The models. See [`backends`](#backends). |
 | `domains` | object | none, required | Which domains are on. See [`domains`](#domains). |
-| `router` | object or `null` | `null` when no backend is an API | How the router picks a domain. See [`router`](#router). |
+| `router` | object, `false` or `null` | `{ "backend": <the investigator's backend> }` (written by setup) | How the router picks a domain. `false` routes by keyword rules only. See [`router`](#router). |
 | `aliases` | object | `{}` | Other words a caller may give as `about`, each naming an enabled domain: `{"docs": "claude-code-docs"}`. The tool lists them in `about` and its description. An alias of a domain that is not enabled, or one that is a domain's own name, is left out. mike-ask uses it to keep the `about` names its callers already pass. |
 | `footer` | boolean | `false` | `true` adds a last line to each answer with the domain, backend and seconds (`[code · glm-5.3-flash · 21s]`), and the router's `[routed to <domain> by <how>]` line. Off by default, because agents repeat whatever the reply carries. The journal records time, backend and cost either way. |
 | `taskAfterSeconds` | number | `10` | An ask still running after this many seconds is answered with an MCP task, for a client that takes tasks; the answer is delivered when the ask ends. `0` turns it off. See [A slow ask answered as a task](ask-tool.md#a-slow-ask-answered-as-a-task). |
@@ -197,13 +197,24 @@ only for the asks that pass the time; the journal row keeps the winner's time an
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `backend` | string | none | Name of an `api` backend. The router asks it for one word naming the domain. |
+| `backend` | string | `backends.default` | Name of a backend: an `api` backend, or a `claude-cli`, `codex-cli` or `copilot-cli` one. The router asks it for one word naming the domain. |
 | `model` | string | that backend's `model` | A different (usually cheaper) model for the routing call. Setup never writes it. |
-| `timeoutMs` | number | `8000` | How long the routing call may take. Past it, session history answers. |
+| `timeoutMs` | number | `8000` for an API, `15000` for `claude-cli`, `20000` for `codex-cli` and `copilot-cli` | How long the routing call may take. Past it, session history answers. |
 | `body` | object | `{"reasoning": {"enabled": false}}` on the `openrouter` preset, else none | Extra fields for the routing call's request. A reasoning model can spend the call's 200 tokens thinking and reply with nothing, so OpenRouter is told not to reason. |
 
-`router` is `null` or missing when no backend is an API. Setup sets `router.backend` to the first
-`api` backend in the list: the investigator you chose, else the first extra.
+Setup asks which model routes, suggests the investigator's, and writes the answer: `{ "backend":
+"<name>" }`, or `false` for keywords only. With `router` `null` or missing, the default backend
+routes, so a machine whose only model is a subscription (Claude through
+`claude`, ChatGPT through `codex`, Copilot) still has a router.
+
+An agent CLI is called once per routed question in print mode, from the temp folder, with no
+tools, no MCP servers and none of your own settings, hooks, plugins or instructions:
+`claude -p --tools "" --strict-mcp-config --setting-sources "" --no-session-persistence`,
+`codex exec --ignore-user-config --ignore-rules --ephemeral -s read-only` at low reasoning effort,
+or `copilot -p --no-custom-instructions --disable-builtin-mcps --deny-tool shell --deny-tool write`.
+It starts before it answers, so routing takes longer than through an API: about 4 seconds for
+`claude` on Haiku and 7.6 seconds for `codex`, against about one second for an API. Only a question
+that steps 1 to 4 below leave open makes the call.
 
 How the router chooses, in order:
 
@@ -211,7 +222,7 @@ How the router chooses, in order:
 2. A follow-up (`continue: true`) goes to the domain that answered last for this caller.
 3. A single enabled domain.
 4. A kit whose `patterns` match a question with no past-work words in it.
-5. One call to `router.backend`: temperature 0, 200 tokens, `timeoutMs` (8 seconds), the question
+5. One call to `router.backend`: temperature 0, 200 tokens (on an API), `timeoutMs`, the question
    cut at 2000 characters, reply must be one enabled domain name. When it times out, `sessions`
    answers. With more than 15 domains, the call offers only the kits whose `keywords` or
    `patterns` the question matches, with the built-in domains (all of them when none match).

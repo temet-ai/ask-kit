@@ -22,7 +22,7 @@ export function agentsMd() {
         `- Agents with \`ask\`: ${c.clients?.join(", ") || "none"}`,
         `- Investigator models (backend names): ${Object.entries(c.backends?.list ?? {}).map(([n, b]) => `${n}${n === c.backends.default ? " (default)" : ""} = ${b.kind}${b.preset ? ` ${b.preset}` : ""}${b.model ? ` ${b.model}` : ""}`).join("; ")}`,
         `- Domains: ${Object.entries(c.domains ?? {}).map(([n, d]) => `${n}${d.enabled === false ? " (off)" : ""}${d.backend ? ` on ${d.backend}` : ""}`).join(", ")}`,
-        `- Router: ${c.router?.backend ? `one-word call to ${c.router.backend}` : "keyword rules (no API backend)"}`,
+        `- Router: ${c.router === false ? "keyword rules (router: false)" : `one-word call to ${c.router?.backend ?? c.backends?.default}`}`,
       ].join("\n")
     : "Not set up yet. Run the setup conversation below.";
   return `# ask-kit

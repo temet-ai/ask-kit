@@ -57,8 +57,9 @@ When the investigator writes something useful by hand, it can save it as a draft
 ## How the investigator is chosen
 
 Each domain has its own investigator. Your agent can name one with `about`. A follow-up goes to
-the investigator that answered last. Otherwise a router picks one from the question, with one
-short call to the cheap model or with keyword rules.
+the investigator that answered last. A question that matches a kit's pattern goes to that kit.
+Otherwise a router picks one from the question, with one short call to the router's model (the
+investigator's model unless you chose another), or with keyword rules if you chose none.
 
 ## Loading a domain once
 

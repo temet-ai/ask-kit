@@ -62,7 +62,8 @@ function backendFor(id, d, answers) {
 // ---- plan and apply ----
 
 export function plan(answers, d, { dry = false } = {}) {
-  const ids = [answers.investigator, ...(answers.extras ?? [])].filter(Boolean);
+  const routerId = answers.router && !["investigator", "keywords"].includes(answers.router) ? answers.router : null;
+  const ids = [answers.investigator, ...(answers.extras ?? []), routerId].filter(Boolean);
   if (!ids.length) throw new Error("answers.investigator is required");
   const known = new Set(investigatorChoices(d).map((c) => c.id));
   const list = {};
@@ -83,13 +84,19 @@ export function plan(answers, d, { dry = false } = {}) {
   old ??= {};
   const mergedList = { ...(old.backends?.list ?? {}) };
   for (const [n, b] of Object.entries(list)) mergedList[n] = { ...(mergedList[n] ?? {}), ...b };
-  const routerName = Object.entries(list).find(([, b]) => b.kind === "api")?.[0] ?? null;
+  // What picks the investigator: the model the person chose for it, none (keywords only), or the
+  // investigator's model, so a person whose only model is a subscription CLI still has a router.
   const domains = { ...(old.domains ?? {}) };
   const asked = answers.domains ?? ["sessions", "code"];
   for (const n of asked) domains[n] = { ...(domains[n] ?? {}), enabled: true };
   // Unticked in a conversation that offered them: off, with what else the domain had kept.
   if (answers.domains) for (const n of ["sessions", "code"]) if (!asked.includes(n) && domains[n]) domains[n] = { ...domains[n], enabled: false };
-  const router = old.router?.backend && mergedList[old.router.backend] ? old.router : routerName ? { backend: routerName } : null;
+  const kept = old.router?.backend && mergedList[old.router.backend] ? old.router : null;
+  const router =
+    answers.router === "keywords" ? false
+    : routerId ? (kept?.backend === backendName(routerId) ? kept : { backend: backendName(routerId) })
+    : answers.router === "investigator" ? { backend: def }
+    : (kept ?? { backend: def });
   const config = {
     ...old,
     version: 1,

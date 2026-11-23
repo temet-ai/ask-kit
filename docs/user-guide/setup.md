@@ -18,6 +18,8 @@ The agent then:
    - whose past sessions to read (it shows how many each agent has),
    - which agents get `ask`,
    - which model does the digging ([Choose the model](models.md)),
+   - which model picks the investigator when a question doesn't name one
+     ([Choose the router's model](models.md#choose-the-routers-model)),
    - whether `ask` answers about sessions, code or both.
 
    If you choose an API and it can't find the key, it asks where the key is. It shows what it
