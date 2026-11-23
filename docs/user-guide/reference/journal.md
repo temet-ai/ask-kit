@@ -120,9 +120,9 @@ Written by the router before it forwards a call.
 | `at` | ISO time. |
 | `question` | The question, cut at 500 characters. |
 | `domain` | The domain chosen. |
-| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout`, `rules`, `fallback` or `down`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
+| `how` | `caller`, `follow-up`, `only`, `shot`, `pattern`, `model`, `timeout`, `rules`, `fallback`, `down` or `picked`. See [The `ask` tool](ask-tool.md#how-the-router-chooses-a-domain). |
 | `resolvedFrom` | When capabilities sent the question to a better provider: the domain chosen first. |
-| `from` | On a `fallback` record: the provider that had no data. On a `down` record: the kit whose service was not answering (`domain` is the provider that got the question, or null when there was none). |
+| `from` | On a `fallback` record: the provider that had no data. On a `down` record: the kit whose service was not answering (`domain` is the provider that got the question, or null when there was none). On a `picked` record: the backend that refused the ask; `backend` is the one the person chose, and `always` is true when it replaced the refused one in the config ([A backend that refuses the ask](ask-tool.md#a-backend-that-refuses-the-ask)). A `{switched: {from, to}}` record follows a config change. |
 | `routeMs` | Time the choice took. |
 | `routeError` | When the router model failed and the fallback decided: why, cut at 160 characters. |
 | `act`, `actBy` | When the ask was sent with `act`: its value, and `caller` (passed by the caller) or `request` (the router set it because the request opens with what to do). |

@@ -79,8 +79,8 @@ prints `summary(d)`, the questions and `existing`.
 
 ## `questions`: the conversation
 
-`questions(d)` builds five questions in this order: `sources`, `clients`, `investigator`,
-`extras`, `domains`. Each has `id`, `type` (`multi`, `single`), `question`, `why`, `options` and
+`questions(d)` builds six questions in this order: `sources`, `clients`, `investigator`,
+`extras`, `router`, `domains`. Each has `id`, `type` (`multi`, `single`), `question`, `why`, `options` and
 `suggested`. The terminal wizard and an agent running the `ask-kit-setup` skill ask the same
 questions.
 
@@ -91,6 +91,11 @@ questions.
   filtered out). The `rank` field orders them: ready API models first (OpenRouter before others),
   then CLIs (Claude, Codex, Copilot), then local models. The suggestion is the first ready choice.
 - `extras` suggests up to two more ready choices, never a Copilot one.
+- `router` asks what picks the investigator for a question that names none: `investigator` (the
+  model chosen to dig, suggested), any ready choice from `routerChoices(d)` with its time per
+  routed question (about 1 s for an API, 4 s for claude on Haiku, 8 s for codex), or `keywords`
+  (no model). `plan()` writes `{ backend }`, or `false` for `keywords`, and adds a chosen model
+  that is not already a backend. With no answer an earlier `router` stays.
 - `domains` offers `sessions` and `code`, both suggested.
 - `keyQuestion(preset)` is asked separately, only for an API without a key found.
 
@@ -236,7 +241,8 @@ The message "not found here" does not say which of the two causes applies.
   reporting the HTTP status, an unknown model, or `ok`; for Ollama the model's context length
   against the context ask-kit asks for (`contextTokens`, default 32,768 in `src/ollama.mjs`); for a CLI backend, "checked on
   first ask";
-- the domain names and the router (`router.backend`, or "keyword rules").
+- the domain names and the router (`router.backend`, the default backend when none is set, or
+  "keyword rules" for `router: false`).
 
 It lists every key of `config.domains`, including those with `enabled: false`.
 

@@ -5,18 +5,21 @@
 // to the same investigator.
 //
 // Routing: the caller's `about` when given; a follow-up goes where the last question went; else one
-// call to config.router.backend (an `api` backend: a word back) when there is one; else keyword rules.
+// call to config.router.backend, or to the default backend when none is set (an API, or the claude,
+// codex or copilot CLI: a word back); else keyword rules.
 // The caller's side speaks protocol revision 2026-07-28 as well as the earlier ones (the v2 server
 // package), so a slow ask can be answered with a task. The domain children stay on SDK 1.x.
-import { McpServer, ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
+import { McpServer, ProtocolError, ProtocolErrorCode, acceptedContent, inputRequired } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
+import { execFile } from "node:child_process";
 import crypto from "node:crypto";
+import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_FILE, ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, slug } from "./config.mjs";
+import { CONFIG_FILE, ROOT, STATE_ROOT, callerSession, loadConfig, resolveKey, saveConfig, slug } from "./config.mjs";
 import { indexDomain, loadDomain } from "./domains.mjs";
 import { API_PRESETS } from "./providers.mjs";
 import { parseDo } from "./shots.mjs";
@@ -39,6 +42,15 @@ const SENT_OFF =
   "A slow ask may come back as a background task instead of an answer: the investigator is still digging and its answer is delivered to you when it is ready. " +
   "While it digs, do the work that does not depend on its answer: read the files you are about to change, prepare what the answer will not alter, send your other asks. Don't wait for it, poll it or ask the same thing again, and start on an answer as soon as it arrives, without waiting for the others. " +
   "End your turn only when every step left needs an answer that has not arrived; it will be delivered. To follow up on a task's answer, pass its task id (the one that starts with ask-) as continue. With more than one question, send each with wait: false: they are handed back as tasks at once and run side by side.";
+// How this caller can show the person a form (MCP elicitation): on revision 2026-07-28 the tool
+// returns input_required and the client sends the ask again with the answer; on earlier revisions
+// the server asks while the call waits. null when the client shows no forms.
+const pickerFor = (server, ctx) => {
+  if (ctx?.mcpReq?.envelope) return ctx.mcpReq.envelope[CLIENT_CAPS]?.elicitation ? { modern: true } : null;
+  return server.server.getClientCapabilities?.()?.elicitation ? { legacy: (form) => ctx.mcpReq.elicitInput(form, { timeout: 600_000, signal: ctx.mcpReq.signal }) } : null;
+};
+const jsonLinesOf = (out) => String(out).split("\n").flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+const textOf = (out) => (out.content ?? []).map((x) => x.text ?? "").join("\n");
 const acceptsTasks = (ctx) => !!ctx?.mcpReq?.envelope?.[CLIENT_CAPS]?.extensions?.[TASKS_EXT];
 
 // The tasks of one router process. `start(run)` races the ask against the delay: the ask's own
@@ -111,6 +123,67 @@ export function taskBoard({ afterMs, onTask = () => {}, onEnd = () => {} }) {
     },
   };
 }
+
+// A backend that refused the ask for its key or account: out of credit, past a key's limit, a bad
+// key, rate limited. `text` is a domain's failed reply, `ask failed (<backend>): <preset> <status>: <body>`
+// (src/ask.mjs). Returns { backend, reason } with the provider's own message, links left out, or null.
+const REFUSED = /\b(usage limit|credit|quota|limit exceeded|rate.?limit|invalid api key|unauthori[sz]ed)\b/i;
+export function refusalOf(text, list = {}) {
+  const m = /^ask failed \(([^)]+)\): ([\s\S]*)$/.exec(String(text ?? "").trim());
+  if (!m || !list[m[1]]) return null;
+  const [, backend, rest] = m;
+  const status = /^\S+ (\d{3}): /.exec(rest)?.[1];
+  if (!["401", "402", "403", "429"].includes(status) && !REFUSED.test(rest)) return null;
+  let reason = status ? rest.slice(rest.indexOf(": ") + 2) : rest;
+  try {
+    const j = JSON.parse(reason);
+    reason = j.message ?? j.error?.message ?? reason;
+  } catch {}
+  reason = String(reason).replace(/\s*Manage it using https?:\/\/\S+/i, "").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+  return { backend, reason: reason || `HTTP ${status}` };
+}
+
+// The other backends a person can pick when `failed` refused: those on another key or account
+// first, then those that share its key (the same limit, so they say they will likely fail too).
+export function backendChoices(list = {}, failed) {
+  const group = (b) => (b?.kind === "api" ? `api|${b.preset}|${b.baseUrl ?? ""}|${JSON.stringify(b.key ?? null)}` : b?.kind);
+  const shared = group(list[failed]);
+  const what = (b) => (b.kind === "api" ? `${b.model} on ${b.preset ?? "api"}` : `${b.model ?? "default model"} through the ${b.kind}`);
+  return Object.entries(list)
+    .filter(([n]) => n !== failed)
+    .map(([name, b]) => ({ name, same: group(b) === shared, label: `${name}: ${what(b)}` }))
+    .map((c) => ({ ...c, label: c.same ? `${c.label} (same ${list[c.name].kind === "api" ? "key" : "account"}, likely refused too)` : c.label }))
+    .sort((a, b) => a.same - b.same);
+}
+
+// Puts `to` wherever the config names `from`: the default, the router, escalate, hedge, and each
+// domain pinned to it.
+export function replaceBackend(config, from, to) {
+  if (config.backends?.default === from) config.backends.default = to;
+  for (const k of ["router", "escalate", "hedge"]) if (config[k]?.backend === from) config[k].backend = to;
+  for (const d of Object.values(config.domains ?? {})) if (d && typeof d === "object" && d.backend === from) d.backend = to;
+  return config;
+}
+
+// The form a person answers when a backend refused: which backend answers instead, and whether it
+// replaces the refused one from now on.
+const PICK = "backend";
+const pickForm = (refused, choices) => ({
+  message: `${refused.backend} refused this ask: ${refused.reason}. Which model should answer it instead?`,
+  requestedSchema: {
+    type: "object",
+    properties: {
+      backend: { type: "string", title: "Answer with", oneOf: choices.map((c) => ({ const: c.name, title: c.label })), default: choices[0].name },
+      always: { type: "boolean", title: `Use it instead of ${refused.backend} from now on`, description: "Changes ask-kit's config: the default, the router and any kit set to it", default: false },
+    },
+    required: ["backend"],
+  },
+});
+// What a caller that cannot show the form is told: the same choices, for it to put to the person.
+const choicesLine = (refused, choices) =>
+  `\n\nOther backends in ask-kit's config: ${choices.map((c) => c.label).join("; ")}. ` +
+  `Ask the user which one to use, then send the same ask again with backend: "<name>". ` +
+  `To stop using ${refused.backend}, change it in ${CONFIG_FILE} (backends.default, router.backend, and any domain set to it).`;
 
 // Words that make a question about past work: what a session did, said or decided.
 export const PAST_WORK = /\b(sessions?|we (did|tried|built|said|decided)|discussed|decided|yesterday|last (week|night|time)|earlier|did (i|we|you)|when did|which session|transcripts?)\b/i;
@@ -236,8 +309,11 @@ export async function makeRouter(config) {
     return hit.length ? enabled.filter((n) => hit.includes(n) || !DOMAINS[n].kit || n === pastWork) : enabled;
   };
 
-  const routerBe = config.router?.backend ? config.backends?.list?.[config.router.backend] : null;
-  const timeoutMs = config.router?.timeoutMs ?? 8000;
+  // With no router backend set (older setups wrote none when no backend was an API), the investigator's
+  // routes; `router: false` routes by keywords only.
+  const routerBe = config.router === false ? null : (config.backends?.list?.[config.router?.backend ?? config.backends?.default] ?? null);
+  // An agent CLI starts before it answers: about 4 s for claude on Haiku, 7.6 s for codex (2026-11-23).
+  const timeoutMs = config.router?.timeoutMs ?? ({ "claude-cli": 15_000, "codex-cli": 20_000, "copilot-cli": 20_000 }[routerBe?.kind] ?? 8000);
   // What does not change comes first (the rules, the domains, capabilities, hints), so a provider
   // can cache the prefix across projects; the working directory and the question's own hint last.
   const systemPrompt = (q) => {
@@ -255,7 +331,55 @@ export async function makeRouter(config) {
       (hinted && list.includes(hinted) ? `\nThe question names something ${hinted} holds (it matches ${hinted}'s pattern): choose ${hinted} unless it asks what a past session did or said.` : "")
     );
   };
+  // An agent CLI as the router, for a machine whose only model is a subscription (Claude through
+  // claude, ChatGPT through codex, Copilot): one print-mode call with no tools, no MCP servers and
+  // none of the person's settings, hooks, plugins (ask-kit's own included) or instructions, run from
+  // the temp folder so no CLAUDE.md or AGENTS.md is read, and no session kept where the CLI allows it.
+  const model = config.router?.model ?? routerBe?.model;
+  const CLI = {
+    "claude-cli": {
+      bin: "claude",
+      args: (q) => ["-p", q.slice(0, 2000), "--system-prompt", systemPrompt(q), "--output-format", "json", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--no-session-persistence", ...(model ? ["--model", model] : [])],
+      word: (out) => {
+        const j = JSON.parse(out);
+        if (j.is_error) throw new Error(String(j.result).slice(0, 160));
+        return String(j.result ?? "");
+      },
+    },
+    "codex-cli": {
+      bin: "codex",
+      // Low reasoning: a one-word route needs none, and it is about 3 s faster (7.6 s, 2026-11-23).
+      args: (q) => ["exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--ephemeral", "-s", "read-only", "-C", os.tmpdir(), "-c", 'model_reasoning_effort="low"', ...(model ? ["-m", model] : []), `${systemPrompt(q)}\n\nThe question:\n${q.slice(0, 2000)}`],
+      word: (out) => jsonLinesOf(out).filter((e) => e.type === "item.completed" && e.item?.type === "agent_message").map((e) => e.item.text).pop() ?? "",
+    },
+    "copilot-cli": {
+      bin: "copilot",
+      args: (q) => ["-p", `${systemPrompt(q)}\n\nThe question:\n${q.slice(0, 2000)}`, "--no-custom-instructions", "--disable-builtin-mcps", "--no-ask-user", "--deny-tool", "shell", "--deny-tool", "write", "--output-format", "json", "-s", ...(model ? ["--model", model] : [])],
+      word: (out) => jsonLinesOf(out).filter((e) => e.type === "assistant.message" && e.data?.content).map((e) => e.data.content).pop() ?? "",
+    },
+  };
+  async function byCli(q) {
+    const cli = CLI[routerBe.kind];
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(ASK_KIT_SESSION|ASK_KIT_CALLER|ASK_KIT_INHERIT|CLAUDE_CODE_SESSION_ID|CLAUDECODE|CODEX_THREAD_ID)$/.test(k)));
+    const out = await new Promise((resolve, reject) =>
+      execFile(routerBe.bin ?? cli.bin, cli.args(q), { cwd: os.tmpdir(), timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 4 << 20, env }, (e, stdout) => {
+        if (e?.killed) reject(Object.assign(new Error(`router model: no reply in ${timeoutMs} ms`), { timeout: true }));
+        else if (e) reject(new Error(`router model: ${cli.bin} exited ${e.code}`));
+        else resolve(stdout);
+      }),
+    );
+    try {
+      return cli.word(out);
+    } catch (e) {
+      throw new Error(`router model: ${cli.bin} ${e instanceof SyntaxError ? "printed no JSON" : e.message}`);
+    }
+  }
   async function byModel(q) {
+    if (CLI[routerBe?.kind]) {
+      const word = (await byCli(q)).toLowerCase().match(/[a-z][a-z0-9-]*/)?.[0];
+      if (!enabled.includes(word)) throw new Error(`router model said "${word}"`);
+      return word;
+    }
     if (!routerBe || routerBe.kind !== "api") throw new Error("no router model");
     const preset = API_PRESETS[routerBe.preset] ?? {};
     const base = (routerBe.baseUrl ?? preset.baseUrl).replace(/\/+$/, "");
@@ -267,7 +391,7 @@ export async function makeRouter(config) {
         headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
         // A reasoning model can spend all 200 tokens thinking and reply with nothing (mike-ask on
         // deepseek, 2026-11-19), so OpenRouter is told not to reason; `router.body` adds or overrides fields.
-        body: JSON.stringify({ ...(routerBe.preset === "openrouter" ? { reasoning: { enabled: false } } : {}), ...config.router.body, model: config.router.model ?? routerBe.model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: systemPrompt(q) }, { role: "user", content: q.slice(0, 2000) }] }),
+        body: JSON.stringify({ ...(routerBe.preset === "openrouter" ? { reasoning: { enabled: false } } : {}), ...config.router?.body, model, temperature: 0, max_tokens: 200, messages: [{ role: "system", content: systemPrompt(q) }, { role: "user", content: q.slice(0, 2000) }] }),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
@@ -397,6 +521,21 @@ export async function serveRouter() {
     upAt.set(n, { up, at: Date.now() });
     return up;
   };
+  // `to` replaces `from` in the config (the person ticked "from now on"). Domain servers read the
+  // config when they start, so those running now are retired: the next ask starts them on `to`.
+  // The router's own model is read at start; it changes when the agent restarts.
+  const switchBackend = (from, to) => {
+    try {
+      saveConfig(replaceBackend(loadConfig(), from, to));
+    } catch {
+      return;
+    }
+    for (const [n, p] of children) {
+      children.delete(n);
+      setTimeout(() => p.then((c) => c.close(), () => {}), 900_000).unref();
+    }
+    journal({ switched: { from, to } });
+  };
   const tails = new Map();
   const inTurn = (root, fn) => {
     const p = (tails.get(root) ?? Promise.resolve()).then(fn, fn);
@@ -431,6 +570,17 @@ export async function serveRouter() {
     if (held) {
       (name = held.domain), (how = "follow-up"), (about = undefined);
       backend ??= held.backend;
+    }
+    // The same ask sent again with the person's answer to the backend form (revision 2026-07-28):
+    // the form's key names the backend that refused, the answer the one to use now.
+    const answered = Object.keys(ctx?.mcpReq?.inputResponses ?? {}).find((k) => k.startsWith(`${PICK}:`));
+    if (answered) {
+      const refusedName = answered.slice(PICK.length + 1);
+      const got = acceptedContent(ctx.mcpReq.inputResponses, answered);
+      const list = (loadConfig({ required: false }) ?? config).backends?.list ?? {};
+      if (!got || !list[got.backend]) return { content: [{ type: "text", text: `ask failed (${refusedName}): it refused this ask, and no other backend was chosen.` }], isError: true };
+      backend = got.backend;
+      if (got.always === true) switchBackend(refusedName, got.backend);
     }
     const root = held?.root ?? job.id;
     let err;
@@ -517,7 +667,7 @@ export async function serveRouter() {
     // and goes to the investigator that answered in the end.
     const turn = (fn) => (root && !shot ? inTurn(root, fn) : fn());
     try {
-      const out = await turn(async () => {
+      let out = await turn(async () => {
       // A follow-up goes where its conversation is now, which a fallback may have moved while it waited.
       if (held) name = threads.get(held.root)?.domain ?? held.domain;
       let sendArgs = args;
@@ -557,6 +707,26 @@ export async function serveRouter() {
       }
       return out;
       });
+      // A backend that refused for its key or account (out of credit, past a limit, a bad key): the
+      // person picks another one, in a form when the client can show one; a caller that cannot show
+      // it is told the choices, to put to the person.
+      const list = (loadConfig({ required: false }) ?? config).backends?.list ?? {};
+      const refused = !shot && out.isError ? refusalOf(textOf(out), list) : null;
+      const choices = refused ? backendChoices(list, refused.backend) : [];
+      if (choices.length) {
+        const form = pickForm(refused, choices);
+        if (job.pick?.modern && !job.detached()) return inputRequired({ inputRequests: { [`${PICK}:${refused.backend}`]: inputRequired.elicit(form) } });
+        const said = job.pick?.legacy ? await job.pick.legacy(form).catch(() => null) : null;
+        const got = said?.action === "accept" && choices.some((c) => c.name === said.content?.backend) ? said.content : null;
+        if (got) {
+          if (got.always === true) switchBackend(refused.backend, got.backend);
+          journal({ question: question.slice(0, 500), domain: name, how: "picked", from: refused.backend, backend: got.backend, always: got.always === true, routeMs: Date.now() - t0 });
+          if (threads.has(job.id)) threads.get(job.id).backend = got.backend;
+          // The chosen backend starts the conversation anew, filed under the same id.
+          const { continue: _, ...rest } = args;
+          out = await turn(() => send(name, { ...rest, ...(root ? { thread: root } : {}), backend: got.backend }));
+        } else out = { ...out, content: [{ type: "text", text: textOf(out) + (said ? "\n\nThe user chose no other backend, so don't ask again." : choicesLine(refused, choices)) }] };
+      }
       // The action that answered, kept with the route, so a correction can count against it.
       if (out._meta?.[ACTION_META]) remember({ domain: name, how, question: question.slice(0, 500), action: out._meta[ACTION_META] });
       let text = (out.content ?? []).map((x) => x.text ?? "").join("\n");
@@ -622,8 +792,9 @@ export async function serveRouter() {
       },
       (input, ctx) => {
         const signal = ctx?.mcpReq?.signal;
-        if (!afterMs || !acceptsTasks(ctx)) return answer(input, ctx, { signal, task: false, detached: () => false, note() {} });
-        return board.start({ timeoutMs: (input.timeoutSeconds ?? 300) * 1000 + 30_000, signal, after: input.wait === false && !input.do ? 0 : afterMs, run: (job) => answer(input, ctx, { ...job, task: true }) });
+        const pick = pickerFor(server, ctx);
+        if (!afterMs || !acceptsTasks(ctx)) return answer(input, ctx, { signal, task: false, detached: () => false, note() {}, pick });
+        return board.start({ timeoutMs: (input.timeoutSeconds ?? 300) * 1000 + 30_000, signal, after: input.wait === false && !input.do ? 0 : afterMs, run: (job) => answer(input, ctx, { ...job, task: true, pick }) });
       },
     );
     // The Tasks extension's two methods; an id this process does not hold is the invalid-params error the extension names.

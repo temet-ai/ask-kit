@@ -7,6 +7,7 @@
 //     clients: ["claude-code", ...],          agents that get the `ask` tool
 //     investigator: "<choice id>",            the default model, an id from the investigator options
 //     extras: ["<choice id>", ...],           more backends a caller may pick with backend:
+//     router: "investigator" | "keywords" | "<choice id>",   what picks the investigator for a question
 //     domains: ["sessions", "code"],
 //     keys: { "<preset>": {env} | {file, var} | {value} } }   only for an API without a key found
 import { AGENTS, AGENT_CLIS, API_PRESETS } from "../providers.mjs";
@@ -51,6 +52,24 @@ export function investigatorChoices(d) {
   return out.sort((a, b) => a.rank - b.rank);
 }
 
+/** The models that can route, ready on this machine: each with its speed and cost for one routing call. */
+export function routerChoices(d) {
+  // Measured 2026-11-23 for one routing call: claude on Haiku about 4 s, codex about 7.6 s.
+  const speed = (kind, model) =>
+    kind === "claude-cli" ? (model === "haiku" ? "about 4 s per routed question" : "slower than haiku per routed question")
+    : kind === "codex-cli" ? "about 8 s per routed question"
+    : kind === "copilot-cli" ? "starts Copilot for each routed question" : null;
+  return investigatorChoices(d)
+    .filter((c) => c.ready)
+    .map((c) => {
+      const [kind, model] = c.id.split(/:(.*)/s);
+      const s = speed(kind, model);
+      if (s) return { ...c, note: `${s} · ${kind === "copilot-cli" ? "uses premium requests" : "nothing extra on your subscription"}` };
+      if (API_PRESETS[kind]?.local) return { ...c, note: "free and private; small local models pick worse" };
+      return { ...c, note: `about 1 s per routed question · a fraction of a cent` };
+    });
+}
+
 export function questions(d) {
   const stores = Object.entries(d.agents).filter(([, a]) => a.transcripts);
   const clients = Object.entries(d.agents).filter(([n, a]) => a.onPath && AGENTS[n].client);
@@ -91,6 +110,22 @@ export function questions(d) {
       why: "Handy for a hard question (a stronger model) or when the default is down. They cost nothing until used.",
       options: ready.filter((c) => c.id !== best?.id).map((c) => ({ value: c.id, label: c.label, note: c.cost })),
       suggested: ready.filter((c) => c.id !== best?.id && !c.id.startsWith("copilot-cli")).slice(0, 2).map((c) => c.id),
+    },
+    {
+      id: "router",
+      type: "single",
+      question: "When a question doesn't say which investigator it is for, which model should pick one?",
+      why:
+        "Most asks skip this: the caller names the investigator, follows up an earlier ask, or the question matches a kit's pattern. " +
+        "For the rest, one short call picks the investigator before the digging starts, so its speed is added to those asks. " +
+        "An API answers in about a second for a fraction of a cent. A subscription CLI costs nothing extra but starts each time: " +
+        "about 4 s for claude on Haiku, about 8 s for codex. Keywords only is instant and free, and picks the wrong investigator more often.",
+      options: [
+        { value: "investigator", label: "The model you chose to do the digging", note: "one choice to make; its speed is the router's" },
+        ...routerChoices(d).map((c) => ({ value: c.id, label: c.label, note: c.note })),
+        { value: "keywords", label: "No model: keywords only", note: "instant and free; misroutes more" },
+      ],
+      suggested: "investigator",
     },
     {
       id: "domains",

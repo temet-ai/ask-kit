@@ -52,8 +52,12 @@ It chooses the domain in this order and records how in `how`:
 | 4 | `byModel(question)` returns a domain name | `model` |
 | 5 | Otherwise `byRules(question)` | `rules` |
 
-`byModel` needs `config.router.backend` to name a backend of kind `api`. It posts one chat
-completion to that endpoint, with an 8 second timeout, `temperature: 0` and `max_tokens: 200`.
+`byModel` asks the router's backend: `config.router.backend`, else `config.backends.default`,
+and none when `config.router` is `false`. For an `api` backend it posts one chat completion to
+that endpoint, with an 8 second timeout, `temperature: 0` and `max_tokens: 200`. For a
+`claude-cli`, `codex-cli` or `copilot-cli` backend it runs that CLI once in print mode from the
+temp folder, with no tools, no MCP servers and none of the person's settings or instructions, with
+a 15 second timeout for claude and 20 for codex and copilot (`byCli`).
 The system prompt lists the enabled domains with their `says` text and asks for one word. The
 question is cut to its first 2000 characters. If the reply is not an enabled domain name, or the
 call fails for any reason, `serveRouter` catches the error, uses `byRules`, and stores the error
@@ -62,8 +66,9 @@ text (160 characters) as `routeError` in the router journal.
 `byRules` checks past-work words first (`PAST_WORK`, which gives the session-history domain). Then
 it scores each kit by how many of its `keywords` the question holds and returns the highest; on a
 tie the longer matched text wins, then config order. With no keyword match it returns `code` when
-the question has `CODE_WORDS`, and the first enabled domain otherwise. The rules are a fallback; setup writes `router.backend` whenever an API
-backend is configured, so keyword routing is what you get with a CLI-only setup.
+the question has `CODE_WORDS`, and the first enabled domain otherwise. The rules are a fallback: every backend kind
+except a local one can route, so keyword routing is what you get only with `router: false` or
+when the call fails.
 
 The last domain is stored per calling session in `STATE_ROOT/router/last-<session>.json`, so a
 follow-up from a new process still reaches the same investigator. `continue` is forwarded to the
@@ -309,6 +314,6 @@ router          ── answer (+ [routed to ...]) ──────────
 
 Tests: no test calls `registerAsk` or the router, because both need a model. `test/repl.mjs`
 starts `src/server.mjs` in both faces (inner lists `help`, `load`, `repl`, `reset`; outer lists
-only `ask`) and `test/setup.mjs` checks the config that routing reads (`router.backend` is set
-to the first API backend). `npm test` runs `fixtures.mjs`, `setup.mjs`, `repl.mjs` and
+only `ask`) and `test/setup.mjs` checks the config that routing reads. `test/router.mjs` routes through fake
+`claude`, `codex` and `copilot` bins, and `test/setup-fixes.mjs` checks the `router` answers. `npm test` runs `fixtures.mjs`, `setup.mjs`, `repl.mjs` and
 `bundle.mjs`. See [Testing](../guides/testing.md).

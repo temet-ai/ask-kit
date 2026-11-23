@@ -29,7 +29,8 @@ const kit = (name, extra) => {
 kit("watch", `keywords = ["watch house", "duty"]\npatterns = ['\\bcase-[0-9a-f]{8}\\b']\nroute_hint = "a case file is watch; a service managed by systemd is ops; what a past session said about a case is sessions; mike's captured sessions in general are mike"`);
 kit("guild", `keywords = ["guild", "ledger"]`);
 const fake = await fakeBackend([() => ({ answer: "Answered from the fixture." })]);
-const cfg = { version: 1, sources: [], backends: { default: "fake", list: { fake: fake.backend } }, domains: { sessions: {}, watch: {}, guild: {} } };
+// No router model (keyword rules) unless a test sets one.
+const cfg = { version: 1, sources: [], backends: { default: "fake", list: { fake: fake.backend } }, domains: { sessions: {}, watch: {}, guild: {} }, router: false };
 fs.writeFileSync(path.join(config, "config.json"), JSON.stringify(cfg));
 
 const { makeRouter, rewriteHint } = await import("../src/router.mjs");
@@ -76,6 +77,27 @@ assert.equal(await withBody.byModel("who keeps the guild ledger?"), "guild");
 assert.deepEqual(word.requests[0].reasoning, { enabled: false });
 assert.equal(word.requests[0].max_tokens, 200, "body does not override the call's own fields");
 await word.close();
+
+// An agent CLI routes for a machine with no API key: claude, codex and copilot, each a fake bin
+// that keeps its arguments and prints what the real one prints. No router set: the default routes.
+for (const [kind, print] of [
+  ["claude-cli", `JSON.stringify({ type: "result", is_error: false, result: "guild" })`],
+  ["codex-cli", `[{ type: "thread.started", thread_id: "t" }, { type: "item.completed", item: { type: "agent_message", text: "guild" } }].map((e) => JSON.stringify(e)).join("\\n")`],
+  ["copilot-cli", `JSON.stringify({ type: "assistant.message", data: { content: "Guild." } })`],
+]) {
+  const bin = path.join(tmp, `fake-${kind}`);
+  const argsFile = `${bin}.args`;
+  fs.writeFileSync(bin, `#!${process.execPath}\nrequire("fs").writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), session: process.env.ASK_KIT_SESSION ?? null }));\nconsole.log(${print});\n`, { mode: 0o755 });
+  const cli = await makeRouter({ ...cfg, router: undefined, backends: { default: "sub", list: { sub: { kind, model: "small", bin } } } });
+  assert.equal(await cli.byModel("who keeps the guild ledger?"), "guild", kind);
+  const seen = JSON.parse(fs.readFileSync(argsFile, "utf8"));
+  assert.equal(fs.realpathSync(seen.cwd), fs.realpathSync(os.tmpdir()), `${kind} runs from the temp folder`);
+  assert.equal(seen.session, null, `${kind} does not get the caller's session`);
+  assert.ok(seen.args.includes("small"), `${kind} gets the model`);
+  assert.ok(seen.args.some((a) => a.includes("Reply with one word")), `${kind} gets the routing prompt`);
+  if (kind === "claude-cli") for (const f of ["--tools", "--strict-mcp-config", "--setting-sources", "--no-session-persistence"]) assert.ok(seen.args.includes(f), `claude ${f}`);
+  if (kind === "codex-cli") for (const f of ["--ignore-user-config", "--ephemeral", "read-only"]) assert.ok(seen.args.includes(f), `codex ${f}`);
+}
 
 // Through `ask-kit serve`: the router decides (rules: no router model), the caller corrects it with
 // `about` within two minutes, and the misroute is journaled and becomes a router-bench row.

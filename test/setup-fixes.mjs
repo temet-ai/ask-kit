@@ -28,7 +28,7 @@ const { plan, apply } = await import("../src/setup/apply.mjs");
 const { REGISTER } = await import("../src/setup/register.mjs");
 const { installBundle, uninstallBundle, whyNotFound, TARGETS } = await import("../src/setup/bundle.mjs");
 const { agentsMd, writeAgentsMd, AGENTS_MD } = await import("../src/agentsmd.mjs");
-const { saveConfig } = await import("../src/config.mjs");
+const { loadConfig, saveConfig } = await import("../src/config.mjs");
 
 const agents = (over = {}) => ({
   "claude-code": { label: "Claude Code", onPath: false, transcripts: null },
@@ -86,6 +86,24 @@ assert.equal(kept.backends.default, "glm-5.3-flash");
 const off = plan({ ...answers, domains: ["sessions"] }, baseD(), { dry: true }).config;
 assert.deepEqual(off.domains.code, { enabled: false }, "an unticked built-in domain is turned off");
 assert.equal(off.domains["ankh-morpork/watch"].enabled, true);
+
+// The router question: a subscription CLI routes with no API key; the person can pick another
+// model, or keywords only; with no answer an earlier router stays.
+const subD = baseD({ clis: { "claude-cli": { label: "Claude Code", available: true, signedIn: true }, "codex-cli": { label: "Codex", available: true, signedIn: true } } });
+const routerQ = questions(subD).questions.find((q) => q.id === "router");
+assert.equal(routerQ.suggested, "investigator");
+assert.deepEqual([routerQ.options[0].value, routerQ.options.at(-1).value], ["investigator", "keywords"]);
+assert.ok(routerQ.options.some((o) => o.value === "claude-cli:haiku" && /about 4 s per routed question · nothing extra on your subscription/.test(o.note)), JSON.stringify(routerQ.options));
+assert.ok(!routerQ.options.some((o) => o.value.startsWith("openrouter:")), "a model with no key is not offered for routing");
+const before = loadConfig();
+saveConfig({ version: 1, sources: [], backends: { default: "x", list: {} }, domains: {} });
+assert.deepEqual(plan({ investigator: "claude-cli:haiku" }, subD, { dry: true }).config.router, { backend: "claude-haiku" }, "Claude Code only: claude -p routes");
+assert.deepEqual(plan({ investigator: "codex-cli:", router: "investigator" }, subD, { dry: true }).config.router, { backend: "codex" }, "Codex only: codex routes");
+const picked = plan({ investigator: "claude-cli:sonnet", router: "claude-cli:haiku" }, subD, { dry: true }).config;
+assert.deepEqual(picked.router, { backend: "claude-haiku" });
+assert.ok(picked.backends.list["claude-haiku"], "the router's model is added to the backends");
+assert.equal(plan({ investigator: "claude-cli:haiku", router: "keywords" }, subD, { dry: true }).config.router, false);
+saveConfig(before);
 
 // Key found in a file: the answer {env} gains the file as a fallback (Codex starts servers with a reduced environment).
 const keyFile = home("or.env");

@@ -40,6 +40,36 @@ Sign the CLI in once by hand first. Its questions show up in its history.
 Ollama or LM Studio. Small models make more mistakes here, because the work is writing a correct
 small program for each step of a question they haven't seen before.
 
+## Choose the router's model
+
+Most asks don't need a router: your agent names the investigator with `about`, follows up an
+earlier ask, or the question matches a kit's pattern. For the rest, one short call picks the
+investigator before the digging starts. Setup asks which model makes that call, and suggests the
+one you chose to do the digging.
+
+| Router | Time added to an ask it routes | Cost |
+|---|---|---|
+| An API model | about 1 s | a fraction of a cent |
+| Claude Code on `haiku` | about 4 s | nothing extra |
+| Codex | about 8 s | nothing extra |
+| Copilot CLI | it starts Copilot each time | premium requests |
+| Keywords only | none | free, and it picks the wrong investigator more often |
+
+With only a subscription, the router uses it: Claude Code routes through `claude -p`, Codex
+through `codex exec`, with no tools, no MCP servers and none of your own settings or
+instructions. If you dig with `sonnet`, routing on `haiku` is faster. To change it later:
+
+```
+Read ~/.config/ask-kit/AGENTS.md, then route ask's questions with claude haiku.
+```
+
+## When a model refuses an ask
+
+If a backend refuses an ask because of its key or account (out of credit, past a key's monthly
+limit, a bad key, rate limited), your agent shows you a form: pick another backend to answer
+that question, and tick "from now on" to make it the default. See
+[A backend that refuses the ask](reference/ask-tool.md#a-backend-that-refuses-the-ask).
+
 ## Change or mix models
 
 ```

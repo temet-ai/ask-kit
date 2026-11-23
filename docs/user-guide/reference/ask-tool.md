@@ -283,6 +283,32 @@ the domain's server, and the agent gets the client library's validation message.
 
 Every ask, failed or not, is written to the [journal](journal.md).
 
+### A backend that refuses the ask
+
+A backend can refuse an ask because of its key or account: the provider returns 401, 402, 403 or
+429, or its message says the credit, quota, usage limit or rate limit ran out (OpenRouter past a
+key's monthly limit, for example). The router then asks the person which other backend in the
+config should answer, in a form the agent shows (MCP elicitation):
+
+- **Answer with** lists the other backends. Those that share the refused backend's key (or, for an
+  agent CLI, its account) come last and say they will likely be refused too.
+- **Use it instead of `<backend>` from now on** also changes `config.json`: the chosen backend
+  replaces the refused one as `backends.default`, `router.backend`, `escalate.backend`,
+  `hedge.backend` and on every domain set to it. The domain servers running then are retired, so
+  the next ask starts them on the new backend. The router's own model changes when the agent
+  restarts.
+
+The chosen backend answers the same question as a new conversation filed under the same id, and
+the journal gets a router row with `how: "picked"`, `from` and `backend`. On protocol revision
+2026-07-28 the call returns `input_required` with the form, and the client sends the same call
+again with the answer. On earlier revisions the server asks while the call waits, for up to ten
+minutes.
+
+When the person declines, the refusal comes back with `The user chose no other backend, so don't
+ask again.` When the client shows no forms, or the ask has already become a task, the refusal
+comes back with the choices instead: `Other backends in ask-kit's config: <name>: <model> ...
+Ask the user which one to use, then send the same ask again with backend: "<name>".`
+
 ## Progress
 
 A caller that sends a `progressToken` (the MCP client's `onprogress`) gets one

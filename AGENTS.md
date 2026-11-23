@@ -72,7 +72,7 @@ It prints anything missing (old Node, no git). Fix those with the person before 
 
 Run `ask-kit questions`. It prints what this machine has (agents and how many sessions each has
 on disk, subscriptions that can run the investigator, API keys found by name, local model
-servers) and five questions, each with options, a suggestion and why. Follow the ask-kit-setup
+servers) and six questions, each with options, a suggestion and why. Follow the ask-kit-setup
 skill (installed in step 3; its text is also in `bundle/skills/ask-kit-setup/SKILL.md` of the
 install). In short:
 

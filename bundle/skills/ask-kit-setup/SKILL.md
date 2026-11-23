@@ -32,12 +32,18 @@ questions, in order, using your own question tool if you have one (one question 
 options as choices, the suggested one first and marked recommended). Put each question's `why`
 in your words where it helps the choice.
 
-- `sources` and `clients` and `domains` and `extras` are multi-choice; `investigator` is one.
+- `sources` and `clients` and `domains` and `extras` are multi-choice; `investigator` and
+  `router` are one.
 - `investigator` is the one that matters most. Explain the trade-off plainly: an API key
   (OpenRouter, OpenAI, Anthropic, Gemini) is cheapest and fastest, about a third of a cent per
   question on the suggested model; a subscription they already pay for (Claude, ChatGPT through
   Codex, Copilot) costs nothing extra but each question starts a CLI, which is slower, and
   Copilot spends premium requests; a local model is free and private but answers worse.
+- `router` decides what picks the investigator when a question names none (most asks name one,
+  follow one up or match a kit's pattern, so this is the rest). Suggest `investigator`, the same
+  model, and say what it adds to those asks: about a second on an API, about 4 seconds for claude
+  on Haiku, about 8 for codex. Someone digging with claude on Sonnet gets faster routing from
+  `claude-cli:haiku`. `keywords` is instant and free and picks the wrong investigator more often.
 - If they choose an API whose key was not found, ask where it is: the name of an environment
   variable (`{"env": "NAME"}`), a file holding `NAME=value` (`{"file": "path", "var": "NAME"}`),
   or the key itself (`{"value": "..."}`, stored in ~/.config/ask-kit/keys.env with mode 0600).
@@ -57,6 +63,7 @@ Write the answers to a temporary JSON file:
   "clients": ["claude-code", "codex"],
   "investigator": "openrouter:z-ai/glm-5.3-flash",
   "extras": ["claude-cli:haiku"],
+  "router": "investigator",
   "domains": ["sessions", "code"],
   "keys": {}
 }

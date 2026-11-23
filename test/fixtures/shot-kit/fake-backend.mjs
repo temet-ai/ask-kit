@@ -1,6 +1,6 @@
 // A scripted OpenAI-compatible chat backend on 127.0.0.1 for tests: no network, no model.
 // Steps are replayed in order: { code } is a `repl` tool call, { tool, args } a call of another
-// tool (early_answer), { answer } the final reply; { delayMs } holds the reply; a function
+// tool (early_answer), { answer } the final reply, { status, error } a refusal; { delayMs } holds the reply; a function
 // (body) => step answers from what the loop sent. Every request body is kept in `requests`.
 import http from "node:http";
 
@@ -17,6 +17,12 @@ export async function fakeBackend(steps) {
     let step = steps[Math.min(i++, steps.length - 1)];
     if (typeof step === "function") step = step(body);
     if (step.delayMs) await new Promise((r) => setTimeout(r, step.delayMs));
+    // { status, error }: the provider refuses the request, as OpenRouter does past a key's limit.
+    if (step.status) {
+      res.statusCode = step.status;
+      res.setHeader("content-type", "application/json");
+      return res.end(JSON.stringify({ error: step.error ?? { message: "refused", code: step.status } }));
+    }
     const call = step.code != null ? { name: "repl", args: { code: step.code } } : step.tool ? { name: step.tool, args: step.args ?? {} } : null;
     const message = call
       ? { role: "assistant", content: null, tool_calls: [{ id: `call-${i}`, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) } }] }

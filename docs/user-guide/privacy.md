@@ -10,8 +10,10 @@
   KEY, TOKEN, SECRET or PASSWORD, `"apiKey": "..."`, the password in a `postgres://user:pass@`
   URL and private key blocks ([`src/transcripts/scrub.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/scrub.mjs)).
   Code excerpts are sent as they are; a kit's folder `exclude` keeps credential files out.
-- When a router model is set, picking the domain is one more short call to it, with the question,
-  the working directory and what each enabled domain answers.
+- Picking the domain, when the caller did not name one and no pattern did, is one more short call
+  to the router's backend (`router.backend`, else the investigator's), with the question, the
+  working directory and what each enabled domain answers. On an agent CLI (`claude`, `codex`,
+  `copilot`) that call goes to the CLI's provider like any other prompt you send it.
 - When you set `escalate` or `hedge` in the config, a slow ask also goes to that second backend:
   the question, and for `escalate` the code of the cells already run with the start of each
   result. A backend's `body` fields go with each of its requests.
