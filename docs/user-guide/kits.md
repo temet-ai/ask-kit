@@ -60,6 +60,7 @@ its sources, the calls that change things (`acts`) and the commands it runs at i
 | [python](https://github.com/temet-ai/ask-kit-python) | a Python project: which interpreter and virtualenv it uses, whether uv's lock and sync are current, why an import or `uv run` fails, what `pyproject.toml` declares; runs pytest, ruff and mypy | `python3`; `uv` for lock and sync |
 | [tmux](https://github.com/temet-ai/ask-kit-tmux) | tmux: sessions, windows and panes, what runs in a pane and what it shows, which pane has an error, the config; sends keys and manages panes when asked | `tmux` |
 | [omarchy](https://github.com/temet-ai/ask-kit-omarchy) | Omarchy: its version and updates, which `omarchy` command does a job, themes, which file to edit and what differs from the defaults, whether an app follows its conventions | Omarchy (Linux) |
+| [imagegen](https://github.com/temet-ai/ask-kit-imagegen) | makes and edits images with Codex's built-in `image_gen` in a long-lived Codex thread that keeps its style and earlier images; which images were made, from which prompt, and where | `codex` (logged in), `node` |
 
 ## Who can make a kit change something
 
