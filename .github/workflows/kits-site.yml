@@ -32,7 +32,7 @@ jobs:
       - run: node site/build-index.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: mkdir -p _site && cp site/index.html site/kits.json site/ask-kit-logo.png _site/
+      - run: mkdir -p _site && cp site/index.html site/demo.html site/kits.json site/ask-kit-logo.png _site/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ask-kit in motion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one stage, three panes left to right (your agent / ask / investigator), a step rail underneath.
+   Dark espresso single look, chosen on purpose for a projector demo. */
+:root {
+  --bg: #16100c;
+  --pane: #201711;
+  --pane-2: #2a1f17;
+  --line: #3b2c21;
+  --cream: #f2e5d0;
+  --muted: #a8927a;
+  --dim: #6f5c4b;
+  --caramel: #e3a65c;
+  --caramel-deep: #9a6630;
+  --sky: #8fc3f0;
+  --sky-deep: #3d6f9c;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--cream); font-family: var(--display);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px;
+  box-sizing: border-box; overflow-x: hidden;
+}
+body::after { /* faint paper grain */
+  content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .05;
+  background-image: radial-gradient(var(--cream) .6px, transparent .7px); background-size: 3px 3px;
+}
+.wrap { max-width: 1400px; margin: 0 auto; display: grid; gap: 14px; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.brand { font-weight: 800; font-size: 1.5rem; letter-spacing: -.02em; color: var(--caramel); }
+.brand span { color: var(--muted); font-weight: 400; font-size: .95rem; margin-left: 10px; letter-spacing: 0; }
+.scen { display: flex; gap: 6px; flex-wrap: wrap; }
+.scen button {
+  font: 600 .78rem var(--mono); color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer;
+}
+.scen button[aria-current="true"] { color: var(--bg); background: var(--caramel); border-color: var(--caramel); }
+.scen button:focus-visible, .ctl:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+.ctl { font: 600 .78rem var(--mono); color: var(--cream); background: var(--pane-2); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+
+.stage { position: relative; display: grid; grid-template-columns: 1.05fr .9fr 1.15fr; gap: 18px; height: clamp(520px, 70vh, 680px); }
+.pane {
+  position: relative; background: var(--pane); border: 1px solid var(--line); border-radius: 8px;
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden; z-index: 1;
+}
+.pane h2 {
+  margin: 0; padding: 10px 14px; font: 600 .74rem var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px;
+}
+.pane h2 b { color: var(--cream); font-weight: 600; }
+.body { padding: 14px; font: .82rem/1.55 var(--mono); font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+
+/* agent pane */
+.you { color: var(--cream); }
+.you::before { content: "you  "; color: var(--muted); }
+.call { color: var(--caramel); white-space: pre-wrap; }
+.wait { color: var(--muted); }
+.ans { border-left: 2px solid var(--sky); padding-left: 10px; color: var(--cream); white-space: pre-wrap; }
+.ans .cite { color: var(--sky); }
+.meter { margin-top: auto; border-top: 1px dashed var(--line); padding-top: 10px; display: grid; gap: 6px; }
+.meter .row { display: flex; justify-content: space-between; color: var(--muted); font-size: .74rem; }
+.meter .row b { color: var(--cream); font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar { height: 10px; background: var(--pane-2); border-radius: 2px; position: relative; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--caramel-deep); transition: width .6s ease; }
+.bar i.add { background: var(--sky); left: auto; }
+.inv .bar i { background: var(--sky-deep); }
+
+/* router pane */
+.route { display: grid; gap: 10px; align-content: start; }
+.q { font: 600 .95rem/1.35 var(--display); color: var(--cream); min-height: 2.7em; }
+.how { font-size: .74rem; color: var(--muted); min-height: 1.3em; }
+.how b { color: var(--caramel); font-weight: 600; }
+.kits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.kit {
+  font: .7rem var(--mono); color: var(--dim); text-align: center; padding: 6px 2px; border: 1px solid var(--line);
+  border-radius: 3px; transition: color .15s, background .15s, border-color .15s, transform .25s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kit.scan { color: var(--cream); border-color: var(--muted); }
+.kit.pick { color: var(--bg); background: var(--caramel); border-color: var(--caramel); font-weight: 600; transform: scale(1.08); }
+.kit.dim { opacity: .35; }
+.role { font-size: .74rem; color: var(--muted); min-height: 1.3em; }
+.log { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 10px; display: grid; gap: 3px; font-size: .72rem; color: var(--muted); }
+.log div { animation: grow .3s ease both; white-space: pre-wrap; }
+.log b { color: var(--cream); font-weight: 600; }
+.role b { color: var(--cream); }
+
+/* investigator pane */
+.globals { font-size: .74rem; color: var(--muted); min-height: 1.3em; }
+.globals code { color: var(--sky); }
+.cells { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow: hidden; justify-content: flex-end; }
+.cell { border: 1px solid var(--line); border-radius: 5px; background: var(--pane-2); overflow: hidden; flex-shrink: 0; animation: grow .35s ease both; }
+@keyframes grow { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+.cell .hd { display: flex; justify-content: space-between; font-size: .68rem; color: var(--dim); padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.cell .hd .st { color: var(--muted); }
+.cell .hd .st.ok { color: var(--sky); }
+.cell pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; margin: 0; padding: 6px 8px; font: .76rem/1.5 var(--mono); white-space: pre-wrap; color: var(--cream); }
+.cell pre .k { color: var(--caramel); }
+.cell pre .s { color: #d9c49e; }
+.cell .out { border-top: 1px dashed var(--line); color: var(--sky); padding: 6px 8px; font: .74rem/1.5 var(--mono); white-space: pre-wrap; }
+.cell .out::before { content: "result  "; color: var(--dim); }
+.caret::after { content: "▍"; color: var(--caramel); animation: blink .9s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* wires between panes */
+svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: visible; }
+.wire { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.wire.live { stroke: var(--caramel); stroke-dasharray: 6 6; animation: flow .6s linear infinite; }
+.wire.back { stroke: var(--sky); stroke-dasharray: 6 6; animation: flow .6s linear infinite reverse; }
+@keyframes flow { to { stroke-dashoffset: -12; } }
+.packet { fill: var(--caramel); }
+.packet.answer { fill: var(--sky); }
+
+/* step rail */
+.rail { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.step { border-top: 3px solid var(--line); padding-top: 8px; font-size: .8rem; color: var(--dim); transition: color .3s, border-color .3s; }
+.step b { display: block; font: 600 .68rem var(--mono); letter-spacing: .06em; margin-bottom: 2px; }
+.step.on { color: var(--cream); border-color: var(--caramel); }
+.step.done { color: var(--muted); border-color: var(--caramel-deep); }
+.foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: .76rem; color: var(--muted); }
+.foot b { color: var(--cream); font-variant-numeric: tabular-nums; }
+
+.body, .body *, .cell pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
+@media (max-width: 900px) {
+  .stage { grid-template-columns: 1fr; height: auto; }
+  svg.wires { display: none; }
+  .rail { grid-template-columns: repeat(3, 1fr); }
+  .cells { max-height: 380px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wire.live, .wire.back, .caret::after, .cell { animation: none; }
+}
+</style>
+<style>body{margin:0;font-size:14px}</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">ask-kit<span>what one <code>ask</code> does while your agent waits</span></div>
+    <div class="scen" id="scen"></div>
+  </header>
+
+  <div class="stage" id="stage">
+    <section class="pane" id="pAgent">
+      <h2><span>your agent</span><b>claude code</b></h2>
+      <div class="body" id="agent">
+        <div class="meter">
+          <div class="row"><span>agent context</span><b id="ctxN">41.2k</b></div>
+          <div class="bar"><i id="ctxBar" style="width:33%"></i><i class="add" id="ctxAdd" style="width:0%"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pRoute">
+      <h2><span>ask</span><b id="routeTag">waiting</b></h2>
+      <div class="body route">
+        <div class="q" id="q"></div>
+        <div class="how" id="how"></div>
+        <div class="kits" id="kits"></div>
+        <div class="role" id="role"></div>
+        <div class="log" id="log"></div>
+      </div>
+    </section>
+
+    <section class="pane inv" id="pInv">
+      <h2><span>investigator</span><b id="invTag">idle</b></h2>
+      <div class="body">
+        <div class="globals" id="globals"></div>
+        <div class="cells" id="cells"></div>
+        <div class="meter">
+          <div class="row"><span>investigator context (its own, thrown away)</span><b id="invN">0</b></div>
+          <div class="bar"><i id="invBar" style="width:0%"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <svg class="wires" id="wires" aria-hidden="true"></svg>
+  </div>
+
+  <div class="rail" id="rail"></div>
+  <div class="foot">
+    <span>Example asks with made-up repositories. Medians over 105 real asks to mike-ask, the proof of concept: the investigator worked through <b>125,025</b> tokens and about <b>445</b> went back to the agent, in <b>36 s</b> for <b>$0.011</b>.</span>
+    <button class="ctl" id="pause" type="button">pause</button>
+  </div>
+</div>
+
+<script>
+const KITS = ["code","sessions","github","git","docker","postgres","systemd","dotfiles","tests","deps","logs","files","procs","net","web","notes","rust","python","sqlite","data","tmux","release","crash","browser"];
+const STEPS = [
+  ["1 call", "agent calls ask"],
+  ["2 route", "pick the kit"],
+  ["3 load", "kit becomes REPL globals"],
+  ["4 cells", "small programs run, state saved"],
+  ["5 answer", "short, with evidence"],
+  ["6 follow-up", "continue: true picks up here"],
+];
+
+const SCENARIOS = [
+  {
+    name: "why is CI red",
+    prompt: "the PR is failing, fix it",
+    question: "why is CI failing on my open PR?",
+    how: 'router call picks <b>github</b>', viaRouter: true,
+    kit: "github",
+    role: "",
+    globals: ["gh", "scripts", "table"],
+    cells: [
+      { code: [["k","const "],["","pr = (await gh.list("],["s",'"pr"'],["",", "],["s",'"list"'],["",", ["],["s",'"number"'],["",", "],["s",'"headRefName"'],["","]))[0];\n"],["k","const "],["","runs = await gh.list("],["s",'"run"'],["",", "],["s",'"list"'],["",", ["],["s",'"databaseId"'],["",", "],["s",'"conclusion"'],["","], "],["s",'"-b"'],["",", pr.headRefName);\nruns.filter(r => r.conclusion === "],["s",'"failure"'],["",")"]],
+        out: "PR #212 clacks-retry · run 8812 failed (test, macos)", tok: 6200 },
+      { code: [["k","const "],["","log = await gh.log(8812, { failed: "],["k","true"],["",", max: 4000 });\nlog.text.split("],["s",'"\\n"'],["",").filter(l => /FAIL|Error/.test(l)).slice(0, 4)"]],
+        out: "FAIL test/semaphore.test.mjs › retries after timeout\nError: expected 3 attempts, got 2  (semaphore.test.mjs:41)", tok: 21400 },
+      { code: [["k","const "],["","src = await gh.file("],["s",'"src/semaphore.mjs"'],["",", { ref: pr.headRefName });\nsrc.text.split("],["s",'"\\n"'],["",").slice(26, 31)"]],
+        out: "28  const RETRY_MS = 50;   // was 500 on main", tok: 9800 },
+    ],
+    answer: [["","Run 8812 fails one test on macOS: "],["cite","test/semaphore.test.mjs:41"],["",' expects 3 retries and gets 2. The PR lowered RETRY_MS from 500 to 50 in '],["cite","src/semaphore.mjs:28"],["",", so the third retry falls outside the test's window."]],
+    answerTok: 410,
+  },
+  {
+    name: "container keeps restarting",
+    prompt: "the local db keeps dropping, what's up",
+    question: "why does the clacks-db container keep restarting?",
+    how: 'router call picks <b>docker</b>', viaRouter: true,
+    kit: "docker",
+    role: "",
+    globals: ["docker", "scripts", "table"],
+    cells: [
+      { code: [["","(await docker.ps({ all: "],["k","true"],["",", filter: "],["s",'"name=clacks"'],[""," }))\n  .map(c => [c.Names, c.Status])"]],
+        out: "clacks-db   Restarting (137) 12 seconds ago\nclacks-web  Up 3 hours", tok: 3100 },
+      { code: [["k","const "],["","s = (await docker.inspect("],["s",'"clacks-db"'],["","))[0].State;\n[s.OOMKilled, s.ExitCode, (await docker.inspect("],["s",'"clacks-db"'],["","))[0].HostConfig.Memory]"]],
+        out: "[ true, 137, 268435456 ]   // OOM, 256 MB limit", tok: 14800 },
+      { code: [["","(await docker.logs("],["s",'"clacks-db"'],["",", { tail: 400, grep: "],["s",'"shared_buffers|memory"'],[""," })).lines"]],
+        out: "FATAL: could not map anonymous shared memory\nshared_buffers = 512MB", tok: 11900 },
+    ],
+    answer: [["","clacks-db is killed for memory (OOMKilled, exit 137). Its limit is 256 MB and Postgres asks for shared_buffers = 512MB. Raise the limit in "],["cite","compose.yaml"],["",", or lower shared_buffers. Want me to restart it after?"]],
+    answerTok: 380,
+  },
+  {
+    name: "which commit changed it",
+    prompt: "who made retries so aggressive?",
+    question: "which commit changed the retry timeout, and why?",
+    how: 'matches the kit\'s pattern <b>\\bwhich commit\\b</b>, no router call',
+    kit: "git",
+    role: "",
+    globals: ["git", "scripts", "table"],
+    cells: [
+      { code: [["","(await git.blame("],["s",'"src/semaphore.mjs"'],["",", { from: 28, to: 28 }))\n  .map(l => [l.sha.slice(0, 7), l.author, l.text])"]],
+        out: "[ 'a41c9e2', 'Ridcully', 'const RETRY_MS = 50;' ]", tok: 2900 },
+      { code: [["k","const "],["","c = await git.show("],["s",'"a41c9e2"'],["",", { path: "],["s",'"src/semaphore.mjs"'],[""," });\n[c.date, c.message.split("],["s",'"\\n"'],[")[0], c.files.length]"]],
+        out: "[ '2026-11-21', 'Cut retry wait so the dashboard feels faster', 4 ]", tok: 7600 },
+    ],
+    answer: [["","Commit "],["cite","a41c9e2"],["",' (Ridcully, 21 Nov) set RETRY_MS to 50 at '],["cite","src/semaphore.mjs:28"],["",': "Cut retry wait so the dashboard feels faster". It is on clacks-retry only, not on main.']],
+    answerTok: 300,
+  },
+];
+
+const $ = (id) => document.getElementById(id);
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let paused = false, runId = 0, current = 0;
+const sleep = (ms) => new Promise((res, rej) => {
+  const my = runId; let left = reduce ? ms * .25 : ms; let last = performance.now();
+  const tick = () => {
+    const now = performance.now();
+    if (my !== runId) return rej("stop");
+    if (!paused) left -= now - last; last = now;
+    left <= 0 ? res() : setTimeout(tick, Math.min(16, Math.max(1, left)));
+  };
+  setTimeout(tick, Math.min(16, left));
+});
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+async function type(el, parts, cps = 55) {
+  // parts: [[cls, text], ...]; types char by char keeping colour spans
+  el.classList.add("caret");
+  for (const [cls, text] of parts) {
+    const span = document.createElement("span"); if (cls) span.className = cls; el.appendChild(span);
+    for (let i = 0; i < text.length; i += 2) { span.textContent = text.slice(0, i + 2); await sleep(1000 / cps); }
+  }
+  el.classList.remove("caret");
+}
+function fmtK(n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(Math.round(n)); }
+async function countTo(el, from, to, ms, bar, max) {
+  const t0 = performance.now();
+  for (;;) {
+    await sleep(30);
+    const p = Math.min(1, (performance.now() - t0) / ms);
+    const v = from + (to - from) * p;
+    el.textContent = fmtK(v);
+    if (bar) bar.style.width = Math.min(100, (v / max) * 100) + "%";
+    if (p >= 1) return;
+  }
+}
+
+// rail, kits, scenario buttons
+$("rail").innerHTML = STEPS.map(([a, b]) => `<div class="step"><b>${a}</b>${b}</div>`).join("");
+$("kits").innerHTML = KITS.map((k) => `<div class="kit" data-k="${k}">${k}</div>`).join("");
+$("scen").innerHTML = SCENARIOS.map((s, i) => `<button type="button" data-i="${i}">${s.name}</button>`).join("");
+$("scen").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) start(+b.dataset.i); });
+$("pause").addEventListener("click", () => { paused = !paused; $("pause").textContent = paused ? "play" : "pause"; });
+document.addEventListener("keydown", (e) => {
+  if (e.key === " ") { e.preventDefault(); $("pause").click(); }
+  if (e.key === "ArrowRight") start((current + 1) % SCENARIOS.length);
+  if (e.key === "ArrowLeft") start((current + SCENARIOS.length - 1) % SCENARIOS.length);
+});
+
+function step(n) {
+  [...$("rail").children].forEach((el, i) => { el.className = "step" + (i < n ? " done" : i === n ? " on" : ""); });
+}
+
+// wires: agent -> router -> investigator
+function anchors() {
+  const st = $("stage").getBoundingClientRect();
+  const r = (id) => $(id).getBoundingClientRect();
+  const a = r("pAgent"), m = r("pRoute"), v = r("pInv");
+  const y = (b) => b.top - st.top + 70;
+  return {
+    w: st.width, h: st.height,
+    p1: `M ${a.right - st.left} ${y(a)} C ${a.right - st.left + 12} ${y(a)}, ${m.left - st.left - 12} ${y(m)}, ${m.left - st.left} ${y(m)}`,
+    p2: `M ${m.right - st.left} ${y(m)} C ${m.right - st.left + 12} ${y(m)}, ${v.left - st.left - 12} ${y(v)}, ${v.left - st.left} ${y(v)}`,
+    p3: `M ${v.left - st.left} ${v.bottom - st.top - 90} C ${(a.right + v.left) / 2 - st.left} ${st.height + 30}, ${(a.right + v.left) / 2 - st.left} ${st.height + 30}, ${a.right - st.left} ${a.bottom - st.top - 90}`,
+  };
+}
+function drawWires(state = {}) {
+  const A = anchors(), svg = $("wires");
+  svg.setAttribute("viewBox", `0 0 ${A.w} ${A.h}`);
+  svg.innerHTML = `
+    <path id="w1" class="wire ${state.w1 || ""}" d="${A.p1}"/>
+    <path id="w2" class="wire ${state.w2 || ""}" d="${A.p2}"/>
+    <path id="w3" class="wire ${state.w3 || ""}" d="${A.p3}" style="opacity:${state.w3 ? 1 : 0}"/>`;
+  wireState = state;
+}
+let wireState = {};
+addEventListener("resize", () => drawWires(wireState));
+
+async function packet(pathId, cls, ms, back = false) {
+  const path = $(pathId); if (!path || getComputedStyle($("wires")).display === "none") return sleep(ms);
+  const len = path.getTotalLength();
+  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("r", 6); c.setAttribute("class", "packet " + cls); $("wires").appendChild(c);
+  const t0 = performance.now();
+  try {
+    for (;;) {
+      await sleep(16);
+      const p = Math.min(1, (performance.now() - t0) / ms);
+      const e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const pt = path.getPointAtLength(len * (back ? 1 - e : e));
+      c.setAttribute("cx", pt.x); c.setAttribute("cy", pt.y);
+      if (p >= 1) break;
+    }
+  } finally { c.remove(); }
+}
+
+function reset() {
+  const agent = $("agent");
+  [...agent.children].forEach((el) => { if (!el.classList.contains("meter")) el.remove(); });
+  $("ctxN").textContent = "41.2k"; $("ctxBar").style.width = "33%"; $("ctxAdd").style.width = "0%";
+  $("q").textContent = ""; $("how").innerHTML = ""; $("role").innerHTML = "";
+  document.querySelectorAll(".kit").forEach((k) => (k.className = "kit"));
+  $("globals").innerHTML = ""; $("cells").innerHTML = ""; $("log").innerHTML = "";
+  $("invN").textContent = "0"; $("invBar").style.width = "0%";
+  $("routeTag").textContent = "waiting"; $("invTag").textContent = "idle";
+  step(-1); drawWires({});
+}
+function log(html) { const d = document.createElement("div"); d.innerHTML = html; $("log").appendChild(d); }
+function addAgent(cls) {
+  const el = document.createElement("div"); el.className = cls;
+  $("agent").insertBefore(el, $("agent").querySelector(".meter")); return el;
+}
+
+async function play(s) {
+  reset();
+  await sleep(500);
+  // 1. the agent calls ask
+  await type(addAgent("you"), [["", s.prompt]], 40);
+  await sleep(500);
+  step(0);
+  const call = addAgent("call");
+  await type(call, [["", `→ ask("${s.question}")`]], 60);
+  const wait = addAgent("wait"); let secs = 0;
+  const timer = setInterval(() => { if (!paused) wait.textContent = `  waiting for one answer · ${++secs}s`; }, reduce ? 250 : 1000);
+  try {
+    drawWires({ w1: "live" });
+    await packet("w1", "", 900);
+    $("q").textContent = s.question; $("routeTag").textContent = "routing";
+    log("<b>in</b>     one question, from the agent");
+
+    // 2. route
+    step(1);
+    const tiles = [...document.querySelectorAll(".kit")];
+    const target = tiles.findIndex((t) => t.dataset.k === s.kit);
+    if (s.viaRouter) {
+      const order = [...tiles.keys()].sort(() => Math.random() - .5).slice(0, 9).concat(target);
+      for (const i of order) { tiles[i].classList.add("scan"); await sleep(90); tiles[i].classList.remove("scan"); }
+    } else {
+      tiles[target].classList.add("scan"); await sleep(300);
+    }
+    tiles.forEach((t, i) => t.classList.add(i === target ? "pick" : "dim"));
+    $("how").innerHTML = s.how;
+    if (s.role) { await sleep(300); $("role").innerHTML = s.role; }
+    $("routeTag").textContent = s.kit;
+    log(`<b>route</b>  ${s.viaRouter ? "one short router call" : "kit pattern, no model call"} → ${s.kit}`);
+    await sleep(700);
+
+    // 3. load
+    step(2);
+    drawWires({ w1: "", w2: "live" });
+    await packet("w2", "", 800);
+    $("invTag").textContent = `${s.kit} kit`;
+    log(`<b>start</b>  investigator with the ${s.kit} kit's instructions and API`);
+    $("globals").innerHTML = "globals ";
+    for (const g of s.globals) { $("globals").innerHTML += `<code>${g}</code> `; await sleep(220); }
+    await sleep(400);
+
+    // 4. cells
+    step(3);
+    let tok = 0;
+    for (const [i, c] of s.cells.entries()) {
+      const cell = document.createElement("div"); cell.className = "cell";
+      cell.innerHTML = `<div class="hd"><span>cell ${i + 1}</span><span class="st">writing</span></div><pre></pre>`;
+      $("cells").appendChild(cell);
+      await type(cell.querySelector("pre"), c.code, 90);
+      const st = cell.querySelector(".st");
+      const t0 = performance.now();
+      const spin = setInterval(() => { st.textContent = "running " + ((performance.now() - t0) / 1000).toFixed(1) + "s"; }, 100);
+      const grow = countTo($("invN"), tok, tok + c.tok, 1100, $("invBar"), 60000);
+      await sleep(900);
+      await grow; tok += c.tok; clearInterval(spin);
+      const out = document.createElement("div"); out.className = "out"; cell.appendChild(out);
+      out.textContent = c.out;
+      st.textContent = "done"; st.classList.add("ok");
+      log(`<b>cell ${i + 1}</b>  ran, ${c.out.split("\n").length}-line result, REPL state saved`);
+      await sleep(600);
+    }
+
+    // 5. answer
+    step(4);
+    $("invTag").textContent = "answering";
+    drawWires({ w1: "back", w2: "back" });
+    await packet("w2", "answer", 650, true);
+    await packet("w1", "answer", 650, true);
+    clearInterval(timer);
+    wait.textContent = `  answered in ${secs}s`;
+    const ans = addAgent("ans");
+    await type(ans, s.answer, 140);
+    $("ctxAdd").style.left = "33%";
+    $("ctxAdd").style.width = Math.max(.6, (s.answerTok / 124000) * 100) + "%";
+    $("ctxN").textContent = fmtK(41200 + s.answerTok);
+    await sleep(900);
+
+    // 6. keep
+    step(5);
+    drawWires({});
+    $("invTag").textContent = "ready for continue: true";
+    $("routeTag").textContent = "journal written";
+    log(`<b>out</b>    answer, ${s.cells.length} cells, ${secs}s`);
+    log(`<b>next</b>   continue: true resumes this investigator`);
+    await sleep(3200);
+    step(6);
+  } finally { clearInterval(timer); }
+}
+
+async function start(i) {
+  runId++; current = i;
+  [...$("scen").children].forEach((b, j) => b.setAttribute("aria-current", j === i));
+  const my = runId;
+  try {
+    for (;;) { await play(SCENARIOS[current]); if (my !== runId) return; current = (current + 1) % SCENARIOS.length; [...$("scen").children].forEach((b, j) => b.setAttribute("aria-current", j === current)); }
+  } catch (e) { if (e !== "stop") throw e; }
+}
+setTimeout(() => start(0), 50);
+</script>
+</body>
+</html>
