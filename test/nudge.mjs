@@ -23,12 +23,12 @@ fs.mkdirSync(bin);
 for (const p of ["gh", "cargo", "git", "docker", "psql", "clacks", "coredumpctl", "journalctl", "ssh"]) fs.writeFileSync(path.join(bin, p), "#!/bin/sh\nexit 99\n", { mode: 0o755 });
 env.PATH = `${bin}${path.delimiter}${env.PATH}`;
 const domains = { code: { enabled: true }, sessions: { enabled: true } };
-const kit = (name, { enabled = true, requires = [], source, settings } = {}) => {
+const kit = (name, { enabled = true, requires = [], keywords = [], source, settings } = {}) => {
   const d = path.join(env.ASK_KIT_CONFIG, "kits", name);
   fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, "m.mjs"), "export default () => ({});\n");
   // A detect command the hook must never run.
-  fs.writeFileSync(path.join(d, "ask-kit.toml"), `name = "${name}"\nversion = "0.1.0"\nsays = "${name} of the Watch"\nrequires = ${JSON.stringify(requires)}\n\n[[settings]]\nkey = "WATCH_${name.replace(/-/g, "_").toUpperCase()}"\nabout = "x"\ndetect = ["touch", ${JSON.stringify(path.join(tmp, "detected"))}]\n\n[[sources]]\n${source ?? `kind = "module"\nname = "m"\nmodule = "m.mjs"`}\n`);
+  fs.writeFileSync(path.join(d, "ask-kit.toml"), `name = "${name}"\nversion = "0.1.0"\nsays = "${name} of the Watch"\nrequires = ${JSON.stringify(requires)}\nkeywords = ${JSON.stringify(keywords)}\n\n[[settings]]\nkey = "WATCH_${name.replace(/-/g, "_").toUpperCase()}"\nabout = "x"\ndetect = ["touch", ${JSON.stringify(path.join(tmp, "detected"))}]\n\n[[sources]]\n${source ?? `kind = "module"\nname = "m"\nmodule = "m.mjs"`}\n`);
   if (enabled !== null) domains[name] = { enabled, ...(settings ? { settings } : {}) };
 };
 const save = (d = domains) => {
@@ -38,7 +38,13 @@ const save = (d = domains) => {
 kit("git", { requires: ["git"] });
 kit("rust", { requires: ["cargo", "git"] });
 kit("github", { requires: ["gh"] });
-for (const k of ["tests", "sqlite", "logs", "files", "claude-setup", "ops", "mike"]) kit(k);
+kit("tests", { keywords: ["tests?", "test suite"] });
+kit("sqlite", { keywords: ["sqlite3?", "\\.db\\b", "\\.sqlite3?\\b"] });
+kit("logs", { keywords: ["log files?", "\\.log\\b"] });
+kit("files", { keywords: ["pdfs?"] });
+kit("claude-setup", { keywords: ["hooks?", "settings\\.json"] });
+kit("clacks", { keywords: ["semaphores?", "\\.clk\\b"] }); // a kit the hook has no words for
+for (const k of ["ops", "mike"]) kit(k);
 kit("crash", { requires: ["coredumpctl", "journalctl"] });
 kit("systemd", { enabled: false });
 kit("postgres", { enabled: null, requires: ["psql"] }); // on disk, not in the config
@@ -48,6 +54,22 @@ fs.mkdirSync(rota);
 kit("rota", { source: `kind = "folder"\nname = "rota"\npath = ${JSON.stringify(rota)}\nabout = "the rota"` });
 kit("semaphore", { source: `kind = "mcp"\nname = "semaphore"\ncommand = ["semaphore-mcp"]` });
 kit("writing", { source: `kind = "folder"\nname = "w"\npath = "."\nabout = "a relative folder"` });
+
+// Every hook process runs with this: a socket, a name lookup, a fetch or a child process is recorded.
+const guard = path.join(tmp, "guard.mjs");
+const reached = path.join(tmp, "reached");
+fs.writeFileSync(guard, `import fs from "node:fs"; import net from "node:net"; import dns from "node:dns"; import dgram from "node:dgram"; import cp from "node:child_process"; import { syncBuiltinESMExports } from "node:module";
+const note = (what) => (...a) => { fs.appendFileSync(${JSON.stringify(reached)}, what + " " + String(a[0]) + "\\n"); throw new Error("offline"); };
+net.Socket.prototype.connect = note("connect"); dns.lookup = note("lookup"); dgram.createSocket = note("dgram"); globalThis.fetch = note("fetch");
+for (const f of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]) cp[f] = note(f);
+syncBuiltinESMExports();
+`);
+env.NODE_OPTIONS = `--import=${guard}`;
+// The guard itself works.
+const probe = spawnSync(process.execPath, ["-e", 'try { require("net").connect(9, "127.0.0.1") } catch {} try { require("child_process").execFileSync("true") } catch {}'], { env, encoding: "utf8" });
+assert.equal(probe.status, 0, probe.stderr);
+assert.match(fs.readFileSync(reached, "utf8"), /connect[\s\S]*execFileSync/);
+fs.rmSync(reached);
 
 const run = (sub, stdin) => {
   const r = spawnSync(process.execPath, [path.join(ROOT, "bin", "ask-kit.mjs"), "plugin", sub], { input: stdin, env, encoding: "utf8" });
@@ -128,6 +150,7 @@ for (const [command, want, extra] of [
   ["ls -l data/watch.sqlite; stat data/rota.db; file data/night.sqlite3", "sqlite"],
   ["tail -50 /srv/watch/night.log; rg ERROR /var/log/watch/day.log.1; cat logs/post.log", "logs"],
   ["ls /srv/watch/papers/rota.txt; cat /srv/watch/papers/b.txt; head /srv/watch/papers/c.txt", "files"],
+  ["cat towers.clk; rg -n GNU /srv/watch/towers/a.clk; head /srv/watch/towers/b.clk", "clacks"], // a file type only its manifest names
   [three("ls"), "files", { cwd: "/srv/watch" }],
   ["cat ~/.claude/settings.json; cat .claude/settings.local.json; cat .mcp.json", "claude-setup"],
   [three("gh pr list"), "github"],
@@ -230,6 +253,7 @@ fs.writeFileSync(stateDir, "a file where the folder should be"); // the state fo
 assert.equal(post("s9", "Read", { file_path: `${repo}/src/a.mjs` }), "");
 fs.rmSync(stateDir);
 
+assert.equal(fs.existsSync(reached) ? fs.readFileSync(reached, "utf8") : "", "", "the hooks open no socket and start no process");
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("ok");
 process.exit(0);

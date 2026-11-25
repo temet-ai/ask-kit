@@ -7,6 +7,7 @@ import path from "node:path";
 import { HOME, STATE_ROOT, loadConfig } from "./config.mjs";
 import { providersOf, winnersOf } from "./capabilities.mjs";
 import { indexDomain } from "./domains.mjs";
+import { findKit } from "./kits.mjs";
 import { PROGRAMS, classify, kitRules, lookupsOf, pathsOf, shapeOf, targetOf } from "./gaps.mjs";
 
 export const NUDGE_AFTER = 3;
@@ -49,7 +50,8 @@ export async function destinations(config = loadConfig({ required: false })) {
   const on = {};
   for (const n of Object.entries(config?.domains ?? {}).filter(([, d]) => d.enabled !== false).map(([n]) => n)) {
     try {
-      const d = await indexDomain(n, config);
+      // The code domain runs git when loaded, and naming it needs nothing from its module.
+      const d = n === "code" && !findKit(n) ? {} : await indexDomain(n, config);
       if (!d.unavailable) on[n] = d;
     } catch {}
   }
@@ -58,6 +60,14 @@ export async function destinations(config = loadConfig({ required: false })) {
   const first = (names) => (names ?? []).find((n) => Object.hasOwn(on, n)) ?? null;
   const owners = {};
   for (const [n, d] of Object.entries(on)) for (const p of [].concat(d.manifest?.requires ?? [])) (owners[p] ??= []).push(n);
+  // File types a manifest names in its keywords ("\\.clk\\b"), as extension -> the kits naming it.
+  const types = {};
+  for (const [n, d] of Object.entries(on)) for (const k of d.keywords ?? []) if (/^\\\.[\w?]+(\\b)?$/.test(k)) (types[n] ??= []).push(new RegExp(`(?:${k})$`, "i"));
+  const byType = (p) => {
+    const ext = path.extname(p);
+    const fit = ext ? Object.keys(types).filter((n) => types[n].some((re) => re.test(ext))) : [];
+    return fit.length === 1 ? fit[0] : null;
+  };
   const rules = kitRules(config);
   const programs = {};
   for (const p of new Set([...Object.keys(rules.programs), ...Object.keys(PROGRAMS), ...Object.keys(FITS)])) {
@@ -68,7 +78,7 @@ export async function destinations(config = loadConfig({ required: false })) {
   }
   if (programs.git !== "git") programs.git = "code"; // gaps reads this as "go by the paths"
   const folders = rules.folders.filter(([d, n]) => path.isAbsolute(d) && d.length > 1 && d !== HOME && on[n]);
-  return { first, rules: { ...rules, programs, folders } };
+  return { first, byType, rules: { ...rules, programs, folders } };
 }
 
 function repoOf(from) {
@@ -86,7 +96,7 @@ function aboutPath(p, to, repo) {
   const name = inRepo ? p.slice(repo.length) || "/" : p;
   const kind = FILES.find(([re]) => re.test(name))?.[1];
   if (folder && kind?.[0] !== "rules") return folder[1];
-  const fit = to.first(kind);
+  const fit = to.first(kind) ?? to.byType(p);
   if (fit) return fit;
   if (inRepo) return to.first(["code"]);
   const t = targetOf({ tool: "Read", arg: p, fam: null, paths: [p] }, to.rules, repo);

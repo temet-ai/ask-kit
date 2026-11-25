@@ -104,7 +104,8 @@ lookup). A lookup goes by, in order:
 - the program it runs (`git log` to `git`, `cargo tree` to `rust`, `sqlite3` to `sqlite`, and a
   program only one enabled kit lists in `requires` to that kit) or its MCP server;
 - the kit whose folder source holds the file;
-- what the file is (a database, a log, a data file, a test, a transcript, Claude Code's settings);
+- what the file is (a database, a log, a data file, a test, a transcript, Claude Code's settings), or a
+  file type only one enabled kit names in its `keywords` (`"\\.clk\\b"`);
 - `code` inside a repository, `files` outside one.
 
 A kit that is off, not in the config or unable to run here is never named. Lookups no enabled kit
