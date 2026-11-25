@@ -15,7 +15,7 @@ process.env.ASK_KIT_CONFIG = env.ASK_KIT_CONFIG;
 process.env.ASK_KIT_STATE = env.ASK_KIT_STATE;
 
 // What is enabled: the built-in two, and kits whose manifests name programs and folders. rust also
-// requires git, and watchhouse is installed but not enabled.
+// requires git; systemd is off, postgres is not in the config and docker cannot run here.
 const repo = path.join(tmp, "repo");
 fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
 const bin = path.join(tmp, "bin");
@@ -54,8 +54,12 @@ const run = (sub, stdin) => {
   assert.equal(r.status, 0, `plugin ${sub} exits 0 (stderr: ${r.stderr})`);
   return r.stdout;
 };
-const post = (session, tool, input, extra = {}) =>
-  run("tool", JSON.stringify({ session_id: session, hook_event_name: "PostToolUse", tool_name: tool, tool_input: input, tool_response: {}, cwd: repo, ...extra }));
+const given = []; // [session, about] of every nudge the hook printed
+const post = (session, tool, input, extra = {}) => {
+  const out = run("tool", JSON.stringify({ session_id: session, hook_event_name: "PostToolUse", tool_name: tool, tool_input: input, tool_response: {}, cwd: repo, ...extra }));
+  if (out) given.push([session, JSON.parse(out).hookSpecificOutput.additionalContext.match(/about: "([^"]+)"/)[1]]);
+  return out;
+};
 
 // Before setup nothing is enabled, so nothing is named.
 assert.equal(post("s0", "Bash", { command: "rg a src; rg b src; rg c src" }), "");
@@ -137,6 +141,21 @@ for (const [command, want, extra] of [
   ["rg a src; rg b src; git log -1", "code"],
 ])
   assert.equal(about(bash(command, extra)), want, command);
+// The same when each lookup is its own Bash call: silent for two, named on the third.
+for (const [commands, want] of [
+  [["git log -3", "git show HEAD", "git blame src/a.mjs"], "git"],
+  [["cargo tree", "cargo metadata", "cat Cargo.toml"], "rust"],
+  [["cat test/rota.mjs", "rg -n assert test/", "head test/watch.test.mjs"], "tests"],
+  [["sqlite3 watch.db .tables", "sqlite3 watch.db .schema", "sqlite3 watch.db 'select 1'"], "sqlite"],
+  [["tail /srv/watch/a.log", "rg ERROR /srv/watch/a.log", "head /srv/watch/b.log"], "logs"],
+  [["ls /srv/watch/a.txt", "cat /srv/watch/b.txt", "cat /srv/watch/c.txt"], "files"],
+  [["rg Vimes src", "cat src/a.mjs", "head src/b.mjs"], "code"],
+]) {
+  const s = `single-${want}`;
+  assert.equal(post(s, "Bash", { command: commands[0] }), "", commands[0]);
+  assert.equal(post(s, "Bash", { command: commands[1] }), "", commands[1]);
+  assert.equal(about(post(s, "Bash", { command: commands[2] })), want, commands.join(" | "));
+}
 for (const t of ["list_posts", "get_post"]) post("mcp", `mcp__semaphore__${t}`, {});
 assert.equal(about(post("mcp", "mcp__semaphore__read_post", {})), "semaphore");
 for (let i = 0; i < 4; i++) assert.equal(post("mail", "mcp__tether__inbox", {}), ""); // mail is not a lookup
@@ -187,9 +206,13 @@ for (const [ev, sub] of [["PostToolUse", "tool"], ["SubagentStart", "subagent"]]
 // The nudges are logged, and gaps counts them.
 const { nudgesSince } = await import("../src/nudge.mjs");
 const n = nudgesSince(0);
-assert.ok(n.count > 25 && n.sessions > 25);
-assert.ok(n.by.code >= 3 && n.by.sessions === 1 && n.by.git >= 3);
-assert.ok(!("postgres" in n.by || "docker" in n.by || "systemd" in n.by));
+const by = {};
+for (const [, a] of given) by[a] = (by[a] ?? 0) + 1;
+assert.equal(n.count, given.length);
+assert.equal(n.sessions, new Set(given.map(([x]) => x)).size);
+assert.deepEqual(n.by, by); // every nudge printed is logged under the name it gave
+for (const k of ["code", "git", "rust", "tests", "sqlite", "logs", "files", "claude-setup", "github", "ops", "crash", "sessions", "rota", "semaphore", "mike"]) assert.ok(by[k], `${k} was named`);
+for (const k of ["postgres", "docker", "systemd", "writing"]) assert.ok(!by[k], `${k} was never named`);
 const { formatReport } = await import("../src/gaps.mjs");
 const base = { since: "2026-11-01T00:00:00Z", scanned: { sessions: 0, bySource: {}, fromCache: 0, seconds: 0 }, cost: { basis: "x" }, coverage: { asks: 0, byHand: 0, share: null, tokenShare: null, handSessions: 0, handTokens: 0, handUsd: 0 }, excluded: { mailOrFleet: 0, other: 0 }, skipped: [], noKit: [] };
 assert.match(formatReport({ ...base, nudges: n }), new RegExp(`Nudges: the plugin's hook pointed ${n.count} lookup chains at ask in ${n.sessions} sessions`));
