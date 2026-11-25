@@ -29,11 +29,11 @@ gives the full report. Read the selected rows and the investigator's cells. Ask 
 investigator what the caller did next when the answer's quality is unclear. Treat a re-ask as a
 lead to inspect, not proof that the answer was wrong.
 
-Start from `questions`: what was this kit's to answer, counted. Name the ones a change answers in the
-record's `addresses`, in their words; `dugSince` shows whether it worked. `ask-kit improve --label`
-gives new chains their questions first. Store the question and cause of every chain the brief shows
+Start from `questions`: what was this kit's to answer, counted. Name the ones a change makes an ask
+answer in the record's `addresses`, in their words; run a new or changed script live and read-only first; `dugSince` shows whether it worked. `ask-kit improve --label`
+gives new chains their questions first. Store the question and cause of each chain you worked out
 (`gap`, `not-reached`, `fell-short`, `before-edit`, `own-output`, `not-this-kit`) in the record's
-`questions`. That record is the one place a kit finding is kept: a note, lesson or issue about it
+`questions`; leave out a chain whose cause you did not check, and it stays open. That record is the one place a kit finding is kept: a note, lesson or issue about it
 points there, and `elsewhere` lists those that do not yet; cite them as `{finding: id}`.
 
 For each chain shown, work out its question from `prompt`, `says` (what its calls were for) and

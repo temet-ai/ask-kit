@@ -193,8 +193,10 @@ const lipwig = await improvementBrief("lipwig", { scanned: { chains: [] }, answe
 assert.equal(lipwig.since, new Date(Date.parse(at(2)) + 1).toISOString(), "a review recorded on another machine counts");
 assert.deepEqual([lipwig.asks, lipwig.report.flaggedAsks[0].machine, lipwig.chains.shown[0].machine, lipwig.chains.shown[0].found], [1, "ankh", "ankh", "the coach left at nine"]);
 const farRecord = { since: lipwig.since, through: lipwig.through, outcome: "no-change", summary: "x", evidence: [{ journal: path.join(STATE_ROOT, "machines", "ankh", "lipwig", "carrot.jsonl"), ts: at(5) }, { chain: "f1" }], changes: [], checks: [], questions: [] };
-await assert.rejects(recordImprovement("lipwig", farRecord, { scanned: { chains: [] } }), /missing: f1/);
-await recordImprovement("lipwig", { ...farRecord, questions: [{ chain: "f1", question: "when did the coach leave?", cause: "not-this-kit" }] }, { scanned: { chains: [] } });
+await recordImprovement("lipwig", farRecord, { scanned: { chains: [] } });
+const stillOpen = await improvementBrief("lipwig", { scanned: { chains: [] }, answers: false });
+assert.deepEqual(stillOpen.chains.shown.map((c) => c.chain), ["f1"], "a chain the review left out stays open");
+await recordImprovement("lipwig", { ...farRecord, since: stillOpen.since, through: stillOpen.through, evidence: [{ chain: "f1" }], questions: [{ chain: "f1", question: "when did the coach leave?", cause: "not-this-kit" }] }, { scanned: { chains: [] } });
 const after = await scanAll({ since: "1d" });
 assert.deepEqual([after.chains[0].prompt, gapsReport(after).coverage.byHand, gapsReport(after).reviewed.notAQuestion], ["when did the coach leave?", 0, 1], "gaps uses the stored question and its cause");
 // Asks sent side by side are not re-asks; slow alone does not put a kit up the queue.
