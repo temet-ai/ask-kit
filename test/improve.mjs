@@ -146,7 +146,7 @@ const broken = await improvementBrief("thieves", { scanned: { chains: [{ ...chai
 assert.equal(broken.chains.outcomesMissing, "mike is down", "a review says when outcomes are missing");
 
 // Labels: a model gives chains their questions; they count per question, and a review says which it answered.
-const { labelKit, readLabels, promptFor } = await import("../src/label.mjs");
+const { labelKit, readLabels, promptFor, shares } = await import("../src/label.mjs");
 const labeller = path.join(tmp, "labeller.mjs");
 fs.writeFileSync(labeller, `let t=""; process.stdin.on("data",(d)=>t+=d).on("end",()=>{ const n=(t.match(/^\\{"n":/gm)||[]).length; console.log("Here: " + JSON.stringify(Array.from({length:n},(_, i)=> i===2 ? {n:3,question:"x",cause:"nonsense"} : {n:i+1,question:i<2?"Where is the toll booth?":"own work",cause:i<2?"gap":"own-output",answer:null}))); });`);
 const tolls = { chains: Array.from({ length: 5 }, (_, i) => ({ ...chain, session: `cohen${i}`, id: `l${i}`, kit: "tolls", ts: at(10 + i) })), local: true };
@@ -162,6 +162,9 @@ const { appendLabels, openQuestions } = await import("../src/improve.mjs");
 appendLabels("tolls", [{ chain: "l9", ts: new Date(Date.now() + 1000).toISOString(), session: "rincewind", question: "where is the toll booth", cause: "not-reached" }], "test");
 assert.deepEqual(openQuestions("tolls").map((q) => [q.dugSince, q.addressed.commit]), [[1, "abcdef1"]], "dug for again after its fix");
 assert.deepEqual(readLabels('[{"n":1,"question":"which clacks is down?","cause":"not-this-kit","kit":"clacks"},{"n":2,"question":"unclear","cause":"not-this-kit","kit":"clacks"}]', [chain, { ...chain, id: "z" }].map((c, i) => ({ ...c, id: `z${i}`, ts: at(1) })), { clacks: "towers" }).map((l) => [l.cause, l.to ?? null]), [["not-reached", "clacks"], ["not-this-kit", null]], "a question another kit answers is that kit's");
+assert.deepEqual(readLabels('[{"n":1,"question":"who robbed the Mint?","cause":"fell-short"}]', [{ ...chain, id: "y", ts: at(1), ask: { kit: "clacks" } }], { clacks: "towers" }).map((l) => [l.cause, l.to]), [["fell-short", "clacks"]], "an answer that fell short is the kit's that gave it");
+assert.deepEqual(shares({ code: 1800, git: 500, web: 5, quiet: 0 }, 400), { web: 5, git: 85, code: 310 }, "no kit takes the whole run");
+assert.deepEqual(shares({ code: 1800, git: 500 }, 10), { git: 10, code: 0 });
 assert.throws(() => readLabels("sorry", []), /no list/);
 assert.match(promptFor("tolls", [{ ...chain, says: ["Read the rota"] }], ["Where is the toll booth?"]), /Known questions:\n- Where is the toll booth\?/);
 

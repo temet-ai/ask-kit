@@ -66,7 +66,8 @@ that fails is named in the brief.
 `ask-kit improve --label [kit] [--max 400]` gives each chain of the last 30 days its question and
 cause, in batches, with the model in the config's `labeller` (default: `claude -p --model haiku`,
 signed in on this machine; `{ "command": [...] }` is any program that reads a prompt on stdin and
-prints the reply). A question another kit answers goes to that kit. The causes are `gap` (the kit has
+prints the reply). A question another kit answers goes to that kit, and an answer that fell
+short to the kit that gave it. Each kit with chains waiting gets a share of `--max`. The causes are `gap` (the kit has
 nothing that answers it), `not-reached` (it does, and was not asked), `fell-short` (an ask before it
 left it out, or had not answered yet), `before-edit`, `own-output` and `not-this-kit`.
 

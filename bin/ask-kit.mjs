@@ -135,13 +135,16 @@ async function main() {
         const { scan } = await import("../src/gaps.mjs");
         const { listDomains } = await import("../src/domains.mjs");
         const scanned = await scan({ since: "30d" });
-        let left = Number(flag("max")) > 0 ? Number(flag("max")) : 400;
+        const max = Number(flag("max")) > 0 ? Number(flag("max")) : 400;
+        const { shares } = await import("../src/label.mjs");
+        const { handChains } = await import("../src/improve.mjs");
+        const waiting = {};
+        for (const k of kit ? [kit] : listDomains()) waiting[k] = (await handChains(k, new Date().toISOString(), scanned)).length;
         const rows = [];
-        for (const k of kit ? [kit] : listDomains().sort()) {
-          if (left <= 0) break;
-          const r = await labelKit(k, { scanned, max: left, log: (l) => console.error(l) });
-          left -= r.labelled;
-          if (r.waiting) rows.push(r);
+        for (const [k, n] of Object.entries(shares(waiting, max))) {
+          if (!n) continue;
+          const r = await labelKit(k, { scanned, max: n, log: (l) => console.error(l) });
+          rows.push(r);
           if (r.errors.length >= 2) break;
         }
         if (rows.some((r) => r.errors.length)) process.exitCode = 1;
@@ -581,6 +584,7 @@ async function kitCommand() {
       return;
     }
     case "update": {
+      if (flag("help") || argv.includes("-h")) return console.log("ask-kit kit update [--machines] [--json]: bring each linked kit checkout to its upstream, fast-forward only; with --machines, on every machine in the config too");
       const { updateKits, updateMachines } = await import("../src/update.mjs");
       const here = await updateKits();
       const there = flag("machines") ? await updateMachines(loadConfig({ required: false })) : [];

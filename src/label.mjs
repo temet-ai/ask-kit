@@ -52,8 +52,10 @@ export function readLabels(text, chains, kits = {}) {
     if (!c || seen.has(c.id) || !question || !CAUSES[r.cause]) return [];
     seen.add(c.id);
     const to = r.cause === "not-this-kit" && question !== "unclear" && Object.hasOwn(kits, r.kit ?? "") ? r.kit : null;
+    // An answer that fell short is the kit's that gave it.
+    const short = r.cause === "fell-short" && c.ask?.kit && c.ask.kit !== c.kit && Object.hasOwn(kits, c.ask.kit) ? c.ask.kit : null;
     const answer = clip(r.answer, 600);
-    return [{ chain: c.id, ts: c.ts, ...(c.machine ? { machine: c.machine } : {}), session: c.session, question, cause: to ? "not-reached" : r.cause, ...(to ? { to } : {}), ...(answer ? { answer } : {}) }];
+    return [{ chain: c.id, ts: c.ts, ...(c.machine ? { machine: c.machine } : {}), session: c.session, question, cause: to ? "not-reached" : r.cause, ...(to || short ? { to: to ?? short } : {}), ...(answer ? { answer } : {}) }];
   });
 }
 
@@ -84,6 +86,18 @@ function kitsOf(config) {
   return out;
 }
 const BUILT_IN = { code: "the code in the repository: where something is defined or used, how it works, settings, what calls it", sessions: "past work in agents' sessions on this machine" };
+
+/** How many of `max` each kit gets: every kit with chains waiting a batch or all it has, the rest by how many wait. */
+export function shares(waiting, max) {
+  const kits = Object.entries(waiting).filter(([, n]) => n > 0).sort((a, b) => a[1] - b[1]);
+  const out = {};
+  let left = max;
+  kits.forEach(([k, n], i) => {
+    out[k] = Math.min(n, Math.max(0, i === kits.length - 1 ? left : Math.min(left, Math.max(BATCH, Math.floor((left * n) / kits.slice(i).reduce((s, [, m]) => s + m, 0))))));
+    left -= out[k];
+  });
+  return out;
+}
 
 /** Label up to `max` chains of a kit, newest first. {kit, waiting, labelled, byCause, errors}. */
 export async function labelKit(kit, { scanned, max = 200, config = loadConfig({ required: false }), join = {}, command = config?.labeller?.command ?? COMMAND, log = () => {}, kits = kitsOf(config) } = {}) {
