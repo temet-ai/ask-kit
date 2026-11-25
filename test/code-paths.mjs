@@ -28,9 +28,15 @@ try {
     gitIn(d)("add", ".");
     gitIn(d)("commit", "-qm", d === watch ? "Light the lanterns" : "Raise the clacks");
   }
+  put(path.join(watch, ".claude/agents/night-watch.md"), "Carries the dark lantern.\n");
+  put(path.join(watch, ".git/info/exclude"), ".claude/\n");
   const push = () => {};
   const global = (root) => withAt(readOnly(makeRepo({ root, push, noteMissing: true })), { push, act: false });
   const repo = global(watch);
+
+  // Agent files are found although hidden and left out of git; their count is not doubled.
+  assert.equal((await repo.rg("dark lantern")).total, 1);
+  assert.deepEqual([...(await repo.files("**/*.md"))], [".claude/agents/night-watch.md"]);
 
   // One wrong guess keeps the cell's other results, and names the path that was meant.
   const [hits, read, gone, dir] = await Promise.all([

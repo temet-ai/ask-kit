@@ -115,10 +115,41 @@ write("quiet", "none", []);
 const quiet = { chains: [{ ...chain, id: "q1", ts: at(21), kit: "quiet" }] };
 assert.equal((await improvementBrief("quiet", { scanned: quiet, answers: false })).state, "pending", "a kit nobody asked is reviewed for what was dug by hand");
 assert.equal((await improvementQueue({ scanned })).kits.find((k) => k.kit === "watch").chains, 2);
-const dugRecord = { since: dug.since, through: dug.through, outcome: "no-change", summary: "Both chains opened files to edit them.", changes: [], checks: [] };
+const dugRecord = { since: dug.since, through: dug.through, outcome: "no-change", summary: "Both chains opened files to edit them.", changes: [], checks: [], questions: [{ chain: "c1", question: "who was on the Ankh bridge last night?", cause: "gap", answer: "Nobby Nobbs" }, { chain: "c2", question: "which shift follows?", cause: "before-edit" }] };
 await assert.rejects(recordImprovement("watch", { ...dugRecord, evidence: [{ chain: "c3" }] }, { scanned }), /no chain c3/, "another kit's chain");
 const dugSaved = await recordImprovement("watch", { ...dugRecord, evidence: [{ chain: "c1" }, { journal: path.join(STATE_ROOT, "watch", "new.jsonl"), ts: at(12) }] }, { scanned });
 assert.deepEqual(dugSaved.evidence[0], { chain: "c1" });
+// Every shown chain's question is stored with the review, and the next brief shows the kit's own.
+assert.deepEqual(dugSaved.questions.map((q) => [q.chain, q.cause]), [["c1", "gap"], ["c2", "before-edit"]]);
+const asksAgain = await improvementBrief("watch", { scanned: { chains: [], local: true }, answers: false });
+assert.deepEqual(asksAgain.questions.map((q) => [q.question, q.outcome]), [["who was on the Ankh bridge last night?", "no-change"]]);
+const { storedQuestions } = await import("../src/improve.mjs");
+assert.equal(storedQuestions().get("c1").answer, "Nobby Nobbs");
+
+// Another machine's journals, chains and reviews, copied over a fake ssh that runs the script here.
+const far = path.join(tmp, "far");
+const farFile = (p, rows) => { fs.mkdirSync(path.dirname(path.join(far, p)), { recursive: true }); fs.writeFileSync(path.join(far, p), rows.map((r) => JSON.stringify(r)).join("\n") + "\n"); };
+farFile("lipwig/carrot.jsonl", [{ ...ask, ts: at(5), session: "carrot", question: "is the mail coach late?", ok: false, error: "no horses" }]);
+farFile("nudges/nudges.jsonl", [{ at: at(5) }]);
+farFile("improvements/lipwig.jsonl", [{ at: at(2), kit: "lipwig", since: at(0), through: at(2), outcome: "no-change", summary: "x", evidence: [] }]);
+const fakeSsh = path.join(tmp, "ssh");
+fs.writeFileSync(fakeSsh, `#!/bin/sh\nfor host; do last=$host; done\ncase "$*" in *pseudopolis*) echo "ssh: no route" >&2; exit 255;; esac\nASK_KIT_STATE='${far}' sh -c "$last"\n`, { mode: 0o755 });
+const farCli = path.join(tmp, "far-ask-kit");
+fs.writeFileSync(farCli, `#!/bin/sh\necho '${JSON.stringify({ chains: [{ ...chain, id: "f1", ts: at(6), kit: "lipwig", found: "the coach left at nine" }] })}'\n`, { mode: 0o755 });
+process.env.ASK_KIT_SSH = fakeSsh;
+const { syncMachines, machinesOf } = await import("../src/machines.mjs");
+const synced = await syncMachines({ config: { machines: [{ host: "ankh", command: farCli }, "pseudopolis"] } });
+assert.deepEqual(synced.map((m) => [m.host, m.ok]), [["ankh", true], ["pseudopolis", false]], JSON.stringify(synced));
+assert.match(synced[1].journals, /no route/);
+assert.equal(synced[0].chains, 1);
+assert.ok(!fs.existsSync(path.join(STATE_ROOT, "machines", "ankh", "nudges")));
+assert.throws(() => machinesOf({ machines: ["-oProxyCommand=x"] }), /not an ssh host/);
+const lipwig = await improvementBrief("lipwig", { scanned: { chains: [] }, answers: false });
+assert.equal(lipwig.since, new Date(Date.parse(at(2)) + 1).toISOString(), "a review recorded on another machine counts");
+assert.deepEqual([lipwig.asks, lipwig.report.flaggedAsks[0].machine, lipwig.chains.shown[0].machine, lipwig.chains.shown[0].found], [1, "ankh", "ankh", "the coach left at nine"]);
+const farRecord = { since: lipwig.since, through: lipwig.through, outcome: "no-change", summary: "x", evidence: [{ journal: path.join(STATE_ROOT, "machines", "ankh", "lipwig", "carrot.jsonl"), ts: at(5) }, { chain: "f1" }], changes: [], checks: [], questions: [] };
+await assert.rejects(recordImprovement("lipwig", farRecord, { scanned: { chains: [] } }), /missing: f1/);
+await recordImprovement("lipwig", { ...farRecord, questions: [{ chain: "f1", question: "when did the coach leave?", cause: "gap" }] }, { scanned: { chains: [] } });
 // Asks sent side by side are not re-asks; slow alone does not put a kit up the queue.
 write("side", "asks", [
   { ...ask, ts: at(50), startedAt: at(20), ms: 30_000 },

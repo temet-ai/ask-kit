@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { STATE_ROOT } from "./config.mjs";
 import { actionsDir, readLog, readState, windowOf } from "./actions.mjs";
+import { placeOf, stateRoots } from "./machines.mjs";
 import { reviewOf } from "./review.mjs";
 
 // Kit-test and benchmark sessions are not real use.
@@ -67,16 +68,17 @@ export function worthAnAction(asks, cellsByDir, { min = 2, top = 10 } = {}) {
 /** Per kit action since `from`: runs, answers, fall-throughs by why, re-asks, and whether it is off and why; and shadow runs. */
 export function actionsSummary(from, { kit: selectedKit = null, real = false, until = Infinity } = {}) {
   const out = { actions: [], shadows: [] };
-  let files = [];
-  try {
-    files = fs.readdirSync(actionsDir()).filter((f) => f.endsWith(".jsonl"));
-  } catch {
-    return out;
+  const logs = {};
+  for (const root of stateRoots()) {
+    let files = [];
+    try {
+      files = fs.readdirSync(path.join(root, "actions")).filter((f) => f.endsWith(".jsonl"));
+    } catch {}
+    for (const f of files) (logs[f.slice(0, -6)] ??= []).push(...(root === STATE_ROOT ? readLog(f.slice(0, -6)) : readRows(path.join(root, "actions", f))));
   }
-  for (const f of files) {
-    const kit = f.slice(0, -6);
+  for (const [kit, log] of Object.entries(logs)) {
     if (selectedKit && kit !== selectedKit) continue;
-    const rows = readLog(kit).filter((r) => Date.parse(r.at) <= until && (!real || realSession(r.session)));
+    const rows = log.filter((r) => Date.parse(r.at) <= until && (!real || realSession(r.session)));
     const state = readState(kit);
     const recent = rows.filter((r) => Date.parse(r.at) >= from);
     const names = [...new Set([...recent.filter((r) => r.type === "run").map((r) => r.action), ...Object.keys(state).filter((n) => state[n].off)])];
@@ -164,7 +166,7 @@ export function kitProfile({ since = "30d", router = null } = {}) {
   const row = (n) => (p[n] ??= { name: n, chosen: 0, asks: 0, ms: [], cells: [], costUsd: 0, misroutes: 0, fallbacks: 0, noData: 0 });
   for (const n of router ? [...router.enabled, ...router.hidden] : []) row(n);
   for (const file of journals(STATE_ROOT)) {
-    const rel = path.relative(STATE_ROOT, file).split(path.sep);
+    const { rel } = placeOf(file);
     if (rel[0] === "kits") continue;
     if (rel[0] === "router") {
       if (rel[1] === "bench.jsonl" || !real(path.basename(file, ".jsonl"))) continue;
@@ -226,7 +228,7 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
   const taskHandoffs = [];
   // How those tasks ended (the router's {task, done, ms} row); a task still running has no row yet.
   const taskEnds = { answered: 0, failed: 0, cancelled: 0, stopped: 0 };
-  const files = journals(STATE_ROOT).filter((file) => !kit || [kit, "router"].includes(path.relative(STATE_ROOT, file).split(path.sep)[0]));
+  const files = journals(STATE_ROOT).filter((file) => !kit || [kit, "router"].includes(placeOf(file).rel[0]));
   const entries = files.map((file) => ({ file, rows: readRows(file) }));
   // Older cells have no caller field. Link their investigator id to the benchmark's ask row.
   const askLinks = new Map();
@@ -238,7 +240,7 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
     else if (Number.isFinite(Date.parse(r.ts)) && Number.isFinite(r.ms)) legacyAsks.push({ ...r, dir, end: Date.parse(r.ts) });
   }
   for (const { file, rows: records } of entries) {
-    const domain = path.relative(STATE_ROOT, file).split(path.sep)[0];
+    const domain = placeOf(file).rel[0];
     const dir = path.dirname(file);
     const isRouter = domain === "router";
     if (isRouter && path.basename(file) === "bench.jsonl") continue;
@@ -314,7 +316,7 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
     if (next && !next.continued && nextStart >= end && nextStart - end < 180_000) signals.push(next.backend !== a.backend ? "re-asked on another backend" : "re-asked");
     if (a.actionFellThrough) signals.push(`action ${a.actionFellThrough.action} fell through (${a.actionFellThrough.why})`);
     if (a.citations?.failed) signals.push(`${a.citations.failed} of ${a.citations.checked} citations did not resolve${a.citations.failedList?.length ? `: ${a.citations.failedList.join(", ")}` : ""}`);
-    return { ts: a.ts, domain: a.domain, backend: a.backend ?? (a.action ? `action ${a.action}` : a.shot ? "shot" : null), session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, shot: !!a.shot, ...(a.citations ? { citations: a.citations } : {}), ...(a.action ? { action: a.action } : {}), signals, journal: a.file };
+    return { ts: a.ts, ...(placeOf(a.file).machine ? { machine: placeOf(a.file).machine } : {}), domain: a.domain, backend: a.backend ?? (a.action ? `action ${a.action}` : a.shot ? "shot" : null), session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, shot: !!a.shot, ...(a.citations ? { citations: a.citations } : {}), ...(a.action ? { action: a.action } : {}), signals, journal: a.file };
   });
   const flagged = rows.filter((r) => r.signals.length);
   const total = rows.reduce((s, r) => s + (r.costUsd ?? 0), 0);

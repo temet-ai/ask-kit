@@ -35,6 +35,7 @@ Source: [`src/config.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/con
 | `actions` | object | `{ "shadowEvery": 20 }` | `shadowEvery`: one answered run of an action in this many also runs the investigator in the background, for `ask-kit report` to show both answers. `0` turns shadow runs off. See [Actions](../kits.md#actions). |
 | `escalate` | object | none (off) | `{ "backend": "<name>", "after": <seconds> }`: an `api` ask with no answer at twice the kit's usual time goes to that stronger backend, in the same REPL. See [`escalate` and `hedge`](#escalate-and-hedge). |
 | `hedge` | object | none (off) | `{ "backend": "<name>", "after": <seconds> }`: a new ask with no answer at the kit's usual time also starts on that backend, and the first answer wins. See [`escalate` and `hedge`](#escalate-and-hedge). |
+| `machines` | array | none | Other machines whose asks and chains count in reviews: ssh host names, or `{ "host": "...", "command": "..." }` when ask-kit runs there as that command. `ask-kit improve` copies their evidence first. See [Other machines](../tuning.md#other-machines). |
 | `setupAt` | string (ISO time) | time of setup | Written by `plan()`. Nothing reads it. |
 
 `loadConfig` throws `ask-kit is not set up yet` when the file is missing, and the server then

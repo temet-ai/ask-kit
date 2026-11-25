@@ -88,7 +88,11 @@ export async function mine(o = {}) {
       for (const q of JSON.parse(fs.readFileSync(path.resolve(dir, bench), "utf8")).questions ?? []) have.add(norm(q.q ?? q.question ?? ""));
     } catch {}
   }
-  const chains = sc.chains.filter((c) => c.kit === o.kit && c.purpose === "to-answer" && c.end !== "ask" && informative(c.prompt));
+  // A question a review worked out stands in for the prompt that started the chain.
+  const { storedQuestions } = await import("./improve.mjs");
+  const asked = storedQuestions();
+  const ours = sc.chains.map((c) => (asked.has(c.id) ? { ...c, prompt: asked.get(c.id).question, cause: asked.get(c.id).cause } : c)).filter((c) => !["before-edit", "own-output", "not-this-kit"].includes(c.cause));
+  const chains = ours.filter((c) => c.kit === o.kit && c.purpose === "to-answer" && c.end !== "ask" && informative(c.prompt));
   // One row per question: the costliest chain that question started.
   const best = new Map();
   for (const c of chains) {

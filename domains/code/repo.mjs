@@ -54,6 +54,8 @@ export function readOnly(repo, name = "repo") {
   };
 }
 
+const HIDDEN = [".claude/agents", ".claude/skills", ".claude/rules", ".claude/hooks", ".claude/commands", ".codex/skills", ".codex/agents", ".github"];
+
 /** The top folder of the git repository that holds `dir`, or null. */
 export function gitTop(dir) {
   try {
@@ -125,6 +127,9 @@ export function makeRepo({ root, push, noteMissing = false }) {
     const near = same.length ? `of that name: ${same.slice(0, 5).join(", ")}` : `${inside(parent).rel} holds ${held.slice(0, 20).join(", ")}${held.length > 20 ? ` and ${held.length - 20} more` : ""}`;
     return `NO SUCH PATH ${rel} (not searched; ${near})`;
   };
+  // A search of the whole repository also looks in the hidden folders people keep agent and CI files
+  // in; ripgrep skips hidden folders, and these are often left out of git on one machine.
+  const everywhere = (p) => (noteMissing && (p == null || inside(p).rel === ".") ? [".", ...HIDDEN.filter((d) => fs.existsSync(path.join(ROOT, d)))] : [inside(p).rel]);
   const note = (kind, detail, started, size) => push({ kind, detail, ms: Date.now() - started, size });
 
   return {
@@ -145,7 +150,7 @@ export function makeRepo({ root, push, noteMissing = false }) {
       if (o.hidden) args.push("--hidden");
       if (await aimedAtIgnored(o.path)) args.push("--no-ignore");
       // Always a path: with none, rg reads stdin (a pipe here) and waits on it.
-      args.push("-e", pattern, "--", inside(o.path).rel);
+      args.push("-e", pattern, "--", ...(o.hidden ? [inside(o.path).rel] : everywhere(o.path)));
       const out = await exec("rg", args, { cwd: ROOT });
       const max = o.max ?? 200;
       const hits = [];
@@ -206,8 +211,8 @@ export function makeRepo({ root, push, noteMissing = false }) {
       for (const g of [].concat(glob ?? []).filter(Boolean)) args.push("-g", g);
       if (o.hidden) args.push("--hidden");
       if (await aimedAtIgnored(o.path)) args.push("--no-ignore");
-      args.push("--", inside(o.path).rel);
-      const list = (await exec("rg", args, { cwd: ROOT })).split("\n").filter(Boolean).map((f) => f.replace(/^\.\//, "")).sort();
+      args.push("--", ...(o.hidden ? [inside(o.path).rel] : everywhere(o.path)));
+      const list = [...new Set((await exec("rg", args, { cwd: ROOT })).split("\n").filter(Boolean).map((f) => f.replace(/^\.\//, "")))].sort();
       note("files", glob ?? "*", started, list.length);
       const max = o.max ?? 2000;
       return Object.assign(list.slice(0, max), { total: list.length, complete: list.length <= max });

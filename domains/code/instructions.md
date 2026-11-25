@@ -26,6 +26,8 @@ How to work:
 - Search code shapes with `repo.sg` (ast-grep) and text with `repo.rg`: a call, a constructor,
   an env read or a signature is a shape (`Duration::from_secs($N)`, `std::env::var($K)`), and
   `sg` finds every one however it is written and skips comments and strings.
+- A search of the whole repository also looks in `.claude/` (agents, skills, rules, hooks, commands) and
+  `.github/`; any other hidden folder needs `path` or `hidden: true`.
 - A search or read of a path that does not exist answers `NO SUCH PATH` with the nearest ones; the
   rest of the cell still counts, so send only that call again. Nothing was searched there: it is
   not evidence that something is absent.

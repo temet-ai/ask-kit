@@ -54,6 +54,27 @@ the prompt, what the shell calls said they were for, what the agent answered aft
 made earlier in the turn if there was one. A kit that nobody asked but that agents dug around is
 pending too. The queue's `signals` leave out asks that were only slow or costly.
 
+Each shown chain's question is stored with the review: `questions` in the record holds
+`{chain, question, cause, answer?}` for every one. The causes are `gap` (the kit has nothing that
+answers it), `not-reached` (it does, and was not asked), `fell-short` (an ask before it left it out),
+`before-edit`, `own-output` and `not-this-kit`. Later briefs list the first three under `questions`,
+with the commit that answered them, so one dug for again shows a fix that did not work. `ask-kit
+mine` drafts test questions from them.
+
+## Other machines
+
+Name them in the config as ssh hosts, and give each key-based ssh access:
+
+```json
+"machines": ["mac", { "host": "infra", "command": "node /opt/ask-kit/bin/ask-kit.mjs" }]
+```
+
+`ask-kit improve` then copies each one's journals, action logs and review records to the state
+folder's `machines/<host>/`, and runs `ask-kit gaps --chains` there for its lookup chains (0.7.1 or
+later; the Claude Code plugin's copy, else `ask-kit` on PATH). It prints a line per machine and says
+when one was not read in full; what an earlier run copied is still used. `--offline` skips it. Nothing
+is written on the other machine, beyond its own `gaps` cache and a temporary file list.
+
 ## Verify and finish the review
 
 Use a synthetic offline regression for the problem and run the repository's required checks.

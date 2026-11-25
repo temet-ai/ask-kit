@@ -128,9 +128,12 @@ async function main() {
         if (!kit || typeof flag("record") !== "string") throw new Error("improve <kit> --record <file.json>");
         return print(await recordImprovement(kit, JSON.parse(fs.readFileSync(flag("record"), "utf8"))));
       }
-      if (kit) return print(await improvementBrief(kit, options));
+      const { syncMachines } = await import("../src/machines.mjs");
+      const machines = flag("offline") ? [] : await syncMachines();
+      if (kit) return print({ ...(await improvementBrief(kit, options)), ...(machines.length ? { machines } : {}) });
       const q = await improvementQueue(options);
-      if (flag("json")) return print(q);
+      if (flag("json")) return print({ ...q, ...(machines.length ? { machines } : {}) });
+      for (const m of machines) console.log(m.ok ? `${m.host}: ${Math.round(m.journalBytes / 1024)} KB of journals, ${m.chains} chains` : `${m.host}: NOT READ IN FULL: ${m.journals ?? m.chainsError}`);
       console.log("Per-kit review queue (real use only; since each completed review, or 30d on the first run)");
       for (const k of q.kits) console.log(`${k.kit.padEnd(18)} ${k.state.padEnd(15)} ${k.asks} asks, ${k.outcomes} outcomes, ${k.signals} signals, ${k.chains} dug by hand${k.previous?.outcome === "blocked" ? " (last review blocked)" : ""}`);
       console.log("\nRead one kit: ask-kit improve <kit>\nAfter verification: ask-kit improve <kit> --record <file.json>");
@@ -138,7 +141,15 @@ async function main() {
     }
     case "gaps": {
       const { gaps, formatReport } = await import("../src/gaps.mjs");
-      const r = await gaps({ since: typeof flag("since") === "string" ? flag("since") : "30d" });
+      const since = typeof flag("since") === "string" ? flag("since") : "30d";
+      if (flag("chains")) {
+        const { scan } = await import("../src/gaps.mjs");
+        const { answersAfter } = await import("../src/mine.mjs");
+        const chains = (await scan({ since })).chains.filter((c) => c.purpose === "to-answer" && c.end !== "ask");
+        const found = await answersAfter(chains);
+        return print({ chains: chains.map((c) => ({ ...c, found: found.get(c.id) ?? null })) });
+      }
+      const r = await gaps({ since });
       return flag("json") ? print(r) : console.log(formatReport(r));
     }
     case "mine": {
