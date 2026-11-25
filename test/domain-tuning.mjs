@@ -146,6 +146,8 @@ try {
     await client.close();
     fake.close();
   }
+  const instr = fs.readFileSync(new URL("../domains/code/instructions.md", import.meta.url), "utf8");
+  assert.match(instr, /Never cite a bare file name/);
   console.log("ok");
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

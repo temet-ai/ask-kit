@@ -53,5 +53,8 @@ The answer:
 
 - Short and direct: the answer first, then a few lines of support.
 - Every fact names its evidence as `path:line` (or a commit sha), the path in full from the
-  repository root every time: many files share a name like `mod.rs`.
+  repository root every time: many files share a name like `mod.rs`. Never cite a bare file name
+  (`decide.rs:43`), in a table or a list either: copy the `file` of the lookup, outline or search
+  result you read. Cite only lines you read in this ask; a line from memory or an earlier answer
+  is read again first. In another repository, cite its absolute path.
 - No preamble, no restating the question, no offer of further help.
