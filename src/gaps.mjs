@@ -1,8 +1,8 @@
 // ask-kit gaps: where agents dig by hand instead of calling `ask`, and which kit would have
 // answered. Reads this machine's transcripts through the adapters in src/transcripts/.
 //
-// A chain is a run of 3 or more consecutive lookup tool uses (reading files, git, gh, MCP reads,
-// web, logs, service state) inside one user turn. It ends at a write, an action, an `ask` call, a
+// A chain is a run of 3 or more consecutive lookups (reading files, git, gh, MCP reads, web, logs,
+// service state) inside one user turn; a Bash call counts each separate lookup in it (lookupsOf). It ends at a write, an action, an `ask` call, a
 // subagent or the end of the turn. A to-answer chain is one with nothing edited after it in its
 // turn. The rules (classify, shapeOf, pathsOf, areaOf, buildChains) are mike-ask's src/corpus.mjs,
 // adapted to every agent's tool names. Each chain is put down to the kit whose sources it touched:
@@ -19,7 +19,7 @@ import { HOME, STATE_ROOT, expand, loadConfig } from "./config.mjs";
 import { findKit, listKits, readManifest } from "./kits.mjs";
 
 // Part of the cache key: raise it when a rule changes what a cached session would hold.
-const VERSION = 4;
+const VERSION = 5;
 
 // $ per million tokens: input, cache write, cache read, output. Claude list prices as mike-ask's
 // corpus.mjs has them; other models get no price.
@@ -135,59 +135,367 @@ const GIT_LOOK = new Set(["log", "show", "diff", "status", "blame", "branch", "f
   "for-each-ref", "merge-base", "remote", "tag", "shortlog", "describe", "reflog", "cat-file", "rev-list", "worktree", "stash", "config", "name-rev"]);
 export const FLEET = /fleet|heartbeat|workspace_roster|session_head|inbox|wait_for|ack_session|send_session_message/;
 
-const segsOf = (cmd) => cmd.split(/\s*(?:&&|\|\||;|\|)\s*/).map((s) => s.trim()).filter(Boolean);
-const wordsOf = (seg) => seg.replace(/^(sudo|time|[A-Z_]+=\S+)\s+/g, "").split(/\s+/);
-const SKIP = new Set(["cd", "export", "set", "source", "."]);
-const headOf = (seg) => (wordsOf(seg)[0] || "").replace(/^.*\//, "");
+// ---- shell text ----
+
+/**
+ * A small reader of shell text: its simple commands in order, as {sep, words: [{text, q, at}], subs,
+ * out, here, start, end}. `sep` is the operator before the command, `q` says a word had quotes, `subs`
+ * are the commands of its $(...), backquotes and <(...), `out` the files it redirects to and `here`
+ * its heredoc and here-string text. Text cut short (an open quote) reads to the end.
+ */
+function shellOf(s) {
+  let i = 0;
+  const pending = [];
+  const heredocs = () => {
+    for (const h of pending.splice(0)) {
+      const body = [];
+      while (i < s.length) {
+        const nl = s.indexOf("\n", i);
+        const line = s.slice(i, nl < 0 ? s.length : nl);
+        i = nl < 0 ? s.length : nl + 1;
+        if ((h.tabs ? line.replace(/^\t+/, "") : line) === h.delim) break;
+        body.push(line);
+      }
+      h.cmd.here += body.join("\n") + "\n";
+    }
+  };
+  // From s[i] at the first "(" or "{": past its match, as text.
+  const balanced = (open, close) => {
+    const from = i;
+    let n = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === "\\") i++;
+      else if (c === "'" && open === "(") {
+        const e = s.indexOf("'", i + 1);
+        i = e < 0 ? s.length : e;
+      } else if (c === open) n++;
+      else if (c === close && --n === 0) {
+        i++;
+        break;
+      }
+      i++;
+    }
+    return s.slice(from, i);
+  };
+  // $(...), $((...)), ${...}, `...` at s[i]; null when s[i] starts none of them.
+  const expansion = (cmd) => {
+    const from = i;
+    if (s.startsWith("$((", i)) {
+      i++;
+      balanced("(", ")");
+    } else if (s.startsWith("$(", i)) {
+      i += 2;
+      cmd.subs.push(...list(")"));
+    } else if (s.startsWith("${", i)) {
+      i++;
+      balanced("{", "}");
+    } else if (s[i] === "`") {
+      const e = s.indexOf("`", i + 1);
+      const to = e < 0 ? s.length : e;
+      cmd.subs.push(...shellOf(s.slice(i + 1, to)));
+      i = to + 1;
+    } else return null;
+    return s.slice(from, i);
+  };
+  function word(cmd) {
+    const at = i;
+    let text = "", q = false;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === "\\") {
+        if (s[i + 1] !== "\n") text += s[i + 1] ?? "";
+        i += 2;
+      } else if (c === "'" || (c === "$" && s[i + 1] === "'")) {
+        const ansi = c === "$";
+        i += ansi ? 2 : 1;
+        q = true;
+        while (i < s.length && s[i] !== "'") {
+          if (ansi && s[i] === "\\") text += s[i++];
+          text += s[i++] ?? "";
+        }
+        i++;
+      } else if (c === '"') {
+        i++;
+        q = true;
+        while (i < s.length && s[i] !== '"') {
+          if (s[i] === "\\") {
+            if ('"\\$`'.includes(s[i + 1])) text += s[i + 1];
+            else if (s[i + 1] !== "\n") text += s.slice(i, i + 2);
+            i += 2;
+          } else text += expansion(cmd) ?? s[i++];
+        }
+        i++;
+      } else if (c === "$" || c === "`") text += expansion(cmd) ?? s[i++];
+      else if (c === "(" && /^\w+\+?=$/.test(text)) text += balanced("(", ")");
+      else if (/[\s;&|<>()]/.test(c)) break;
+      else text += s[i++];
+    }
+    return { text, q, at };
+  }
+  function redirect(cmd, fd) {
+    const op = s.slice(i).match(/^(?:&>>?|<<<|<<-?|<>|<&|<|>>|>&|>\||>)/)[0];
+    i += op.length;
+    if ((op === "<" || op === ">") && s[i] === "(") {
+      i++;
+      const inner = list(")");
+      cmd.subs.push(...inner);
+      return;
+    }
+    while (s[i] === " " || s[i] === "\t") i++;
+    const w = word(cmd);
+    if (op === "<<" || op === "<<-") pending.push({ cmd, delim: w.text, tabs: op === "<<-" });
+    else if (op === "<<<") cmd.here += w.text;
+    else if (op.includes(">") && op !== "<>" && fd !== "2" && !(op === ">&" && /^(\d+|-)$/.test(w.text)) && !/^\/dev\/(null|stderr|stdout|tty)$/.test(w.text)) cmd.out.push(w.text);
+  }
+  function list(close) {
+    const cmds = [];
+    let cur = null, sep = "", test = false;
+    const open = () => (cur ??= { sep, words: [], subs: [], out: [], here: "", start: i, end: i });
+    const end = (next) => {
+      if (cur) cmds.push(cur);
+      // A newline after "|" or "&&" continues it.
+      if (cur || !/^(\||&&|\|\|)/.test(sep)) sep = next;
+      cur = null;
+      test = false;
+    };
+    while (i < s.length) {
+      const c = s[i];
+      if (c === "\\" && s[i + 1] === "\n") i += 2;
+      else if (c === "\n") {
+        i++;
+        end("\n");
+        heredocs();
+      } else if (/\s/.test(c)) i++;
+      else if (c === "#") while (i < s.length && s[i] !== "\n") i++;
+      else if (test && /[&|<>()]/.test(c)) i++;
+      else if (c === ")" && close) {
+        i++;
+        end("");
+        return cmds;
+      } else if (c === "(" && cur?.words.length) {
+        // f() { ... }: not a lookup.
+        cur.words.push({ text: "()", q: false, at: i });
+        balanced("(", ")");
+      } else if (c === "(" || c === ")") {
+        end(sep);
+        open().words.push({ text: c, q: false, at: i++ });
+        cur.end = i;
+        if (c === ")") end(";");
+      } else if (c === "&" && s[i + 1] === ">") redirect(open(), null);
+      else if (c === ";" || c === "&" || c === "|") {
+        const op = s.slice(i).match(/^(?:&&|\|\||\|&|;+&?|&|\|)/)[0];
+        // A pipe or && after a closing ")" or "done" follows that command, whatever ended it.
+        if (!cur && cmds.length) sep = op;
+        i += op.length;
+        end(op);
+      } else if (c === "<" || c === ">") {
+        redirect(open(), null);
+        cur.end = i;
+      } else {
+        const cmd = open();
+        const w = word(cmd);
+        if (!w.q && /^\d$/.test(w.text) && /[<>]/.test(s[i] ?? "")) redirect(cmd, w.text);
+        else {
+          cmd.words.push(w);
+          if (!w.q && w.text === "[[") test = true;
+          else if (!w.q && w.text === "]]") test = false;
+        }
+        cmd.end = i;
+      }
+    }
+    end("");
+    heredocs();
+    return cmds;
+  }
+  return list(null);
+}
+
+const OPENERS = new Set(["do", "then", "else", "elif", "if", "while", "until", "{", "(", "!", "time"]);
+const CLOSERS = new Set(["done", "fi", "}", ")", "esac"]);
+const COMPOUND = new Set(["for", "while", "until", "if", "{", "(", "case", "select"]);
+const PLUMBING = new Set(("cd pushd popd export set source . unset local declare readonly shopt pwd read exit return break continue wait trap " +
+  "true false : echo printf [ [[ test for select done fi } ) esac").split(" "));
+const FILTERS = new Set("cat head tail sort uniq wc tr cut column nl jq yq sed awk grep egrep rg less tac rev fold tee xargs".split(" "));
+const ASSIGN = /^\w+(\[[^\]]*\])?\+?=/;
+
+/** The command's own words: shell keywords, assignments and wrappers (sudo, timeout 10, env X=1) off the front. */
+function bodyOf(cmd) {
+  let w = cmd.words;
+  while (w.length) {
+    const t = w[0].q && !ASSIGN.test(w[0].text) ? null : w[0].text;
+    if (OPENERS.has(t) || ASSIGN.test(t ?? "")) w = w.slice(1);
+    else if (["sudo", "nice", "nohup", "stdbuf", "timeout", "command", "builtin", "exec", "env", "ionice"].includes(t)) {
+      if (t === "command" && /^-[vV]$/.test(w[1]?.text ?? "")) return [{ ...w[0], text: "which" }, ...w.slice(2)];
+      let k = 1;
+      while (w[k]?.text.startsWith("-")) k += /^-[nuksCcg]$/.test(w[k].text) && t !== "command" ? 2 : 1;
+      if (t === "timeout") k++;
+      if (t === "env") while (w[k] && ASSIGN.test(w[k].text)) k++;
+      if (k >= w.length && t === "env") return w.slice(0, 1);
+      w = w.slice(k);
+    } else break;
+  }
+  return w;
+}
+const baseOf = (t) => (t ?? "").replace(/^.*\//, "");
+const headOf = (cmd) => baseOf(bodyOf(cmd)[0]?.text);
+
+/** Commands one command runs: its substitutions, a `bash -c` text, what xargs, ssh or find -exec runs. */
+function nestedOf(cmd) {
+  const w = bodyOf(cmd), h = baseOf(w[0]?.text);
+  const out = [...cmd.subs];
+  const run = (ws, here = "") => ws.length && out.push({ sep: ";", words: ws, subs: [], out: [], here, start: 0, end: 0 });
+  if (/^(ba|z|da)?sh$/.test(h)) {
+    const c = w.findIndex((x, k) => k > 0 && /^-[a-z]*c$/.test(x.text));
+    if (c > 0) out.push(...shellOf(w[c + 1]?.text ?? ""));
+    else if (cmd.here) out.push(...shellOf(cmd.here));
+  } else if (h === "xargs") {
+    let k = 1;
+    while (w[k]?.text.startsWith("-")) k += /^-[IndPLsEa]$/.test(w[k].text) ? 2 : 1;
+    run(w.slice(k));
+  } else if (h === "find" || h === "fd") {
+    const ends = (t) => t === ";" || t === "+";
+    w.forEach((x, k) => {
+      if (!/^-(exec|execdir|ok|okdir|x|X)$/.test(x.text) || (h === "find" && /^-[xX]$/.test(x.text))) return;
+      const e = w.findIndex((y, j) => j > k && ends(y.text));
+      run(w.slice(k + 1, e < 0 ? undefined : e));
+    });
+  } else if (h === "ssh") out.push(...remoteOf(w, cmd.here));
+  else if ((h === "docker" || h === "podman") && execAt(w) > 0) run(w.slice(execAt(w)), cmd.here);
+  return out;
+}
+/** Where the command of `docker exec ... <container> <command>` starts in its words; 0 when it runs none. */
+function execAt(w) {
+  const e = w.findIndex((x, k) => k > 0 && x.text === "exec");
+  if (e < 0 || e > 2) return 0;
+  let k = e + 1;
+  while (w[k]?.text.startsWith("-")) k += /^(-[euw]|--(env|user|workdir))$/.test(w[k].text) ? 2 : 1;
+  return k + 1 < w.length ? k + 1 : 0;
+}
+/** What an ssh command runs on the other machine. */
+function remoteOf(w, here = "") {
+  let k = 1;
+  while (w[k]?.text.startsWith("-")) k += /^-[opilFJLRDbcEmOSWwIQ]$/.test(w[k].text) ? 2 : 1;
+  const text = w.slice(k + 1).map((x) => x.text).join(" ");
+  if (!here) return shellOf(text);
+  return !text || /^(sudo\s+)?(ba|z)?sh(\s+-\w+|\s+-)*$/.test(text) ? shellOf(here) : shellOf(`${text} <<'__ASK_KIT_HERE__'\n${here}\n__ASK_KIT_HERE__\n`);
+}
+const deep = (cmds) => cmds.flatMap((c) => [c, ...deep(nestedOf(c))]);
 
 /** A call to ask itself: ask-kit's tool under any server name, mike-ask's, or the CLI. */
 const isAsk = (tool, arg = "") =>
-  /^mcp__(.*ask.*)__ask$/.test(tool) || (tool === "Bash" && /(^|[;&|]\s*|\s)(ask-kit|ask-kit\.mjs)\s+ask\s/.test(arg));
+  /^mcp__(.*ask.*)__ask$/.test(tool) ||
+  (tool === "Bash" && /ask-kit/.test(arg) && deep(shellOf(arg)).some((c) => {
+    const w = bodyOf(c).map((x) => x.text);
+    const k = /^(node|npx|bunx?)$/.test(baseOf(w[0])) ? w.findIndex((x, j) => j > 0 && !x.startsWith("-")) : 0;
+    return /^ask-kit(\.mjs)?$/.test(baseOf(w[k])) && w[k + 1] === "ask";
+  }));
 
-function bashKind(cmd) {
-  let fam = null, look = true;
-  for (const s of segsOf(cmd)) {
-    const w = wordsOf(s);
-    const h = (w[0] || "").replace(/^.*\//, "");
-    if (SKIP.has(h)) continue;
-    if (h === "git") {
-      let i = 1;
-      while (w[i]?.startsWith("-")) i += w[i] === "-C" ? 2 : 1;
-      fam ??= "git";
-      if (!GIT_LOOK.has(w[i] || "") || /\s(add|remove|-d|-D|push|pop|drop|prune|set-url|--unset)\b/.test(s)) look = false;
-    } else if (h === "gh") {
-      fam ??= "gh";
-      if (!/\b(view|list|status|api|search|diff|checks)\b/.test(s) || /(-X|--method)\s*(POST|PATCH|PUT|DELETE)/.test(s)) look = false;
-    } else if (h === "ssh") {
-      fam ??= "machine";
-      if (/\b(restart|start|stop|rm|mv|kill|install|deploy|tee)\b|[^2]>\s*\S/.test(s)) look = false;
-    } else if (h === "curl" || h === "wget") {
-      fam ??= "machine";
-      if (/-X\s*(POST|PUT|DELETE|PATCH)|--data|\s-d\s|\s-o\s/.test(s)) look = false;
-    } else if (h === "systemctl" || h === "launchctl") {
-      fam ??= "machine";
-      if (!/\b(status|show|list-units|list-timers|is-active|is-enabled|cat|print|list)\b/.test(s)) look = false;
-    } else if (h === "docker" || h === "podman") {
-      fam ??= "machine";
-      if (!/\b(ps|logs|inspect|images|stats|top|port|version|info|events|df|ls|config)\b/.test(s) || /\b(rm|rmi|prune|run|up|down|restart|stop|start|kill|exec|build|pull|push)\b/.test(s)) look = false;
-    } else if (h === "sed") {
-      fam ??= "file";
-      if (/\s-i\b|--in-place/.test(s)) look = false;
-    } else if (h === "node" || h.startsWith("python")) {
-      fam ??= "script";
-      if (!/\s-e\s|\s-c\s|\s-p\s|<</.test(s)) look = false;
-    } else if (h === "psql" || h === "sqlite3") {
-      fam ??= "db";
-      if (/\b(insert|update|delete|drop|alter|create)\b/i.test(s)) look = false;
-    } else if (LOOK_HEADS.has(h)) {
-      fam ??= SERVICE_HEADS.has(h) ? "machine" : "file";
-      if (/[^2&]>\s*[^&\s]/.test(s) && !/>\s*\/dev\/null/.test(s)) look = false;
-    } else {
-      look = false;
-      fam ??= "other";
+// Inline node or python code that changes something.
+const CODE_WRITES = /\b(write|append|copy|cp|rename|unlink|rm|mkdir|rmdir|chmod|symlink|truncate)(File)?(Sync)\b|\b(writeFile|appendFile|unlink|rename|copyFile|createWriteStream|execSync|execFileSync|spawnSync)\s*\(|\bfs\.(promises\.)?(rm|mkdir|cp)\s*\(|\.(write_text|write_bytes|writelines|save|savefig|unlink|mkdir|touch|rename|rmdir)\s*\(|\bopen\([^)\n]*,\s*(mode\s*=\s*)?['"][rb+]*[wax]|\bos\.(remove|rename|replace|makedirs|unlink|system|kill)\b|\bshutil\.|\bsubprocess\.|\brequests\.(post|put|patch|delete)\b|\bmethod['"]?\s*[:=]\s*['"](POST|PUT|PATCH|DELETE)|\.commit\(\)/;
+const SQL_WRITES = /\b(insert\s+(or\s+\w+\s+)?into|update\s+[\w."]+\s+(as\s+\w+\s+)?set|delete\s+from|(drop|alter|create)\s+(or\s+replace\s+|unique\s+|temp(orary)?\s+|materialized\s+)*(table|index|view|database|schema|role|user|function|extension|trigger|type|sequence)|truncate\s|replace\s+into|vacuum|reindex)/i;
+
+/** One command: {look, fam, plain}. `plain` is one that looks nothing up (cd, echo, a loop keyword). */
+function kindOf(cmd) {
+  const ws = bodyOf(cmd), h = baseOf(ws[0]?.text);
+  const bare = ws.slice(1).filter((x) => !x.q).map((x) => x.text);
+  const all = ws.map((x) => x.text);
+  const has = (re) => bare.some((x) => re.test(x));
+  const nested = nestedOf(cmd).map(kindOf);
+  const inner = nested.filter((n) => !n.plain);
+  if (cmd.out.length || nested.some((n) => !n.look)) return { look: false, fam: "other", plain: false };
+  const plain = !h || (PLUMBING.has(h) && !ws[0].q);
+  if (plain) return { look: true, fam: inner[0]?.fam ?? "file", plain: !inner.length };
+  const is = (fam, look = true) => ({ look, fam, plain: false });
+  if (h === "git") {
+    let i = 1;
+    while (all[i]?.startsWith("-")) i += /^-[Cc]$/.test(all[i]) ? 2 : 1;
+    const sub = all[i] || (has(/^--version$/) ? "log" : "");
+    if (!GIT_LOOK.has(sub)) return is("git", false);
+    if (sub === "fetch") return { look: true, fam: "git", plain: true }; // reads nothing to the caller by itself
+    if (sub === "stash") return is("git", /^(list|show)$/.test(all[i + 1] ?? ""));
+    return is("git", !(/^(branch|tag|remote|worktree|config|reflog)$/.test(sub) && has(/^(add|remove|rm|-d|-D|-m|-M|--delete|push|pop|drop|prune|delete|expire|set-url|rename|--unset|--add|--replace-all)$/)));
+  }
+  if (h === "gh") {
+    const method = all.some((x, k) => /^(-X|--method)=?(POST|PATCH|PUT|DELETE)$/i.test(x) || (/^(-X|--method)$/.test(x) && /^(POST|PATCH|PUT|DELETE)$/i.test(all[k + 1] ?? "")));
+    return is("gh", has(/^(view|list|status|api|search|diff|checks|--version)$/) && !method && !all.some((x) => /^(query=)?\s*mutation\b/.test(x)));
+  }
+  if (h === "ssh") return is("machine");
+  if (h === "curl" || h === "wget") {
+    const method = all.some((x, k) => /^(-X|--request=?)(POST|PUT|DELETE|PATCH)$/i.test(x) || (/^(-X|--request|-\w*X)$/.test(x) && /^(POST|PUT|DELETE|PATCH)$/i.test(all[k + 1] ?? "")));
+    const saves = all.some((x, k) => /^-[a-zA-Z]*[oO]$/.test(x) && all[k + 1] !== "/dev/null" && all[k + 1] !== "-" && !(h === "wget" && x === "-qO-"));
+    return is("machine", !method && !saves && !has(/^(--data|-d$|-F$|--form|-T$|--upload-file|--output$)/));
+  }
+  if (h === "systemctl" || h === "launchctl") return is("machine", has(/^(status|show|list-units|list-unit-files|list-timers|is-active|is-enabled|is-failed|cat|print|list|--failed)$/) && !has(/^(restart|start|stop|enable|disable|kill|daemon-reload|reload|mask|unmask|reset-failed|bootstrap|bootout|kickstart)$/));
+  if ((h === "docker" || h === "podman") && inner.length && execAt(ws) > 0) return is(inner.at(-1).fam);
+  if (h === "docker" || h === "podman") return is("machine", has(/^(ps|logs|inspect|images|stats|top|port|version|info|events|df|ls|config)$/) && !has(/^(rm|rmi|prune|run|up|down|restart|stop|start|kill|exec|build|pull|push)$/));
+  if (h === "sed") return is("file", !has(/^(-[nErsz]*i|--in-place)/));
+  if (h === "node" || h.startsWith("python")) {
+    const k = all.findIndex((x, j) => j > 0 && !x.startsWith("-"));
+    const flags = all.slice(1, k < 0 ? undefined : k);
+    if (flags.some((x) => /^(--version|-V|-v)$/.test(x)) || (flags.at(-1) === "-m" && all[k] === "json.tool")) return is("script");
+    const inline = flags.some((x) => /^(-[a-zA-Z]*[ecp]|--eval|--print)$/.test(x));
+    return is("script", (inline || (cmd.here !== "" && k < 0) || (cmd.here !== "" && flags.includes("-"))) && !CODE_WRITES.test(all.join(" ") + "\n" + cmd.here));
+  }
+  if (h === "psql" || h === "sqlite3") return is("db", !has(/^-f$|^--file/) && !SQL_WRITES.test(all.join(" ") + "\n" + cmd.here));
+  if (h === "cargo") return is("script", has(/^(tree|metadata|search|info|pkgid|locate-project|--version|-V|--list)$/) && !has(/^(build|run|test|install|add|publish)$/));
+  if (/^(ba|z|da)?sh$/.test(h) || h === "xargs") return inner.length || (h === "xargs" && !nested.length) ? is(inner[0]?.fam ?? "file") : is("other", false);
+  if ((h === "find" || h === "fd") && has(/^-(delete|fprint)/)) return is("file", false);
+  if (/^g?awk$/.test(h) && all.some((x) => /\bprint[^;}]*>\s*["\w]|\bsystem\s*\(/.test(x)) && !all.some((x) => /\(.*[<>].*\)\s*\?|\/dev\/stderr/.test(x))) return is("file", false);
+  if (LOOK_HEADS.has(h) || h === "gawk") return is(SERVICE_HEADS.has(h) ? "machine" : "file");
+  return is("other", false);
+}
+
+/** A Bash call as its pipelines: [{cmds, kinds, arg, dir}]. A loop fed by a pipe is part of that pipeline. */
+function pipelinesOf(cmd) {
+  const out = [];
+  let dir = null, depth = 0, piped = -1;
+  for (const c of shellOf(cmd)) {
+    const lead = c.words.filter((x) => !x.q).map((x) => x.text);
+    const closes = CLOSERS.has(lead[0]);
+    const opens = lead.slice(0, 1 + lead.findIndex((x) => !OPENERS.has(x))).concat(lead[0] ?? []).filter((x, k, a) => a.indexOf(x) === k && COMPOUND.has(x)).length;
+    const pipe = c.sep === "|" || c.sep === "|&";
+    if (out.length && (pipe || closes || piped >= 0)) out.at(-1).cmds.push(c);
+    else out.push({ cmds: [c], dir });
+    if (pipe && opens && piped < 0) piped = depth;
+    depth += opens;
+    if (closes) depth = Math.max(0, depth - 1);
+    if (piped >= 0 && depth <= piped) piped = -1;
+    const w = bodyOf(c);
+    if (baseOf(w[0]?.text) === "cd" && w[1] && !pipe) {
+      const to = w[1].text;
+      dir = /[$`]/.test(to) ? null : /^[/~]/.test(to) || !dir ? to : path.join(dir, to);
     }
   }
-  return { look, fam: fam ?? "file" };
+  for (const p of out) {
+    const first = p.cmds[0];
+    const at = first.words.find((x) => x.q || !(OPENERS.has(x.text) || CLOSERS.has(x.text)))?.at ?? first.start;
+    p.arg = [cmd.slice(at, p.cmds.at(-1).end).trim(), ...p.cmds.map((c) => c.here).filter((h) => h.includes("\n") && !cmd.slice(at, p.cmds.at(-1).end).includes(h.trim())).map((h) => h.trimEnd())].join("\n");
+    p.kinds = p.cmds.map(kindOf);
+    p.real = p.cmds.map((c, k) => ({ c, ...p.kinds[k] })).filter((x) => !x.plain);
+    // `echo text | jq .` reads nothing the caller did not already have.
+    const says = /^(echo|printf)$/.test(headOf(first)) && p.kinds[0].plain;
+    p.counts = p.real.length > 0 && !(says && p.real.every((x) => FILTERS.has(headOf(x.c)) && !x.c.subs.length && headOf(x.c) !== "xargs"));
+  }
+  return out;
+}
+
+function bashKind(cmd) {
+  const ps = pipelinesOf(cmd);
+  const look = ps.every((p) => p.kinds.every((k) => k.look));
+  return { look, fam: (ps.find((p) => p.counts) ?? ps.find((p) => p.real.length))?.real[0].fam ?? "file", ps };
+}
+
+/**
+ * The separate lookups one call makes: [{arg, fam}], and `dir` when a `cd` before it moved. Commands
+ * joined by &&, ||, ; or a newline are separate, a pipeline is one, and cd, export, echo and the
+ * like are none. A call that changes anything, or is not a lookup, has none.
+ */
+export function lookupsOf(tool, arg = "") {
+  const c = classify(tool, arg);
+  if (c.k !== "look") return [];
+  if (tool !== "Bash") return [{ arg, fam: c.fam }];
+  return pipelinesOf(arg).filter((p) => p.counts).map((p) => ({ arg: p.arg, fam: p.real[0].fam, ...(p.dir ? { dir: p.dir } : {}) }));
 }
 
 /** {k: look|write|act|ask|agent|neutral|other, fam?} for one tool use. */
@@ -214,9 +522,11 @@ export function classify(tool, arg = "") {
 /** A normalised form of one lookup, so the same kind of command counts once. */
 export function shapeOf(tool, arg = "") {
   if (tool !== "Bash") return tool.startsWith("mcp__") ? tool.replace(/^mcp__(.+?)__/, "$1:") : tool;
-  const s = segsOf(arg).find((x) => !SKIP.has(wordsOf(x)[0])) || "";
-  const w = wordsOf(s);
-  const h = (w[0] || "").replace(/^.*\//, "");
+  const ps = pipelinesOf(arg);
+  const cmd = ((ps.find((p) => p.counts) ?? ps.find((p) => p.real.length))?.real[0] ?? {}).c;
+  const w = cmd ? bodyOf(cmd).map((x) => x.text) : [];
+  const s = w.join(" ");
+  const h = baseOf(w[0]);
   if (h === "git") {
     let i = 1;
     while (w[i]?.startsWith("-")) i += w[i] === "-C" ? 2 : 1;
@@ -370,9 +680,10 @@ export function targetOf(u, rules, repo) {
   }
   if (u.tool.startsWith("Web")) return "web";
   if (u.tool === "Bash") {
-    const heads = segsOf(u.arg).map(headOf).filter((h) => !SKIP.has(h));
-    // A command run over ssh counts by what it runs there.
-    const inner = heads.includes("ssh") ? segsOf(u.arg.replace(/^.*?\bssh\s+(\S+\s+)*?['"]?/, "")).map(headOf) : [];
+    const cmds = shellOf(u.arg);
+    const heads = cmds.flatMap((c) => [headOf(c), ...deep(c.subs).map(headOf)]).filter((h) => h && !PLUMBING.has(h));
+    // A command run over ssh, or by bash -c or xargs, counts by what it runs.
+    const inner = cmds.flatMap((c) => (c.subs.length ? [] : deep(nestedOf(c)).map(headOf)));
     for (const h of [...inner, ...heads]) {
       if (h === "curl" || h === "wget") return /localhost|127\.0\.0\.1|\[::1\]/.test(u.arg) ? "local http" : "web";
       const t = rules.programs[h];
@@ -464,10 +775,15 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
     const c = classify(u.tool, u.arg);
     if (c.k === "neutral") continue;
     if (c.k === "look") {
+      const looks = lookupsOf(u.tool, u.arg);
+      if (!looks.length) continue; // only cd or echo
       cur ??= { id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, cwd, uses: [] };
-      cur.uses.push({ tool: u.tool, fam: c.fam, shape: shapeOf(u.tool, u.arg), arg: u.arg, paths: pathsOf(u.tool, u.arg, cwd), req: u.req, chars: u.chars });
+      for (const l of looks) {
+        const dir = !l.dir ? cwd : /^[/~]/.test(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
+        cur.uses.push({ tool: u.tool, fam: l.fam, shape: shapeOf(u.tool, l.arg), arg: l.arg, paths: pathsOf(u.tool, l.arg, dir), req: u.req, chars: Math.round(u.chars / looks.length) });
+      }
       cur.lastTs = u.ts;
-      run++;
+      run += looks.length;
       continue;
     }
     if (c.k === "ask") asks.push({ id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, req: u.req, after: run });

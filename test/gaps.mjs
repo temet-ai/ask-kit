@@ -129,7 +129,7 @@ claudeSession("33333333-cccc-4000-8000-000000000003", path.join(tmp, "state", "w
   ]));
 }
 
-const { scan, report, callsOf, classify, formatReport } = await import("../src/gaps.mjs");
+const { scan, report, callsOf, classify, lookupsOf, formatReport } = await import("../src/gaps.mjs");
 
 // The pieces on their own.
 assert.deepEqual(callsOf({ tool: "exec", text: 'tools.exec_command({cmd:"git log -3",workdir:"/w"}); tools.apply_patch("*** Begin Patch\\n*** Update File: a.js\\n")' }), [
@@ -142,6 +142,95 @@ for (const t of ["mcp__ask__ask", "mcp__mike-ask__ask", "mcp__plugin_ask-kit_ask
 assert.equal(classify("Bash", 'ask-kit ask "why"').k, "ask");
 assert.equal(classify("Bash", "git push").k, "act");
 assert.equal(classify("Bash", "gh pr list").k, "look");
+
+// Quoted text, heredocs and substitutions are read as the shell reads them.
+const look = (cmd) => assert.equal(classify("Bash", cmd).k, "look", cmd);
+const act = (cmd) => {
+  assert.equal(classify("Bash", cmd).k, "act", cmd);
+  assert.deepEqual(lookupsOf("Bash", cmd), [], cmd);
+};
+const args = (cmd) => lookupsOf("Bash", cmd).map((l) => l.arg);
+for (const cmd of [
+  'rg -n "a|b" src',
+  "rg -n 'vimes && carrot; nobby || colon' src | head -5",
+  'rg -n "vimes\ncarrot" -U src',
+  'rg -n "vimes\\"|rm -rf" src',
+  "rg -n a\\|b src",
+  'grep -n "> /watch/rota" notes.txt 2>&1 | head',
+  'grep -n "x" "$(git ls-files | grep "rota|duty")" 2>/dev/null',
+  "awk '$3 > 5 {print $1}' rota.txt",
+  "awk '{print}' rota.txt # ; rm rota.txt",
+  "git grep -n remove src",
+  `jq '.watch[] | select(.name=="Vimes" or .rank>3)' rota.json`,
+  "cat <<'EOF'\nrm -rf rota; git push | tee x > y\nEOF\nrg duty src",
+  "python3 - <<'EOF'\nimport json; print(json.load(open('rota.json'))['a'] > 3)\nEOF",
+  `node -e 'const r = require("./rota.json"); console.log(r.a | 1)'`,
+  `psql -c "select name from watch where note like '%update%;'"`,
+  "ssh pseudopolis-yard 'git log -3; uptime | cut -c1-80'",
+  "for f in src/*.js; do head -3 $f; done",
+  "ls src | while read f; do wc -l $f; done",
+  "diff <(git show a:rota) <(git show b:rota)",
+  "find src -name '*.js' -exec grep -n duty {} \\;",
+  "rg -l duty | xargs sed -n 1,5p",
+  "[[ 3 > 2 && -f rota.js ]] && cat rota.js",
+  'docker exec palace-db psql -c "select 1"',
+  "timeout 10 rg duty src",
+  'rg "ask-kit ask " docs',
+])
+  look(cmd);
+for (const cmd of [
+  "rg duty src | tee out.txt",
+  "rg duty src > out.txt",
+  "rg duty src >> out.txt 2>&1",
+  "git show HEAD:rota.js > rota.js",
+  "cat > rota.js <<'EOF'\nrg duty\nEOF",
+  "sed -i s/a/b/ rota.js",
+  "sed -Ei 's/a|b/c/' rota.js",
+  'rg duty src && git commit -m "a | b"',
+  "rg duty src\nrm rota.js",
+  "rg duty src; echo $(rm rota.js)",
+  'echo "$(git push)"',
+  "bash -c 'rm rota.js'",
+  "bash <<'EOF'\nrm rota.js\nEOF",
+  "python3 - <<'EOF'\nopen('rota.js', 'w').write('x')\nEOF",
+  `node -e 'require("fs").writeFileSync("a", "b")'`,
+  `psql -c "delete from watch where name = 'Nobby'"`,
+  "ssh pseudopolis-yard 'systemctl restart clacks'",
+  "rg -l duty | xargs rm",
+  "find . -name '*.tmp' -delete",
+  "for f in *.tmp; do rm $f; done",
+  'gh pr comment 12 --body "please view the list"',
+  "git branch -D night-shift",
+])
+  act(cmd);
+
+assert.deepEqual(lookupsOf("Read", "/w/rota.js"), [{ arg: "/w/rota.js", fam: "file" }]);
+assert.deepEqual(lookupsOf("Edit", "/w/rota.js"), []);
+assert.deepEqual(lookupsOf("Bash", "cd /w && rg -n 'duty|shift' src | head -20; git log -3\ndocker ps || df -h"), [
+  { arg: "rg -n 'duty|shift' src | head -20", fam: "file", dir: "/w" },
+  { arg: "git log -3", fam: "git", dir: "/w" },
+  { arg: "docker ps", fam: "machine", dir: "/w" },
+  { arg: "df -h", fam: "machine", dir: "/w" },
+]);
+assert.deepEqual(args("cat a.js | sort | uniq -c | sort -rn"), ["cat a.js | sort | uniq -c | sort -rn"]);
+assert.deepEqual(args('export A=1; cd /w; echo "== rota"; printf "a|b\\n"; pwd; true'), [], "cd, export and echo are none");
+assert.deepEqual(args("echo '{\"a\":1}' | jq .a"), []);
+assert.deepEqual(args('echo ---; cat a.js; echo "--- b; c"; cat b.js'), ["cat a.js", "cat b.js"]);
+assert.deepEqual(args("rg -l duty | while read f; do head -1 $f; tail -1 $f; done | sort; git status"), ["rg -l duty | while read f; do head -1 $f; tail -1 $f; done | sort", "git status"], "a loop fed by a pipe is its pipeline");
+assert.deepEqual(args("rg duty \\\n  src |\n  head"), ["rg duty \\\n  src |\n  head"], "a continued line");
+assert.deepEqual(args("rg duty src &&\n git log -1"), ["rg duty src", "git log -1"]);
+assert.deepEqual(args("sqlite3 rota.db <<'EOF'\nselect 1; select 2;\nEOF\ncat a.js").length, 2);
+assert.deepEqual(args('echo "$(git log -1)"'), ['echo "$(git log -1)"'], "a lookup inside an echo");
+for (const cut of ['rg "duty', "rg $(git log", "cat <<'EOF'\nrota", "rg ${a", "echo `ls", "("]) lookupsOf("Bash", cut);
+
+// A Bash call with three lookups is a chain by itself; cd and echo neither count nor break one.
+const { buildChains } = await import("../src/gaps.mjs");
+const use = (arg) => ({ turn: 0, prompt: "Where is the night rota?", ts: "2026-11-18T00:00:00Z", tool: "Bash", arg, req: arg, chars: 300 });
+const batched = buildChains([use("cd notes && cat a.md; rg 'duty|rota' x.md; git log -2")], { cwd: "/w" }).chains;
+assert.equal(batched.length, 1);
+assert.deepEqual(batched[0].uses.map((u) => [u.fam, u.shape, u.chars, u.paths]), [["file", "cat", 100, ["/w/notes/a.md"]], ["file", "rg", 100, ["/w/notes/x.md"]], ["git", "git log", 100, []]]);
+assert.equal(buildChains([use("cat a.md | sort | uniq | head")]).chains.length, 0, "a pipeline counts once");
+assert.equal(buildChains([use("cat a.md"), use("echo ok"), use("cat b.md; cat c.md")]).chains[0].uses.length, 3);
 
 const sc = await scan({ since: "30d" });
 const byPrompt = (re) => sc.chains.filter((c) => re.test(c.prompt));
