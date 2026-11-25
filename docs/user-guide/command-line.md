@@ -90,16 +90,26 @@ whole report as JSON.
 ### Nudges from the Claude Code plugin
 
 The plugin has a PostToolUse hook (`ask-kit plugin tool`) that counts an agent's lookups in a row,
-using the same classification as the chains above. After the third lookup that `ask` could have
-answered it adds one line to the agent's context and does not repeat it within that chain:
+using the same classification as the chains above. Each lookup inside a Bash call counts, and a
+pipeline counts once. At the third that `ask` could have answered it adds one line to the agent's
+context and does not repeat it within that chain:
 
 ```
-ask-kit: that is 3 lookups in a row. `ask` (about: "code") answers a question like this outside your context in one call; give it the whole question, and use continue: true to follow up.
+ask-kit: that is 3 lookups in a row (rg x2, git log). One call answers the question behind them outside your context, with its evidence: ask({ about: "code", question: "<the whole question these lookups were for>" }). Add continue: true to follow up.
 ```
 
-The `about` is `code`, `sessions` (a transcript path), `github` (`gh`), `postgres`, `docker`,
-`systemd`, `ops` (other machine lookups) or `mike`. Web pages and other MCP reads neither count nor
-reset the chain. A call to `ask`, an edit or write, or a command that changes something resets it.
+The `about` is the enabled domain or kit that fits most of the chain (a tie goes to the latest
+lookup). A lookup goes by, in order:
+
+- the program it runs (`git log` to `git`, `cargo tree` to `rust`, `sqlite3` to `sqlite`, and a
+  program only one enabled kit lists in `requires` to that kit) or its MCP server;
+- the kit whose folder source holds the file;
+- what the file is (a database, a log, a data file, a test, a transcript, Claude Code's settings);
+- `code` inside a repository, `files` outside one.
+
+A kit that is off, not in the config or unable to run here is never named. Lookups no enabled kit
+answers neither count nor reset the chain, and before setup there is no nudge. A call to `ask`, an
+edit or write, or a command that changes something resets it.
 The hook never blocks a call, runs no model and makes no network call, and prints nothing when its
 input or state file is broken. A subagent's tool calls fire the same hook with their own counter.
 

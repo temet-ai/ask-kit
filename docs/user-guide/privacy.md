@@ -58,7 +58,8 @@ that CLI's service under its own terms, and the sessions appear in its history.
   `~/.local/state/ask-kit/index/gaps.json`: time, kit, area, token count and the first 200
   characters of the prompt. It sends nothing.
 - With the Claude Code plugin, in `~/.local/state/ask-kit/nudges/`: a counter file per session (and
-  per subagent) holding how many lookups in a row it has made, and `nudges.jsonl`, one line each
+  per subagent) holding how many lookups in a row it has made, their kinds (`rg`, `git log`, `Read`) and which
+  kits would answer them, and `nudges.jsonl`, one line each
   time the hook told an agent to use `ask`: time, session id, subagent type, the `about` named, the
   kind of lookup and the count. No command, path or prompt is kept. Counter files older than a
   week are removed. It sends nothing.
