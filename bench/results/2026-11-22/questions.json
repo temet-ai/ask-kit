@@ -1,0 +1,276 @@
+{
+  "about": "ask-kit's public benchmark questions, built 2026-11-18. They are real questions about real work: sessions on the omarchy repo (one person's desktop config: Hyprland, the bar and dock, Herdr layouts and mods, keyboard setup), that repo's code, and ask-kit's own code. Every expected answer was read by hand in the source named in `source` (a transcript event or a source line) before it was graded. A further 18 questions, about client work and other private repositories, were run the same way but are kept out of this repository (bench/private/, git-ignored).",
+  "repos": {
+    "ask-kit": "b6c1e5f",
+    "omarchy": "a8f0d21"
+  },
+  "sessionsNote": " (Ignore sessions 96f346df and 9ab9c8fc, and any session working on ask-kit's bench/ folder: they are the benchmark asking these questions.)",
+  "questions": [
+    {
+      "id": "s03-quickshell-crash",
+      "domain": "sessions",
+      "agent": "codex",
+      "question": "A Codex session on 13 November 2026 investigated quickshell crashes. What did it find was the culprit, and what was changed?",
+      "expected": "ODock's running-apps list: its model rows hold an invalid pointer to an application entry (__entry) and Qt crashes converting the row. ODock's running-apps ('show running apps') section was turned off, keeping the pinned dock items.",
+      "facts": [
+        "ODock running-apps list",
+        "running-apps section turned off"
+      ],
+      "source": "Codex rollout 01a1d49f (2026-11-13), assistant messages at lines 265 and 299"
+    },
+    {
+      "id": "s03f-pinned-items",
+      "domain": "sessions",
+      "agent": "codex",
+      "followupOf": "s03-quickshell-crash",
+      "question": "After that change, how many pinned items did the dock show?",
+      "expected": "10 pinned items.",
+      "facts": [
+        "10"
+      ],
+      "source": "Codex rollout 01a1d49f, assistant message at line 299"
+    },
+    {
+      "id": "s04-mac-keyboard",
+      "domain": "sessions",
+      "agent": "codex",
+      "question": "A Codex session on 16 November 2026 fixed the Mac's keyboard setup so it matches the Linux machine. What did it change, and which keyboard mode did it say to keep?",
+      "expected": "Restored Karabiner, added Keychron-specific Control shortcuts and text navigation, aligned Herdr's main keys with the Linux machine; keep the Keychron in Windows mode through the KVM. Ghostty needed a manual reload.",
+      "facts": [
+        "Karabiner restored/rebuilt",
+        "Keychron kept in Windows mode"
+      ],
+      "source": "Codex rollout 01a1e59b (2026-11-16), assistant message at line 352"
+    },
+    {
+      "id": "s09-herdr-vs-orca",
+      "domain": "sessions",
+      "agent": "claude-code",
+      "question": "A Claude Code session compared the Herdr app with Orca (orca.dev). Do they share foundations, and what is each built on?",
+      "expected": "No. Herdr: Rust with GPUI (Zed's native UI framework, GPU via wgpu), terminal drawn natively. Orca: TypeScript on Electron (Chromium, React, Tailwind), xterm.js terminal on node-pty, Monaco editor.",
+      "facts": [
+        "they do not share foundations",
+        "Herdr: Rust + GPUI",
+        "Orca: Electron/TypeScript"
+      ],
+      "source": "Claude Code session da3cef56 (omarchy, 2026-11-16), assistant message at line 200"
+    },
+    {
+      "id": "s10-herdr-sounds",
+      "domain": "sessions",
+      "agent": "claude-code",
+      "question": "On 17 November 2026 a Claude Code session made Herdr's agent alert sounds less intrusive. What do the two sounds play now, and how is the 'finished' toast handled?",
+      "expected": "Finished: one low note (D4) fading in, about half a second; Needs you: two low notes rising C4 to E4, just under a second; bright upper tones filtered out. The 'finished' toast is quiet (no popup) through the quiet-toast mod (\"toast\": \"quiet-toast\" in main-plus).",
+      "facts": [
+        "finished = one low D4 note",
+        "needs-you = C4 rising to E4",
+        "quiet-toast mod"
+      ],
+      "source": "Claude Code session 0d75168a (omarchy, 2026-11-17), assistant messages at lines 303 and 318"
+    },
+    {
+      "id": "n01-hypr-pairs",
+      "domain": "sessions",
+      "agent": "claude-code",
+      "question": "On 16 November 2026 a Claude Code session in the omarchy repo rebuilt the dual-monitor workspace-pair code. Where did the pair code move, and why did that stop SUPER+TAB and SUPER+scroll from breaking?",
+      "expected": "Out of bindings.lua into its own file, ~/.config/hypr/pairs.lua, which hyprland.lua loads last. hyprmoncfg had been rebinding SUPER+TAB and SUPER+scroll to one-monitor versions; loaded last, the pair keys win again.",
+      "facts": [
+        "moved into its own file pairs.lua",
+        "loaded last, so hyprmoncfg can no longer override the keys"
+      ],
+      "source": "Claude Code session 2a9c0ad0 (omarchy, 2026-11-16), assistant messages at lines 438 and 671"
+    },
+    {
+      "id": "n02-herdr-icon",
+      "domain": "sessions",
+      "agent": "claude-code",
+      "question": "On 16 November 2026 a Claude Code session gave the omarchy folder in Herdr's sidebar a new icon. What is the icon, and where was the file put?",
+      "expected": "The Omarchy logo in the lavender accent colour, drawn by hand (the repo has no logo) as a 64 px PNG at ~/.config/herdr-app/mods/spaces-agents/projects/omarchy.png.",
+      "facts": [
+        "the Omarchy logo (lavender accent)",
+        "a PNG at ~/.config/herdr-app/mods/spaces-agents/projects/omarchy.png"
+      ],
+      "source": "Claude Code session 40632810 (omarchy, 2026-11-16), assistant message at line 135"
+    },
+    {
+      "id": "n02f-herdr-mods-css",
+      "domain": "sessions",
+      "agent": "claude-code",
+      "followupOf": "n02-herdr-icon",
+      "question": "Later in that same session, what did it say Herdr mods are built with? Is there CSS?",
+      "expected": "No CSS. Herdr mods are JavaScript that build the UI with GPUI, Zed's native Rust UI toolkit, through chained Tailwind-style calls (h_flex().px(10).rounded(6)...); the app draws natively, with a small fixed set of native animations.",
+      "facts": [
+        "no CSS",
+        "JavaScript building the UI with GPUI"
+      ],
+      "source": "Claude Code session 40632810, assistant message at line 1024"
+    },
+    {
+      "id": "n03-tab-label",
+      "domain": "sessions",
+      "agent": "claude-code",
+      "question": "On 17 November 2026 a Claude Code session fixed Herdr's sidebar showing the same label for two agent sessions instead of their titles. What label did they show, and why?",
+      "expected": "Two sessions that day fixed this; either is right. (a) eb909958 (morning): \"tab 3\". Both sessions were in one tab named \"tab 3\", and when a tab had a name, Raster (the sidebar mod) used it as the label for every agent in that tab, hiding each session's own title. (b) ce5d4814 (afternoon): \"Claude Code\". Raster labels an agent by its terminal title, and sessions launched with their first prompt as mail never got a task title, so the title stayed \"Claude Code\"; fixed by naming the session at launch (claude -n) and a Raster statusDir prop that reads the saved session_name.",
+      "facts": [
+        "the label, matching one real fix: \"tab 3\" or \"Claude Code\"",
+        "the matching cause: a named tab's name used for every agent in it, or the terminal title being just \"Claude Code\""
+      ],
+      "source": "Claude Code sessions eb909958 (omarchy, 2026-11-17 06:57 UTC), line 149; ce5d4814 (omarchy, 2026-11-17 13:13 UTC), lines 78, 159, 281. Widened after the runs: Codex found ce5d4814, which the original expected answer missed."
+    },
+    {
+      "id": "n04-dock-clocks",
+      "domain": "sessions",
+      "agent": "codex",
+      "question": "On 2 November 2026 a Codex session in the omarchy repo looked at why the bar was hard to read and why there were two clocks. What were the causes, and what did it set up instead?",
+      "expected": "The bar was set to transparent, so the wallpaper washed out the text, and two time displays were on (Omarchy's clock and OmaDash; it first named OmaClock, then corrected itself). It set up a solid top bar with one centred clock and a separate bottom dock (ODock) with larger icons and hover magnification.",
+      "facts": [
+        "transparent bar",
+        "two clock widgets enabled",
+        "solid top bar plus a separate bottom dock (ODock)"
+      ],
+      "source": "Codex rollout 01a19b71 (omarchy, 2026-11-02), assistant messages at lines 52, 94 and 144"
+    },
+    {
+      "id": "h05-karabiner",
+      "domain": "sessions",
+      "tier": "undated",
+      "pairsWith": "s04-mac-keyboard",
+      "question": "Which agent and session fixed the Mac's Karabiner setup, and which mode did it say to keep the Keychron keyboard in?",
+      "expected": "Codex session 01a1e59b (16 November 2026, omarchy): restored Karabiner with Keychron-specific Control shortcuts; keep the Keychron in Windows mode through the KVM.",
+      "facts": [
+        "Codex",
+        "session 01a1e59b",
+        "Windows mode"
+      ],
+      "source": "Codex rollout 01a1e59b (2026-11-16), assistant message at line 352"
+    },
+    {
+      "id": "h06-herdr-editor",
+      "domain": "sessions",
+      "tier": "undated",
+      "question": "Have we ever looked at turning Herdr into a code editor? What did that session say already exists for it?",
+      "expected": "Yes, in more than one Claude Code session (omarchy). da3cef56 (16 Nov, Herdr vs Orca): Herdr's copy of gpui-kit already has an Editor/EditorState element (syntax highlighting, line numbers, folding, undo) and safe file saving; editing just is not switched on. 8114aa7f (11 Nov, Herdr gallery): Files and Changes panels, a built-in code viewer with syntax highlighting and folding, and gallery mods such as herdr-nvim. 18496e3e (17 Nov): Ctrl-clickable paths already exist; a viewer/editor app ('lens') was planned and parked.",
+      "facts": [
+        "names a real session that looked at Herdr as an editor or code viewer",
+        "says correctly what that session found already exists"
+      ],
+      "source": "Claude Code sessions da3cef56 (line 227), 8114aa7f (first user message, assistant message 24), 18496e3e (user message 7, lens plan). Widened after the first runs: the investigators found 8114aa7f and 18496e3e, which the original expected answer missed."
+    },
+    {
+      "id": "n05-agent-crashed-shell",
+      "domain": "sessions",
+      "tier": "undated",
+      "question": "Did an agent ever make quickshell crash while it was changing the desktop? What was it doing at the time, and what was done about it?",
+      "expected": "Yes, at least three times. (c) Claude Code 8114aa7f, 11 November 2026: while adding its own phone widget (unit.phone) to the Omarchy bar, the shell crashed and kept crashing; it stopped everything it had started and the bar came back. (a) Codex 01a19b71, 2 November 2026: while editing the new dock (ODock) and restarting the shell, quickshell crashed five times around 11:32; the user told it to stop and it checked the crash reports read-only (the same ODock crashes were later traced to its running-apps list). (b) Claude Code de190c0e, 12 November 2026: to make Super+Space open a typed location, it swapped in its own copy of the Omarchy menu, quickshell crashed three times, and it removed the copy and put the bar back.",
+      "facts": [
+        "names a real occasion: the 2 Nov dock (ODock) edits, the 11 Nov phone widget, or the 12 Nov copy of the Omarchy menu for Super+Space",
+        "says what was done about it (stopped and read the crash reports, stopped what it had started, or removed the copy)"
+      ],
+      "source": "Codex rollout 01a19b71 (2026-11-02), lines 605-666; Claude Code session de190c0e (omarchy, 2026-11-12), assistant messages at lines 430 and 450 (both found before any run); Claude Code session 8114aa7f (omarchy, 2026-11-11), assistant messages at lines 2867 and 2999 (found by the baseline and glm, added after the runs)."
+    },
+    {
+      "id": "k01-loop-limits",
+      "domain": "code",
+      "repo": "ask-kit",
+      "question": "In the API investigator loop, what bounds a run (is there a step limit?), what are the per-cell time limit, the reserved closing time and the wrap-up point, and what happens when the investigator runs out of time?",
+      "expected": "No step limit: time is the only budget, with the repeat guard ending a run that keeps getting the same result. CELL_MAX_S = 60, RESERVE_MS = 15_000, WRAP_MS = 30_000 (src/ask.mjs:28-31): with 30 s left each result tells it to answer now. Out of time, one more call without tools asks for what it found; the answer is marked partial with '[not finished: ask again with continue: true ...]' (src/ask.mjs:560, 576).",
+      "facts": [
+        "no step limit, time only",
+        "60 s per cell",
+        "15 s reserve",
+        "30 s wrap-up",
+        "final no-tool call, answer marked not finished / partial"
+      ],
+      "source": "ask-kit src/ask.mjs:28-31, 560, 576"
+    },
+    {
+      "id": "k02-claude-fork",
+      "domain": "code",
+      "repo": "ask-kit",
+      "question": "How does the claude-cli backend avoid paying for the instructions on every question, and when does it re-warm?",
+      "expected": "It warms once (claude -p with the domain's prime prompt), saves the warm session id, then runs each question as `--resume <warm> --fork-session`; a follow-up resumes the previous inner session. The warm session is reused while the prefix fingerprint (sha of instructions, scripts, API doc, server code and backend config) is unchanged; a change re-warms. The warm cost is subtracted from the fork's reported cost.",
+      "facts": [
+        "warm once, then --resume <warm> --fork-session per question",
+        "re-warms when the fingerprint of instructions/scripts/server/backend changes"
+      ],
+      "source": "ask-kit src/ask.mjs:7, 70, 138-160"
+    },
+    {
+      "id": "k03-router",
+      "domain": "code",
+      "repo": "ask-kit",
+      "question": "How does the router decide which domain answers an ask, in order?",
+      "expected": "1) the caller's `about`; 2) a follow-up goes where the last question went; 3) one call to config.router.backend (an api backend answering with a word); 4) keyword RULES as fallback, else the first enabled domain.",
+      "facts": [
+        "caller's `about` first",
+        "follow-up goes to the last domain",
+        "router model call",
+        "keyword rules fallback / first enabled domain"
+      ],
+      "source": "ask-kit src/router.mjs:7-8, 23-33, 123-135"
+    },
+    {
+      "id": "k04-env-strip",
+      "domain": "code",
+      "repo": "ask-kit",
+      "question": "Which environment variables does ask-kit remove from the environment of child processes it starts, and why?",
+      "expected": "ASK_KIT_SESSION, CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID, CODEX_SESSION_ID, COPILOT_SESSION_ID, ASK_KIT_INNER, ASK_KIT_CALLER, ASK_KIT_INHERIT, so child processes never get the calling session's id and cannot write into its REPL state.",
+      "facts": [
+        "the session-id variables (ASK_KIT_SESSION, CLAUDE_CODE_SESSION_ID, CODEX_*, COPILOT_SESSION_ID) and ASK_KIT_INNER/CALLER/INHERIT",
+        "so children do not write into the caller's REPL state"
+      ],
+      "source": "ask-kit src/ask.mjs:74-78"
+    },
+    {
+      "id": "o01-sync-commands",
+      "domain": "code",
+      "repo": "omarchy",
+      "question": "What are the sync script's subcommands, which one asks before changing anything, and where on the machine does a repo path like plugins/<id>.patch end up?",
+      "expected": "status, diff, pull, push and add (sync:4-8); push copies the repo onto the machine and asks first (--yes skips). plugins/<id>.patch is the `git diff` of the plugin checkout at ~/.config/omarchy/plugins/<id> (sync:15).",
+      "facts": [
+        "status, diff, pull, push, add",
+        "push asks first (--yes skips)",
+        "plugins/<id>.patch is a git diff of ~/.config/omarchy/plugins/<id>"
+      ],
+      "source": "omarchy sync:3-17, 152-163"
+    },
+    {
+      "id": "o02-sync-excludes",
+      "domain": "code",
+      "repo": "omarchy",
+      "question": "When the sync script syncs a whole folder, which files does it leave out?",
+      "expected": "The EXCLUDES list: *.bak*, *.error, *.reset-*, *.old-*, *.corrupt-*, gpui-kit.d.ts, jsconfig.json and __pycache__: backups, app error/reset files and files apps regenerate on every start.",
+      "facts": [
+        "backups and error/reset/old/corrupt files (*.bak*, *.error, *.reset-*, *.old-*, *.corrupt-*)",
+        "regenerated files: gpui-kit.d.ts, jsconfig.json, __pycache__"
+      ],
+      "source": "omarchy sync:23-25"
+    },
+    {
+      "id": "o03-sync-map",
+      "domain": "code",
+      "repo": "omarchy",
+      "question": "How does the sync script work out where an apps/ path in the repo lives on the machine?",
+      "expected": "From `map <repo prefix> <live prefix>` lines in manifest.txt (e.g. apps/herdr/herdr-app/ \u2192 ~/.config/herdr-app/). The longest matching prefix wins; a map ending in / is a folder, one without is a single file matched exactly.",
+      "facts": [
+        "`map` lines in manifest.txt",
+        "longest prefix wins",
+        "trailing / means folder, else exact file"
+      ],
+      "source": "omarchy sync:16, 28-45"
+    },
+    {
+      "id": "o04-pairs-load-order",
+      "domain": "code",
+      "repo": "omarchy",
+      "question": "In the Hyprland config, in what order are pairs.lua and hyprmoncfg's generated file loaded, why does pairs.lua want to come after it, and how does pairs.lua switch the other monitor of a pair without stealing focus?",
+      "expected": "The comments (hyprland.lua:32-33, pairs.lua:19-21) say pairs.lua loads after hyprmoncfg's file, because that file rebinds SUPER + number, SUPER + TAB and SUPER + scroll to Omarchy's one-monitor versions. But in the file as it stands, hyprmoncfg's generated hyprmoncfg-monitors.lua is loaded at the very end (dofile, 'its generated monitor rules load last'), after require(\"hypr.pairs\"), so the order contradicts the comment. The other monitor is only switched with monitor:set_workspace, which changes what it shows without touching focus; focusing a workspace instead hands focus to its last window, and apps (the Claude desktop app) answer with an activation request that steals focus.",
+      "facts": [
+        "actual order: hyprmoncfg's generated file is loaded last, after pairs.lua (contrary to the comment)",
+        "pairs.lua wants to come after because hyprmoncfg rebinds the workspace keys to one-monitor versions",
+        "other monitor switched with monitor:set_workspace, which does not touch focus"
+      ],
+      "source": "omarchy home/.config/hypr/hyprland.lua:32-34 and its last line (the hyprmoncfg dofile), home/.config/hypr/pairs.lua:13-21. Rewritten after the first runs: the original question assumed pairs.lua loads after hyprmoncfg's file, from the comment; haiku and the baseline read the code and found it does not. Re-run on every backend with this wording."
+    }
+  ]
+}
