@@ -21,6 +21,7 @@ import { loadDomain } from "./domains.mjs";
 import { makeAskKit } from "./kitcall.mjs";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, slug } from "./config.mjs";
 import { reviewOf, REVIEW_META } from "./review.mjs";
+import { ERROR_META } from "./shots.mjs";
 
 const CONFIG = loadConfig();
 // `journal.trajectories: true` also keeps each cell's printed result and the answer on the ask row.
@@ -145,7 +146,8 @@ const scripts = {
 let context;
 let baseline;
 let logs = [];
-const fmt = (args) => args.map((a) => (typeof a === "string" ? a : safeJson(a, 2000))).join(" ");
+let cellMaxChars = DEFAULT_MAX_CHARS;
+const fmt = (args) => args.map((a) => (typeof a === "string" ? a : safeJson(a, cellMaxChars > DEFAULT_MAX_CHARS ? cellMaxChars : 2000))).join(" ");
 
 function newContext() {
   logs = [];
@@ -299,11 +301,13 @@ async function runCell(code, maxChars, timeoutSeconds) {
   cellCalls = [];
   cellScripts = [];
   logs = [];
+  cellMaxChars = maxChars;
   DOMAIN.beforeCell?.(GLOBALS);
   const started = Date.now();
   let ok = true;
   let value;
   let errorText = null;
+  let errorMessage = null;
   let declared = [];
   try {
     const rewritten = rewriteCell(code);
@@ -326,6 +330,7 @@ async function runCell(code, maxChars, timeoutSeconds) {
     ]).finally(() => clearTimeout(timer));
   } catch (e) {
     ok = false;
+    errorMessage = String(e);
     errorText = (e && e.stack ? String(e.stack) : String(e)).split("\n").slice(0, 8).join("\n");
     // A model that guessed a result's shape gets "reading 'map' of undefined" and tends to resend
     // the same cell. Show what the values it set actually look like, and say when it is a repeat.
@@ -349,7 +354,7 @@ async function runCell(code, maxChars, timeoutSeconds) {
     startupNote = null;
   }
   if (libChange?.errors.length) parts.push(`[scripts that failed to load: ${libChange.errors.join("; ")}]`);
-  if (logs.length) parts.push(`console:\n${logs.join("\n").slice(0, 4000)}`);
+  if (logs.length) parts.push(`console:\n${safeJson(logs.join("\n"), Math.max(4000, maxChars))}`);
   const resultText = ok ? safeJson(value, maxChars) : `Error: ${errorText}`;
   parts.push(resultText);
   const key = cellKey(code, declared);
@@ -388,7 +393,8 @@ async function runCell(code, maxChars, timeoutSeconds) {
   });
   restoreInfo = null;
   const reviews = cellScripts.filter((s) => s.review).map((s) => ({ script: s.name, ...s.review }));
-  return { text: parts.join("\n\n"), isError: !ok, ...(reviews.length ? { _meta: { [REVIEW_META]: reviews } } : {}) };
+  const meta = { ...(reviews.length ? { [REVIEW_META]: reviews } : {}), ...(errorMessage != null ? { [ERROR_META]: errorMessage } : {}) };
+  return { text: parts.join("\n\n"), isError: !ok, ...(Object.keys(meta).length ? { _meta: meta } : {}) };
 }
 
 function helpText() {
@@ -436,7 +442,7 @@ replTool(
       "Every character returned stays in the conversation, so return the answer, not the data: keep data in variables. Call `help` for the scripts and the typed API.",
     inputSchema: {
       code: z.string().describe("JavaScript to run"),
-      maxChars: z.number().int().min(200).max(100_000).optional().describe(`Clip the result at this many characters (default ${DEFAULT_MAX_CHARS})`),
+      maxChars: z.number().int().min(200).optional().describe(`Clip the result at this many characters (default ${DEFAULT_MAX_CHARS})`),
       timeoutSeconds: z.number().int().min(1).max(600).optional().describe("Default 120"),
     },
   },

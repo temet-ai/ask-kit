@@ -6,6 +6,11 @@
 
 import { REVIEW_META } from "./review.mjs";
 
+// What a shot passes as maxChars: its result goes straight to the caller, so nothing is clipped.
+export const WHOLE = Number.MAX_SAFE_INTEGER;
+// The REPL's tool result carries a failed cell's whole error message under this _meta key.
+export const ERROR_META = "ask-kit/error";
+
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 /** "status" or "github.status" → { kit, script }; kit is null when not given. */
@@ -52,20 +57,21 @@ function bareResult(text) {
   const parts = String(text).split("\n\n");
   while (parts.length > 1 && /^\[(restored|did not restore|could not restore) /.test(parts[0])) parts.shift();
   while (parts.length > 1 && /^\[(\d+ ms, \d+ calls?|not kept across restarts: .*)\]$/.test(parts.at(-1))) parts.pop();
-  return parts.join("\n\n").replace(/^Error: /, "");
+  return parts.join("\n\n");
 }
 
 /**
  * Run one shot in a REPL. `repl` is an MCP client of src/server.mjs in inner mode (the kit's REPL);
- * the caller opens and closes it. Returns { text, ok, ms }.
+ * the caller opens and closes it. The result is whole unless `maxChars` is given (an opener's, which
+ * the investigator reads). Returns { text, ok, ms }.
  */
-export async function runShot(repl, { script, params = {}, maxChars = 4000, timeoutSeconds = 120 }) {
+export async function runShot(repl, { script, params = {}, maxChars = WHOLE, timeoutSeconds = 120 }) {
   const started = Date.now();
   const out = await repl.callTool({ name: "repl", arguments: { code: shotCell(script, params), maxChars, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000 });
   const text = bareResult((out.content ?? []).map((c) => c.text ?? "").join("\n"));
-  // A failed script's stack and shape notes are for an investigator; the caller gets the message.
+  // A failed script's stack and shape notes are for an investigator; the caller gets the whole message.
   const reviews = out._meta?.[REVIEW_META];
-  return { text: out.isError ? text.split("\n")[0] : text, ok: !out.isError, ms: Date.now() - started, ...(reviews?.length ? { reviews } : {}) };
+  return { text: out.isError ? out._meta?.[ERROR_META] ?? text.replace(/^Error: /, "") : text, ok: !out.isError, ms: Date.now() - started, ...(reviews?.length ? { reviews } : {}) };
 }
 
 export const shotFooter = (kit, script, ms) => `\n\n[${kit} · shot ${script} · ${Math.round(ms / 1000)}s]`;

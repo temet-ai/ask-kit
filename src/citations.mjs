@@ -5,13 +5,12 @@
 //   sessions domain  `<source> <session id> #n` (what cite() prints), and `#m` chained after it
 //                    with a comma or "and" ("codex 5ca1ab1e #12, #19"): the session has that event
 //
-// A bare `#41` with no session before it, a path with no line, and a citation past the cap or the
-// time budget are not checked, and not counted. The answer is not changed here: the caller gets a
+// A bare `#41` with no session before it, a path with no line, and a citation past the time
+// budget are not checked, and not counted. The answer is not changed here: the caller gets a
 // bracketed line only when something did not resolve (see `checkCitations`).
 
-export const MAX_CHECKED = 20;
 export const BUDGET_MS = 3000;
-const MAX_LISTED = 10;
+const MAX_JOURNALED = 10; // the journal row's failedList; the caller's line names every one
 
 const SOURCES = "claude-code|codex|copilot-cli|gemini-cli|opencode";
 // host.tld:port is not a file: with no folder in it and a domain-like ending, it is left out.
@@ -66,7 +65,7 @@ async function resolves(c, g, eventsOf) {
  * `citations` field ({ checked, failed, failedList? }), `line` the bracketed line to add to the
  * reply ("" when every checked citation resolved).
  */
-export async function checkCitations(answer, domain, config, { max = MAX_CHECKED, budgetMs = BUDGET_MS } = {}) {
+export async function checkCitations(answer, domain, config, { max = Infinity, budgetMs = BUDGET_MS } = {}) {
   const text = String(answer ?? "");
   if (!text || !["code", "sessions"].includes(domain?.name)) return null;
   let g;
@@ -97,7 +96,7 @@ export async function checkCitations(answer, domain, config, { max = MAX_CHECKED
     if (!ok) failed.push(c.key);
   }
   if (!checked) return null;
-  const journal = { checked, failed: failed.length, ...(failed.length ? { failedList: failed.slice(0, MAX_LISTED) } : {}) };
-  const line = failed.length ? `\n\n[${failed.length} of ${checked} citation${checked === 1 ? "" : "s"} did not resolve: ${failed.slice(0, MAX_LISTED).join(", ")}${failed.length > MAX_LISTED ? ", ..." : ""}]` : "";
+  const journal = { checked, failed: failed.length, ...(failed.length ? { failedList: failed.slice(0, MAX_JOURNALED) } : {}) };
+  const line = failed.length ? `\n\n[${failed.length} of ${checked} citation${checked === 1 ? "" : "s"} did not resolve: ${failed.join(", ")}]` : "";
   return { journal, line };
 }

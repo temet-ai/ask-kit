@@ -17,6 +17,17 @@ const config = path.join(tmp, "config");
 const state = path.join(tmp, "state");
 fs.cpSync(path.join(ROOT, "test", "fixtures", "shot-kit"), path.join(config, "kits", "watch"), { recursive: true });
 
+fs.writeFileSync(
+  path.join(config, "kits", "watch", "scripts", "ledger.mjs"),
+  `export const meta = { purpose: "the Watch ledger", params: { lines: "number", text: "string", fail: "boolean" }, returns: "lines" };
+export default async (_g, { lines = 1, text, fail } = {}) => {
+  const all = Array.from({ length: lines }, (_, i) => "line " + i + " Nobby Nobbs signed for one truncheon");
+  if (fail) throw new Error(all.join("\\n"));
+  return text ?? (lines % 2 ? { all } : all.join("\\n"));
+};
+`,
+);
+
 const fake = await fakeBackend([{ code: 'shots.duty.officers.join(", ")' }, { answer: "On duty at Pseudopolis Yard: Sam Vimes, Carrot Ironfoundersson (shots.duty)." }]);
 fs.writeFileSync(path.join(config, "config.json"), JSON.stringify({ version: 1, sources: [], backends: { default: "fake", list: { fake: fake.backend } }, domains: { watch: {} } }));
 const env = { ...process.env, ASK_KIT_CONFIG: config, ASK_KIT_STATE: state, ASK_KIT_SESSION: "shots-test" };
@@ -57,6 +68,18 @@ const firstUser = fake.requests[0].messages.find((m) => m.role === "user").conte
 assert.match(firstUser, /Already in your REPL from shots the caller ran: shots\.duty\./, "the follow-up prompt names the held shot");
 const toolResult = fake.requests[1].messages.find((m) => m.role === "tool").content;
 assert.match(toolResult, /^Sam Vimes, Carrot Ironfoundersson/m, "shots.duty was already in the REPL");
+// Far past the old 4,000 and 100,000 character limits: a string, an object and an error arrive whole.
+const ledger = Array.from({ length: 4001 }, (_, i) => `line ${i} Nobby Nobbs signed for one truncheon`);
+const callShot = (params) => client.callTool({ name: "ask", arguments: { do: "watch.ledger", params } });
+const longText = textOf(await callShot({ lines: 4000 }));
+assert.ok(longText.length > 150_000);
+assert.ok(longText === ledger.slice(0, 4000).join("\n"), "a long string result is whole");
+assert.deepEqual(JSON.parse(textOf(await callShot({ lines: 4001 }))), { all: ledger }, "a long object result is whole JSON");
+const failed = await callShot({ lines: 4000, fail: true });
+assert.ok(failed.isError);
+assert.ok(textOf(failed) === `Error: ${ledger.slice(0, 4000).join("\n")}`, "a long error message is whole, with no stack");
+assert.equal(textOf(await callShot({ text: "Error: not an error" })), "Error: not an error", "a result's own words are kept");
+
 await client.close();
 
 // From a shell: the same output.

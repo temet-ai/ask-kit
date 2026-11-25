@@ -194,7 +194,7 @@ through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-f
 3. **Inner REPL.** `openInnerRepl` starts `src/server.mjs` as a child with `ASK_KIT_INNER=1` and
    `ASK_KIT_SESSION=ask-<askId>`, and connects as an MCP client. It is closed in a `finally`.
 4. **The loop.** Until it has an answer: check cancellation, stop if under 3 seconds are
-   left (time is the only budget; the repeat guard below can end it sooner), post the chat request (`temperature: 0`, `max_tokens: 4000`), then handle the reply.
+   left (time is the only budget; the repeat guard below can end it sooner), post the chat request (`temperature: 0`, `max_tokens: REPLY_TOKENS`, 4000), then handle the reply. A text reply that ends with `finish_reason: "length"` is first finished by `finishText`: it asks the model to carry on, without tools, and joins the parts until the model stops by itself or the ask's time runs out.
 5. **Native tools** (default; `be.nativeTools !== false`). The request offers one tool, `repl`
    (`REPL_TOOL`), with `parallel_tool_calls: false`. Calls with the name `repl`, or any call whose
    arguments contain a `"code"` key, count as REPL calls, because small models misname the tool.
@@ -205,7 +205,8 @@ through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-f
    Only the first block runs, and the stored assistant message is cut at its end, so a result the
    model wrote itself never enters the history. The result comes back as a user message. A reply
    with no block is the answer.
-7. **Running a cell.** `runCode` calls the inner `repl` tool with `maxChars: 4000` and a
+7. **Running a cell.** `runCode` calls the inner `repl` tool with the call's own `maxChars` (up to
+   100,000; 4000 when the call gives none, and always in code-block mode) and a
    `timeoutSeconds` of the smaller of `CELL_MAX_S` (60) and the time left minus 2 seconds (at
    least 1). A cell that does not finish returns text telling the model to narrow it, and the loop
    continues.
@@ -231,8 +232,10 @@ That call's timeout is `max(1000, leftMs() + RESERVE_MS - 2000)`, which is where
 spent. Its text becomes the answer, prefixed `[stopped at the 300s time limit; this is what it
 found]` (or `[stopped at a search that kept repeating; ...]`). With no text, the answer says it stopped after N cells with nothing to
 report. A partial answer ends with
-`[not finished: ask again with continue: true to carry on from here]`. If a reply had
-`finish_reason: "length"`, `cutAtLength` adds a note that the reply may be cut off.
+`[not finished: ask again with continue: true to carry on from here]`. `cutAtLength` is set
+only when a reply was still at the length limit when time ran out, a request to carry on failed, or
+three in a row returned nothing; the answer then ends with the same `[not finished: ...]` note. An
+`early_answer` call cut at the limit is not sent.
 
 ### What the CLI backends limit
 
@@ -250,7 +253,11 @@ backend, and `askApi` calls it as each cell starts (`runCode`). `onStep` sends
 `callTool` has an `onprogress` that sends each note on to its own caller under the caller's token.
 The CLI backends ignore `onStep`.
 
-When it ends, the handler returns the answer text, and `isError: !r.ok`. With `footer: true` in
+When it ends, the handler returns the answer text, and `isError: !r.ok`. Nothing in it is clipped:
+a model's answer, a shot's or an action's result (`runShot` asks the REPL for the whole value, and on
+failure takes the whole error message from the `ask-kit/error` `_meta` key), the list of citations that did
+not resolve, and error text all arrive whole. The tool declares `anthropic/maxResultSizeChars: 500000`, Claude
+Code's ceiling for passing a result on whole. Journal fields may be shortened; the caller never sees those. With `footer: true` in
 the config it adds a footer:
 
 ```js

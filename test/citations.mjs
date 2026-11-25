@@ -104,7 +104,11 @@ const { checkCitations, pathCitations, eventCitations } = await import("../src/c
 const many = Array.from({ length: 30 }, (_, i) => `src/watch.mjs:${i + 1}`).join(" ");
 assert.equal(pathCitations(many).length, 30);
 const capped = await checkCitations(many, { name: "code", makeGlobals: () => ({ repo: { read: () => ({ lines: 99, text: "1\tx" }) } }) }, {}, { max: 20 });
-assert.equal(capped.journal.checked, 20, "at most 20 are checked");
+assert.equal(capped.journal.checked, 20, "a given max bounds the check");
+const nowhere = Array.from({ length: 60 }, (_, i) => `src/unseen-university-${i + 1}.mjs:${i + 1}`);
+const all60 = await checkCitations(nowhere.join(" "), { name: "code", makeGlobals: () => ({ repo: { read: () => { throw new Error("no such file"); } } }) }, {});
+assert.equal(all60.line, `\n\n[60 of 60 citations did not resolve: ${nowhere.join(", ")}]`, "every one that did not resolve is named");
+assert.equal(all60.journal.failedList.length, 10, "the journal row stays short");
 const slow = await checkCitations("src/a.mjs:1 src/b.mjs:2", { name: "code", makeGlobals: () => ({ repo: { read: () => new Promise(() => {}) } }) }, {}, { budgetMs: 100 });
 assert.equal(slow, null, "a check that runs out of time counts nothing");
 assert.deepEqual(eventCitations("codex 5ca1ab1e #12, #19 and #20; claude-code 11112222 #3").map((c) => c.key), ["codex 5ca1ab1e #12", "codex 5ca1ab1e #19", "codex 5ca1ab1e #20", "claude-code 11112222 #3"]);

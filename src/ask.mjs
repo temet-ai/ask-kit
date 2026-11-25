@@ -57,6 +57,11 @@ export const cliLimitMs = (timeoutMs, clientMs = 0) => {
 const stoppedAtLimit = (b, r) => `${b} was stopped at the time limit before it answered. Ask again with a narrower question, or raise timeoutSeconds if the client allows it.`;
 // No step limit: time is the budget. With this much left the investigator is told to answer.
 const WRAP_MS = 30_000;
+// The longest one API reply may be, in tokens. A longer answer is made of several, joined (finishText).
+const REPLY_TOKENS = 4000;
+// The most of an opener's result put in the investigator's first message.
+const OPENER_CHARS = 20_000;
+const CARRY_ON = "Your reply was cut at the length limit. Carry on from the exact character where it stopped: do not repeat anything, do not comment on the cut, and finish it.";
 // A cell result that shows a connection failing, as fetch and node:net word it.
 const UNREACHABLE = /\bfetch failed\b|\bECONNREFUSED\b|\bENOTFOUND\b|\bEHOSTUNREACH\b|\bconnect ETIMEDOUT\b/;
 const SERVER = path.join(ROOT, "src", "server.mjs");
@@ -242,7 +247,7 @@ export function registerAsk(server, ctx) {
     try {
       return JSON.parse(r.out);
     } catch {
-      throw new Error(r.timedOut ? stoppedAtLimit("claude", r) : `claude exited ${r.code}: ${(r.err || r.out).slice(0, 500)}`);
+      throw new Error(r.timedOut ? stoppedAtLimit("claude", r) : `claude exited ${r.code}: ${r.err || r.out}`);
     }
   }
 
@@ -254,7 +259,7 @@ export function registerAsk(server, ctx) {
       const started = Date.now();
       const cfg = claudeMcpFile(null);
       const j = await claudeCall(be, ["-p", D.prime, ...claudeArgs(be, cfg)], 300_000, signal).finally(() => fs.rmSync(cfg, { force: true }));
-      if (j.is_error) throw new Error(`warming failed: ${String(j.result).slice(0, 300)}`);
+      if (j.is_error) throw new Error(`warming failed: ${j.result}`);
       // A fork's total_cost_usd includes the warm session's, so it is kept to subtract.
       warm = { fingerprint: fp, sessionId: j.session_id, warmCostUsd: j.total_cost_usd ?? 0, warmMs: Date.now() - started, reused: false };
       saveWarm(b, warm);
@@ -313,8 +318,8 @@ export function registerAsk(server, ctx) {
     const usage = ev.filter((e) => e.type === "turn.completed").map((e) => e.usage ?? {}).pop() ?? {};
     const cells = ev.filter((e) => e.type === "item.completed" && e.item?.type === "mcp_tool_call").length;
     if (!thread && !msgs.length && r.timedOut) throw new Error(stoppedAtLimit("codex", r));
-    if (!thread && !msgs.length) throw new Error(`codex exited ${r.code}: ${(r.err || r.out).slice(-600)}`);
-    return { thread, answer: msgs.pop() ?? "", error: failed ? JSON.stringify(failed).slice(0, 300) : null, usage, cells };
+    if (!thread && !msgs.length) throw new Error(`codex exited ${r.code}: ${r.err || r.out}`);
+    return { thread, answer: msgs.pop() ?? "", error: failed ? JSON.stringify(failed) : null, usage, cells };
   }
 
   async function askCodex(b, question, timeoutMs, cont, signal) {
@@ -388,7 +393,7 @@ export function registerAsk(server, ctx) {
     const sid = ev.find((e) => e.data?.sessionId)?.data.sessionId ?? null;
     const answer = msgs.pop() ?? (ev.length ? "" : r.out.trim());
     if (!answer && r.timedOut) throw new Error(stoppedAtLimit("copilot", r));
-    if (!answer) throw new Error(`copilot exited ${r.code}: ${(r.err || r.out).slice(-600)}`);
+    if (!answer) throw new Error(`copilot exited ${r.code}: ${r.err || r.out}`);
     writeLast(b, { askId, innerSession: sid ?? prev?.innerSession });
     const usage = ev.filter((e) => e.type === "session.usage_record").map((e) => e.data?.usage ?? {});
     return {
@@ -436,7 +441,7 @@ export function registerAsk(server, ctx) {
     function: {
       name: "repl",
       description: "Run JavaScript in your persistent REPL (top-level await; variables persist) and get back what the last expression returned.",
-      parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript to run" } }, required: ["code"], additionalProperties: false },
+      parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript to run" }, maxChars: { type: "integer", description: "Clip the result and the console output at this many characters each (default 4000)" } }, required: ["code"], additionalProperties: false },
     },
   };
 
@@ -509,7 +514,7 @@ export function registerAsk(server, ctx) {
     const opener = !cont && !opts.askId ? openerFor((D.actions ?? []).filter((a) => !a.acts && domainCfg.actions?.[a.name] !== false), question) : null;
     if (opener) {
       const { action, params } = opener;
-      const o = await runShot(repl, { script: action.script, params, timeoutSeconds: Math.max(1, Math.min(CELL_MAX_S, Math.floor((timeoutMs - WRAP_MS) / 1000))) }).catch(() => null);
+      const o = await runShot(repl, { script: action.script, params, maxChars: OPENER_CHARS, timeoutSeconds: Math.max(1, Math.min(CELL_MAX_S, Math.floor((timeoutMs - WRAP_MS) / 1000))) }).catch(() => null);
       if (o?.ok && !shapeProblem(action, o.text)) {
         cells++;
         opened = { action: action.name, script: action.script, params, ms: o.ms };
@@ -546,7 +551,35 @@ export function registerAsk(server, ctx) {
       totals.output += u.completion_tokens ?? 0;
       totals.costUsd += Number(u.cost ?? 0);
       if (body.provider) totals.providers.add(body.provider);
-      if (body.choices?.[0]?.finish_reason === "length") cutAtLength = true;
+    };
+    // A request's reply is at most REPLY_TOKENS long, so one that the time limit stops loses little. A
+    // reply that ends there (finish_reason "length") is asked to carry on, and the parts are joined,
+    // until the model finishes or `endMs()` runs out; then cutAtLength marks it unfinished.
+    // The requests carry no tools: the model is in the middle of a text.
+    const isCut = (body) => body.choices?.[0]?.finish_reason === "length";
+    const finishText = async (text, endMs) => {
+      let whole = text;
+      let empty = 0;
+      for (;;) {
+        if (signal?.aborted) throw new Error("the calling client cancelled the ask");
+        if (endMs() < 1000 || empty >= 3) break;
+        let body;
+        try {
+          const res = await post({ model: be.model, messages: [...messages, { role: "assistant", content: whole }, { role: "user", content: CARRY_ON }], temperature: 0, max_tokens: REPLY_TOKENS, ...ep.extra, ...be.body }, endMs());
+          body = await res.json();
+          if (!res.ok || body.error) break;
+        } catch {
+          if (signal?.aborted) throw new Error("the calling client cancelled the ask");
+          break;
+        }
+        account(body);
+        const more = body.choices?.[0]?.message?.content ?? "";
+        whole += more;
+        if (!isCut(body)) return whole;
+        empty = more ? 0 : empty + 1;
+      }
+      cutAtLength = true;
+      return whole;
     };
     // Lowered by the repeat guard below; otherwise only time ends the loop.
     let stopAt = Infinity;
@@ -570,7 +603,7 @@ export function registerAsk(server, ctx) {
               model: be.model,
               messages,
               temperature: 0,
-              max_tokens: 4000,
+              max_tokens: REPLY_TOKENS,
               ...(native ? { tools: earlyTool ? [REPL_TOOL, EARLY_TOOL] : [REPL_TOOL], tool_choice: "auto", parallel_tool_calls: false } : {}),
               ...ep.extra,
               // One session_id per backend and prefix: OpenRouter then keeps every question on one
@@ -589,10 +622,14 @@ export function registerAsk(server, ctx) {
         }
         const body = await res.json().catch(() => ({}));
         if (signal?.aborted) throw new Error("the calling client cancelled the ask");
-        if (!res.ok || body.error) throw new Error(`${be.preset} ${res.status}: ${JSON.stringify(body.error ?? body).slice(0, 300)}`);
+        if (!res.ok || body.error) throw new Error(`${be.preset} ${res.status}: ${JSON.stringify(body.error ?? body)}`);
         account(body);
         const msg = body.choices?.[0]?.message ?? {};
-        const content = msg.content ?? "";
+        let content = msg.content ?? "";
+        // A text cut at the length limit is finished before it is read: as an answer, or (code-block
+        // mode) as a cell whose block is still open. A complete cell or a tool call is run as it is.
+        const cut = isCut(body);
+        if (cut && content.trim() && (native ? !msg.tool_calls?.length : !new RegExp(CELL.source).test(content.replace(EARLY_BLOCK, "")))) content = await finishText(content, leftMs);
         const low = leftMs() < WRAP_MS || stopAt - step <= 2;
         // Read after the cell has run, so the time it took is counted.
         const nudge = () => {
@@ -601,12 +638,12 @@ export function registerAsk(server, ctx) {
             ? `\n\nAbout ${secs}s left. Answer now with what you have, saying what you could not confirm.`
             : `\n\nAbout ${secs}s left.`;
         };
-        const runCode = async (code) => {
+        const runCode = async (code, maxChars) => {
           cells++;
           onStep?.(cells, code);
           const timeoutSeconds = Math.max(1, Math.min(CELL_MAX_S, Math.floor((leftMs() - 2000) / 1000)));
           try {
-            const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
+            const out = await repl.callTool({ name: "repl", arguments: { code, maxChars: Number.isInteger(maxChars) && maxChars >= 200 ? Math.min(maxChars, 100_000) : 4000, timeoutSeconds } }, undefined, { timeout: timeoutSeconds * 1000 + 5000, signal });
             const text = out.content.map((c) => c.text).join("\n");
             tried.push({ code, text });
             // A source that does not answer (a stopped service, a host that is off) will not come back
@@ -664,9 +701,11 @@ export function registerAsk(server, ctx) {
             }
             const code = args?.code;
             const text = isEarly(c)
-              ? sendEarly(args?.answer)
+              ? cut
+                ? "Error: the early answer was cut at the length limit and not sent. Put it in your final answer."
+                : sendEarly(args?.answer)
               : typeof code === "string"
-                ? await runCode(code)
+                ? await runCode(code, args.maxChars)
                 : "Error: the call's arguments were not JSON with a `code` string.";
             messages.push({ role: "tool", tool_call_id: c.id, content: text + (k === calls.length - 1 ? nudge() : "") });
           }
@@ -674,6 +713,12 @@ export function registerAsk(server, ctx) {
         }
         // Code-block mode: run only the first block and keep only the text up to its end, so an
         // invented result written after it never enters the history. An ```early block goes to the caller first.
+        if (cut && !content.trim()) {
+          totals.missteps++;
+          messages.push({ role: "assistant", content: "(empty reply)" });
+          messages.push({ role: "user", content: "Put one cell in a ```js block, or reply with the final answer as plain text." });
+          continue;
+        }
         const earlyBlock = onEarly ? content.match(EARLY_BLOCK) : null;
         if (earlyBlock) {
           const note = sendEarly(earlyBlock[1]);
@@ -745,11 +790,13 @@ export function registerAsk(server, ctx) {
         content: `${outOfTime ? "You are out of time." : "Your search keeps repeating the same result."} Reply now in plain text, with no tool call: what you found (with its evidence), what you tried, and what is still missing.`,
       });
       try {
-        const res = await post({ model: be.model, messages, temperature: 0, max_tokens: 4000, ...ep.extra, ...be.body }, Math.max(1000, leftMs() + RESERVE_MS - 2000));
+        const closeMs = () => leftMs() + RESERVE_MS - 2000;
+        const res = await post({ model: be.model, messages, temperature: 0, max_tokens: REPLY_TOKENS, ...ep.extra, ...be.body }, Math.max(1000, closeMs()));
         const body = await res.json().catch(() => ({}));
         account(body);
         const m = body.choices?.[0]?.message ?? {};
-        const text = (m.content ?? "").trim() || (m.reasoning ?? "").trim();
+        const said = m.content ?? "";
+        const text = (said.trim() && isCut(body) ? await finishText(said, closeMs) : said).trim() || (m.reasoning ?? "").trim();
         if (text) {
           messages.push({ role: "assistant", content: text });
           answer = `[stopped at ${limit}; this is what it found]\n\n${text}`;
@@ -758,7 +805,7 @@ export function registerAsk(server, ctx) {
       answer ??= `[stopped at ${limit} after ${cells} cells, with nothing it could report]`;
     }
     if (cutAtLength) partial = true;
-    if (partial) answer += (cutAtLength ? "\n\n[the reply hit the length limit and may be cut off]" : "") + "\n\n[not finished: ask again with continue: true to carry on from here]";
+    if (partial) answer += "\n\n[not finished: ask again with continue: true to carry on from here]";
     else if (atLimit) answer += "\n\n[answered near the time limit: if something is missing, ask again with continue: true]";
     writeLast(b, { askId, messages });
     return {
@@ -831,8 +878,7 @@ export function registerAsk(server, ctx) {
   // A cell in one line for progress: its leading comment if it has one, else its first line.
   const cellLine = (code) => {
     const first = String(code).split("\n").map((l) => l.trim()).find(Boolean) ?? "";
-    const t = first.replace(/^\/\/\s*/, "");
-    return t.length > 100 ? `${t.slice(0, 99)}…` : t;
+    return first.replace(/^\/\/\s*/, "");
   };
 
   // ---- shots: a kit script with no model ----
@@ -885,6 +931,8 @@ export function registerAsk(server, ctx) {
         `The investigator only reads unless the ask may change things: pass act: true for a request to change something (edit, run, send, restart); ` +
         `a request that opens with what to do ("fix ...", "restart ...") sets it, and a follow-up keeps it. ` +
         `backend: ${NAMES.join(", ")} (default ${DEFAULT}).`,
+      // Claude Code otherwise saves a long result to a file and shows a preview; this is its ceiling.
+      _meta: { "anthropic/maxResultSizeChars": 500_000 },
       inputSchema: {
         question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
         request: z.string().optional().describe("Same as question"),
