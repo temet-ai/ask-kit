@@ -259,6 +259,15 @@ fs.writeFileSync(path.join(stateDir, "s7.json"), "{{{ not json");
 assert.equal(post("s7", "Read", { file_path: `${repo}/src/a.mjs` }), "");
 fs.writeFileSync(path.join(stateDir, "s8.json"), JSON.stringify({ n: "many" }));
 assert.equal(post("s8", "Read", { file_path: `${repo}/src/a.mjs` }), "");
+// A program run in a container goes to its own kit when that is enabled, else to the docker kit.
+kit("docker", { requires: ["docker"] });
+save();
+const inside = 'docker exec palace-db psql -c "select 1"';
+assert.equal(about(bash(three(inside))), "docker");
+kit("postgres", { requires: ["psql"] });
+save();
+assert.equal(about(bash(three(inside))), "postgres");
+
 fs.rmSync(stateDir, { recursive: true });
 fs.writeFileSync(stateDir, "a file where the folder should be"); // the state folder cannot be made
 assert.equal(post("s9", "Read", { file_path: `${repo}/src/a.mjs` }), "");

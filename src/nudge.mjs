@@ -136,7 +136,8 @@ export function aboutFor(tool, l, to, cwd = null) {
   // git grep, ls-files and a file at a commit are reading the code, not its history.
   if (l.fam === "git" && /^git (grep|ls-files|ls-tree|cat-file|show <ref>)/.test(shape)) return to.first(["code", "git"]);
   const t = targetOf({ tool, arg: l.arg, fam: null, paths: [] }, to.rules, repo);
-  if (t) return to.first(TARGETS[t] ?? [t]);
+  // A program run inside a container is also the docker kit's, when its own kit is not enabled.
+  if (t) return to.first(TARGETS[t] ?? [t]) ?? (/^\s*(docker|podman)\s/.test(l.arg) ? to.first(["docker"]) : null);
   if (l.fam === "git") return to.first(["code"]);
   // The pattern of a search is not a path: quoted text goes, unless it is an absolute path.
   const text = tool === "Bash" ? l.arg.replace(/(["'])(?![~/][^\s"']*\1)(?:\\.|(?!\1).)*\1/gs, (q) => (/^(rg|grep|egrep|sed|awk)\b/.test(l.arg) ? "''" : q)) : l.arg;
