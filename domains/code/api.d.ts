@@ -4,6 +4,8 @@ interface Hit { file: string; line: number; text: string; context?: true }
 
 declare const repo: {
   root: string; // absolute path of the repository
+  // A path that does not exist (rg, sg, files, read) gives one row, or text, starting NO SUCH PATH
+  // with the nearest paths, and `missing` set: nothing was searched.
   // ripgrep; `pattern` is a regex unless fixed. Paths in results are relative to root. Files git
   // ignores (node_modules, build output) are skipped, except when `path` points into them (path: "node_modules/some-package").
   rg(pattern: string, o?: { fixed?: boolean; ignoreCase?: boolean; word?: boolean; context?: number;
@@ -18,6 +20,8 @@ declare const repo: {
   read(file: string, o?: { from?: number; to?: number }): { file: string; from: number; to: number; lines: number; text: string };
   // Any git command, run in the repository. Returns stdout; throws on a non-zero exit.
   git(sub: string, ...args: string[]): Promise<string>;
+  // git in the repository that holds another folder: repo.at("/path/to/other").git("log", "-3").
+  at(folder: string): { root: string; git(sub: string, ...args: string[]): Promise<string> };
   // Write a whole file (folders are created).
   write(file: string, text: string): { file: string; bytes: number };
   // Replace `from` with `to`: exactly one occurrence, or all of them with { all: true }. Throws when not found.

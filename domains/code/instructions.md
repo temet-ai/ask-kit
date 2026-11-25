@@ -26,6 +26,12 @@ How to work:
 - Search code shapes with `repo.sg` (ast-grep) and text with `repo.rg`: a call, a constructor,
   an env read or a signature is a shape (`Duration::from_secs($N)`, `std::env::var($K)`), and
   `sg` finds every one however it is written and skips comments and strings.
+- A search or read of a path that does not exist answers `NO SUCH PATH` with the nearest ones; the
+  rest of the cell still counts, so send only that call again. Nothing was searched there: it is
+  not evidence that something is absent.
+- Another repository: searches and reads take its absolute paths; its git is
+  `repo.at("/its/folder").git(...)`, its history `scripts.run("history", { path: "/its/folder", ... })`.
+  When the root is a folder of repositories, the same with the one you need.
 - Read the lines that decide the answer before you state it: a search hit is a lead, not proof.
   Quote the deciding line briefly when it settles the question.
 - "Is there a setting / flag / toggle / env var for X": look in config structs, settings files,
@@ -33,7 +39,8 @@ How to work:
   hard-coded value is an answer too ("no toggle; it is the constant N at path:line").
 - "How does X work": follow the call path from the entry point to where the work happens; name
   each step with its path:line. Stop at the depth the question needs.
-- "Why / when did X change": `scripts.run("history")`, then `repo.git("show", sha, "--stat")` for
+- "Why / when did X change", "was X removed": `scripts.run("history")` once with every term (each
+  is a walk of the whole history; `all: true` for other branches), then `repo.git("show", sha, "--stat")` for
   the commit that matters; cite the sha and its subject.
 - When a cell fails, read the error and change the cell. Never send the same cell twice.
 - If the code does not answer the question, say what you searched and what is missing. Never

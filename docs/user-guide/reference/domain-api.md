@@ -105,7 +105,11 @@ and paths in results are relative to it (absolute when outside it).
 | `repo.git(sub, ...args)` | Runs `git --no-pager -c core.pager=cat <sub> <args>` in the root and returns stdout; any subcommand with `act`, else only those that read (`READ_GIT` in `repo.mjs`: `log`, `show`, `diff`, `blame`, `status`, `ls-files`, `grep` and a few more, without `--output`). Throws on a non-zero exit. |
 | `repo.write(file, text)` | Writes the whole file, creating its folders. Returns `{ file, bytes }`. |
 | `repo.edit(file, from, to, { all })` | Replaces `from` with `to`. Without `all`, the text must occur exactly once; it throws when it is missing or occurs more often. Returns `{ file, replaced }`. |
+| `repo.at(folder)` | `{ root, git }` of the git repository that holds `folder`, for git in another checkout. |
 | `repo.run(cmd, ...args)` | Runs any program in the root without a shell (120 second timeout). Returns `{ code, out, err }`; never throws on a non-zero exit. |
+
+In the `code` domain a path that does not exist does not throw in `rg`, `sg`, `files` and `read`: they
+return one row, or text, starting `NO SUCH PATH` with the nearest paths, and set `missing`.
 
 `write`, `edit` and `run` work only in an ask whose caller asked for a change (`act`, see
 [Asking for a change](ask-tool.md#asking-for-a-change-act)); otherwise they throw
@@ -196,7 +200,7 @@ script.
 |---|---|---|
 | [`where`](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/where.mjs) | `name` (required): an identifier or words, searched under every spelling (`fooBar`, `FooBar`, `foo_bar`, `FOO_BAR`, `foo-bar`, `foobar`); `path`: folder; `uses`: usage lines returned, default 25 | `{ spellings, definitions: [{file,line,text}] (at most 40), usesTotal, usesComplete, usesByFile: [{file,count}] (top 20), uses: [{file,line,text}] }` |
 | [`knobs`](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/knobs.mjs) | `topic` (required): words, at least one longer than two letters that is not a stop word; `path`; `max`: hits per kind, default 25 | `{ words, envReads, cliFlags, constants, configFiles, settingsFields, scanned, complete, checked }`, each list holding `{file,line,text}` and `checked` naming what was looked at. Words are shortened to stems so `embedding` also finds `EMBED_`. Markdown and test files are left out. |
-| [`history`](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/history.mjs) | `term`: text added or removed in a diff (`git log -S`); `path`: file or folder; `limit`: default 15; `regex`: `true` makes `term` a regex (`-G`). One of `term` or `path` is required. | `{ commits: [{sha,date,author,subject}], complete }`, newest first |
+| [`history`](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/history.mjs) | `term`: text added or removed in a diff (`git log -S`), or an array of them; `path`: file or folder, one in another repository searches that repository; `limit`: commits per term, default 15; `regex`: `true` makes `term` a regex (`-G`); `all`: `true` searches every branch. One of `term` or `path` is required. | `{ commits: [{sha,date,author,subject,term?}], complete, root?, none? }`, newest first; `term` with several terms, `root` for another repository, `none` the terms no commit has |
 | [`outline`](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/outline.mjs) | `path` (required): file or folder; `max`: default 120 | `{ path, files, definitions: [{file,line,text}], complete }`: top-level definitions in Rust, TypeScript, JavaScript, Python, Go and SQL, and markdown headings |
 | [`overview`](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/overview.mjs) | `depth`: folder depth counted, default 2 | `{ root, files, dirs: [{dir,files}] (top 40), docs: [{file,headings}] (README, AGENTS.md, CLAUDE.md and `docs/` architecture files, at most 8), manifests (at most 30), recent: [8 commit lines] }` |
 

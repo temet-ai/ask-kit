@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeRepo, readOnly } from "./repo.mjs";
+import { makeRepo, readOnly, withAt } from "./repo.mjs";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +22,7 @@ const ROOT = repoRoot();
 
 export const domain = {
   name: "code",
-  says: "the code in this repository now: where something is defined or used, how it works, which setting, flag, env var or constant controls it, what calls it, when a line changed in git",
+  says: "the code in this repository now, or in another checkout named by its folder: where something is defined or used, how it works, which setting, flag, env var or constant controls it, what calls it, when a line changed in git",
   // One state folder per repository: journals, snapshots and the warm session are about that code.
   stateKey: ROOT,
   // The investigator's own server starts in another directory; it must find the same repository.
@@ -33,8 +33,8 @@ export const domain = {
   // Writing, editing, running programs and git commands that change things only in an ask whose
   // caller asked for a change (act: true); otherwise `repo` reads only.
   makeGlobals: ({ push, act = false }) => {
-    const repo = makeRepo({ root: ROOT, push });
-    return { repo: act ? repo : readOnly(repo) };
+    const repo = makeRepo({ root: ROOT, push, noteMissing: true });
+    return { repo: withAt(act ? repo : readOnly(repo), { push, act }) };
   },
   // Looked up before the first model call. With no `match` it never answers by itself and never
   // claims a route: its pattern is found in any question, and `lookup` returns null (so nothing is
@@ -52,7 +52,7 @@ export const domain = {
     '- What names are, with their code, and what uses or calls them, several together: `await scripts.run("lookup", { names: ["Thing", "other_thing"], budget: 18000 })`, sent with `maxChars: 20000`\n' +
     '- Every use of one name, counted by file: `await scripts.run("where", { name: "Thing", uses: 60 })`\n' +
     '- Settings, env vars, flags and constants about a topic: `await scripts.run("knobs", { topic: "embedding speed" })`\n' +
-    '- When and why something changed: `await scripts.run("history", { term: "Thing" })`\n' +
+    '- When and why something changed: `await scripts.run("history", { term: ["Thing", "other_thing"] })`; in another repository, with `path: "/its/folder"`\n' +
     '- What a file or folder holds (definitions with lines): `await scripts.run("outline", { path: "src/x.rs" })`\n' +
     '- The repository at a glance (folders, docs, entry points): `await scripts.run("overview")`\n' +
     "Then `repo.read(file, { from, to })` only the lines that answer, all the ranges you know you need in one cell. " +

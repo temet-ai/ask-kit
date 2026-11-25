@@ -26,6 +26,7 @@ export default async function ({ repo }, { topic, path, max = 25 }) {
   // Stems, so "embedding" also finds EMBED_ and embedder.
   const stems = [...new Set(words.map((w) => (w.length > 6 ? w.slice(0, Math.max(5, w.length - 4)) : w)))];
   const hits = await repo.rg(stems.map(escape).join("|"), { glob: [...NOISE, "!**/*.md", "!**/tests/**", "!**/*test*"], path, max: 6000, ignoreCase: true });
+  if (hits.missing) return { words: stems, missing: hits.missing };
   const out = { envReads: [], cliFlags: [], constants: [], configFiles: [], settingsFields: [] };
   for (const h of hits) {
     const row = { file: h.file, line: h.line, text: h.text.trim().slice(0, 180) };

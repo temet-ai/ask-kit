@@ -88,10 +88,12 @@ export default async function ({ repo }, { question, names: asked, path, budget 
   const outside = [];
   for (const f of found.folders) {
     if (f === repo.root || f.startsWith(`${repo.root}/`) || repo.root.startsWith(`${f}/`)) continue;
-    if (await repo.files(null, { path: f, max: 1 }).then((l) => l.length > 0, () => false)) outside.push(f);
+    if (await repo.files(null, { path: f, max: 1 }).then((l) => l.total > 0, () => false)) outside.push(f);
   }
-  const places = [path, ...outside];
   const problems = [];
+  const gone = path ? await repo.files(null, { path, max: 1 }).then((l) => l.missing, () => null) : null;
+  if (gone) return gone;
+  const places = [path, ...outside];
   const search = async (pattern, o) => {
     const parts = await Promise.all(
       places.map((p) =>
@@ -110,6 +112,7 @@ export default async function ({ repo }, { question, names: asked, path, budget 
       try {
         for (let from = 1, total = 1; from <= total; from += 400) {
           const r = repo.read(file, { from });
+          if (r.missing) break;
           total = r.lines;
           out.push(...r.text.split("\n").map((l) => l.replace(/^\d+\t/, "")));
         }

@@ -13,6 +13,7 @@ export default async function ({ repo }, { name, path, uses = 25 }) {
   if (!names.length) throw new Error("where needs `name`");
   const definitions = await repo.rg(definitionPattern(names), { glob: NOISE, path, max: 40, ignoreCase: false });
   const all = await repo.rg(`\\b(${names.map(escape).join("|")})\\b`, { glob: NOISE, path, max: 2000 });
+  if (all.missing) return { spellings: names, missing: all.missing };
   const defKeys = new Set(definitions.map((d) => `${d.file}:${d.line}`));
   const rest = all.filter((h) => !defKeys.has(`${h.file}:${h.line}`));
   const byFile = Object.entries(

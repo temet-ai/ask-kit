@@ -49,6 +49,7 @@ export function eventCitations(text) {
 // The line is in the file. A file that ends with a newline reports one more (empty) line than it has.
 async function hasLine(c, file, g) {
   const r = await g.repo.read(file, { from: c.to, to: c.to });
+  if (r.missing) throw new Error(r.missing); // the code domain notes a path that is not there instead of throwing
   return c.to <= r.lines && !(c.to === r.lines && r.text.replace(/^\d+\t/, "") === "");
 }
 

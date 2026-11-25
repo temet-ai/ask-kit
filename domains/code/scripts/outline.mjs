@@ -19,6 +19,7 @@ const DEF =
 export default async function ({ repo }, { path, max = 120 }) {
   if (!path) throw new Error("outline needs `path`");
   const hits = await repo.rg(DEF, { path, glob: NOISE, max, ignoreCase: true });
+  if (hits.missing) return { path, missing: hits.missing, files: 0, definitions: [], complete: false };
   const files = [...new Set(hits.map((h) => h.file))];
   return {
     path,
