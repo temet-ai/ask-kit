@@ -27,6 +27,42 @@ for (const f of pluginFiles()) {
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, ".claude-plugin", "plugin.json"), "utf8"));
 for (const p of [...manifest.skills, ...manifest.agents]) assert.ok(fs.existsSync(path.join(ROOT, p)), `plugin.json names ${p}`);
 assert.equal(manifest.mcpServers.ask.alwaysLoad, true, "Claude Code loads ask at the start of a session");
+// C3, as Claude Code meets it: the server started by plugin.json's own command, with 45 kits. The tool
+// and the server load upfront, the words Claude Code cuts at 4,096 characters are under that, and
+// the whole says of every enabled kit is in the input schema.
+{
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+  const cfg = path.join(tmp, "plugin-cfg");
+  const says = {};
+  for (let i = 1; i <= 45; i++) {
+    const n = `watch-house-${i}`;
+    says[n] = `what watch house ${i} of Ankh-Morpork holds: ${"rosters, case files, the ledger Sergeant Colon keeps; ".repeat(10)}end of ${n}`;
+    const dir = path.join(cfg, "kits", n);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "ask-kit.toml"), `name = "${n}"\nsays = "${says[n]}"\n[[sources]]\nkind = "module"\nname = "house${i}"\nmodule = "m.mjs"\n`);
+    fs.writeFileSync(path.join(dir, "m.mjs"), "export const make = () => ({ roster: () => ['Sam Vimes'] });\n");
+  }
+  const domains = { sessions: {}, ...Object.fromEntries(Object.keys(says).map((n) => [n, {}])) };
+  fs.writeFileSync(path.join(cfg, "config.json"), JSON.stringify({ version: 1, sources: [], backends: { default: "x", list: { x: { kind: "api", preset: "ollama", model: "none" } } }, domains, router: false }));
+  const env = { ...process.env, ASK_KIT_CONFIG: cfg, ASK_KIT_SESSION: "plugin-test" };
+  delete env.ASK_KIT_DOMAIN;
+  const { command, args } = manifest.mcpServers.ask;
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(new StdioClientTransport({ command, args: args.map((x) => x.replace("${CLAUDE_PLUGIN_ROOT}", ROOT)), env, stderr: "inherit" }));
+  const tool = (await client.listTools()).tools.find((t) => t.name === "ask");
+  const instructions = client.getInstructions();
+  await client.close();
+  assert.equal(tool._meta["anthropic/alwaysLoad"], true, "the tool asks to be loaded upfront");
+  assert.equal(tool._meta["anthropic/maxResultSizeChars"], 500_000);
+  assert.ok(tool.description.length < 4096, `the description is not cut: ${tool.description.length}`);
+  assert.ok(instructions.length < 4096, `the instructions are not cut: ${instructions.length}`);
+  const lines = tool.inputSchema.properties.about.description.split("\n");
+  for (const [n, text] of Object.entries(says)) {
+    assert.ok(lines.includes(`${n}: ${text}`), `${n}'s says is whole in the input schema`);
+    assert.ok(tool.description.includes(n), `${n} is named in the description`);
+  }
+}
 const market = JSON.parse(fs.readFileSync(path.join(ROOT, ".claude-plugin", "marketplace.json"), "utf8"));
 assert.equal(market.plugins[0].name, manifest.name);
 
