@@ -36,6 +36,10 @@ export const domain = {
     const repo = makeRepo({ root: ROOT, push });
     return { repo: act ? repo : readOnly(repo) };
   },
+  // Looked up before the first model call. With no `match` it never answers by itself and never
+  // claims a route: its pattern is found in any question, and `lookup` returns null (so nothing is
+  // added) when the question names nothing the repository holds.
+  actions: [{ name: "lookup", title: "what the question names", script: "lookup", patterns: ["(?<question>\\S[\\s\\S]*)"], match: [], params: { budget: 18000 }, expect: null, acts: false }],
   prime:
     "Get ready to answer questions about a codebase. Call the `help` tool, then run one repl cell: " +
     '`(await scripts.run("overview")).dirs.length`. Then reply with the single word: ready',
@@ -43,13 +47,16 @@ export const domain = {
     `\n\nAnswer from the repository at ${ROOT}. Answer first, short; cite every fact as \`path:line\` ` +
     "(or a commit sha), and say what you looked for and did not find.",
   openWith:
-    "Open with a script, not raw calls:\n" +
-    '- Where something is defined and used: `await scripts.run("where", { name: "Thing" })`\n' +
+    "When the question came with a lookup already run, start from that: it holds definitions and callers, and names what it left out. " +
+    "Otherwise open with a script, not raw calls:\n" +
+    '- What names are, with their code, and what uses or calls them, several together: `await scripts.run("lookup", { names: ["Thing", "other_thing"], budget: 18000 })`, sent with `maxChars: 20000`\n' +
+    '- Every use of one name, counted by file: `await scripts.run("where", { name: "Thing", uses: 60 })`\n' +
     '- Settings, env vars, flags and constants about a topic: `await scripts.run("knobs", { topic: "embedding speed" })`\n' +
     '- When and why something changed: `await scripts.run("history", { term: "Thing" })`\n' +
     '- What a file or folder holds (definitions with lines): `await scripts.run("outline", { path: "src/x.rs" })`\n' +
     '- The repository at a glance (folders, docs, entry points): `await scripts.run("overview")`\n' +
-    "Then `repo.read(file, { from, to })` only the lines that answer. Return only what you need from each cell.\n\n",
+    "Then `repo.read(file, { from, to })` only the lines that answer, all the ranges you know you need in one cell. " +
+    "Run overview only when the question names nothing to look up. Return only what you need from each cell.\n\n",
   askDescription:
     "Ask a question about this repository's code in plain words and get a short answer with path:line citations. " +
     "A cheap model explores the code outside your context (ripgrep, reads, git history, ready-made scripts), so you pay for one call " +

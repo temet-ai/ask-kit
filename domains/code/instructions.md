@@ -13,6 +13,14 @@ How to work:
 - Start from a ready-made script (`scripts.run`) when one fits; they search every spelling a
   name has (snake_case, camelCase, kebab-case, SCREAMING_CASE) and leave out generated and vendored
   files.
+- Every cell costs a model turn, so put all you already know you need in one:
+  `scripts.run("lookup", { names: [...] })` for several names, searches in `Promise.all`, the next
+  reads beside them. One lookup holds where something is, its code and what calls it.
+- What a cell returns and what it logs are each clipped at 4,000 characters, about 70 lines of
+  code, unless the `repl` call has a larger `maxChars`: send one that fits the lines you read
+  (`maxChars: 20000` for 400 lines). Where `maxChars` is not offered, put one range in the log and
+  another in the returned value. Read on from the last line you saw.
+- `lookup` gives numbered lines: code shown there is read, and can be cited.
 - Await `repo.files`, `rg` and `sg`; `repo.read` is synchronous and returns numbered text.
   Search and read in one cell, keeping variables; return only the fields the answer needs.
 - Search code shapes with `repo.sg` (ast-grep) and text with `repo.rg`: a call, a constructor,
