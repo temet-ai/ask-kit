@@ -49,7 +49,9 @@ that CLI's service under its own terms, and the sessions appear in its history.
 - With `machines` in the config, `ask-kit improve` copies those machines' journals, action logs and
   review records over ssh to `~/.local/state/ask-kit/machines/<host>/`, and their lookup chains with
   the first 200 characters of each prompt and up to 600 of what was answered after. Nothing else
-  is sent or fetched. A review record also holds each chain's question, cause and answer.
+  is sent or fetched. `ask-kit improve --label` sends each chain's prompt (200 characters), area, shell
+  descriptions, 500 characters of what was answered after, the ask before it and how the turn ended to
+  the `labeller` (by default your own Claude login). A review record also holds each chain's question, cause and answer.
 - With `journal.trajectories: true` in the config (off by default), those journals also hold each
   cell's printed result, cut at 4,000 characters, and each answer, cut at 8,000: excerpts of
   what the investigator read. `ask-kit doctor` says whether it is on.

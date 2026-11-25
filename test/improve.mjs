@@ -105,10 +105,10 @@ const scanned = { chains: [
   { ...chain, id: "c3", ts: at(22), kit: "guild" },
   { ...chain, id: "c4", ts: at(22), purpose: "to-do" },
   { ...chain, id: "c5", ts: at(22), end: "ask" },
-  { ...chain, id: "c6", ts: at(1) },
+  { ...chain, id: "c6", ts: new Date(Date.now() - 40 * 86400_000).toISOString() },
 ] };
 const dug = await improvementBrief("watch", { scanned, through: at(30), answers: false });
-assert.deepEqual(dug.chains.shown.map((c) => c.chain), ["c2", "c1"], "this kit's to-answer chains in the window, those after an ask first");
+assert.deepEqual(dug.chains.shown.map((c) => c.chain), ["c2", "c1"], "this kit's to-answer chains with no question yet, those after an ask first");
 assert.deepEqual([dug.chains.byHand, dug.chains.afterAsk, dug.chains.tokens], [2, 1, 18000]);
 assert.deepEqual(dug.chains.shown[1].says, ["Read the duty roster"]);
 write("quiet", "none", []);
@@ -121,10 +121,49 @@ const dugSaved = await recordImprovement("watch", { ...dugRecord, evidence: [{ c
 assert.deepEqual(dugSaved.evidence[0], { chain: "c1" });
 // Every shown chain's question is stored with the review, and the next brief shows the kit's own.
 assert.deepEqual(dugSaved.questions.map((q) => [q.chain, q.cause]), [["c1", "gap"], ["c2", "before-edit"]]);
+const left = { chains: [...scanned.chains, ...Array.from({ length: 34 }, (_, i) => ({ ...chain, id: `m${i}`, ts: at(23), tokens: 100 + i }))] };
+const many = await improvementBrief("watch", { scanned: left, answers: false });
+assert.deepEqual([many.chains.byHand, many.chains.shown.length], [34, 30], "c1 and c2 have their question; a brief shows 30 and leaves the rest waiting");
 const asksAgain = await improvementBrief("watch", { scanned: { chains: [], local: true }, answers: false });
-assert.deepEqual(asksAgain.questions.map((q) => [q.question, q.outcome]), [["who was on the Ankh bridge last night?", "no-change"]]);
+assert.deepEqual(asksAgain.questions.map((q) => [q.question, q.dug]), [["who was on the Ankh bridge last night?", 1]]);
 const { storedQuestions } = await import("../src/improve.mjs");
 assert.equal(storedQuestions().get("c1").answer, "Nobby Nobbs");
+
+// What else is known of a chain: the ask before it, the nudge during it, its outcome, and findings kept elsewhere.
+const joined = { chains: [{ ...chain, session: "detritus", id: "j1", kit: "thieves", ts: at(6), until: at(8), afterAsk: "t1", askAt: at(4), askQuestion: "who robbed the Mint?" }, { ...chain, session: "detritus", id: "j2", kit: "thieves", ts: at(40) }] };
+write("thieves", "detritus", [{ ...ask, ts: at(7), startedAt: at(4), session: "detritus", question: "who robbed the Mint?", ms: 3000 }]);
+write("nudges", "nudges", [{ at: at(7), type: "nudge", session: "detritus", about: "thieves" }]);
+const join = { provider: "city", run: async (kit, script, params) => (script === "chain-outcomes" ? { chains: [{ chain: "j1", turnOutcome: { reaction: "corrected", unmet: "the thief" }, next: "no, who was it?", session_verdict: { outcome: "partial" } }] } : { findings: [{ id: "lesson:7", text: "ask the Guild first" }, { id: "note:9", text: "the Mint has two doors" }] }) };
+const thieves = await improvementBrief("thieves", { scanned: joined, join });
+const [j1, j2] = thieves.chains.shown;
+assert.deepEqual([j1.ask.kit, j1.ask.answeredBefore, j1.nudged.about, j1.turnOutcome.reaction, j1.sessionVerdict.outcome], ["thieves", false, "thieves", "corrected", "partial"]);
+assert.ok(!j2.ask && !j2.nudged && !j2.turnOutcome);
+assert.deepEqual([thieves.chains.askNotAnswered, thieves.chains.nudged, thieves.elsewhere.findings.length], [1, 1, 2]);
+await recordImprovement("thieves", { since: thieves.since, through: thieves.through, outcome: "no-change", summary: "x", evidence: [{ finding: "lesson:7" }, { chain: "j1" }], changes: [], checks: [], questions: [{ chain: "j1", question: "who robbed the Mint?", cause: "fell-short" }, { chain: "j2", question: "x", cause: "before-edit" }] }, { scanned: joined });
+const again = await improvementBrief("thieves", { scanned: joined, join });
+assert.deepEqual([again.elsewhere.findings.map((f) => f.id), again.chains.byHand, again.questions[0].question], [["note:9"], 0, "who robbed the Mint?"]);
+const broken = await improvementBrief("thieves", { scanned: { chains: [{ ...chain, id: "j3", kit: "thieves", ts: at(41) }] }, join: { provider: "city", run: async () => { throw new Error("mike is down"); } } });
+assert.equal(broken.chains.outcomesMissing, "mike is down", "a review says when outcomes are missing");
+
+// Labels: a model gives chains their questions; they count per question, and a review says which it answered.
+const { labelKit, readLabels, promptFor } = await import("../src/label.mjs");
+const labeller = path.join(tmp, "labeller.mjs");
+fs.writeFileSync(labeller, `let t=""; process.stdin.on("data",(d)=>t+=d).on("end",()=>{ const n=(t.match(/^\\{"n":/gm)||[]).length; console.log("Here: " + JSON.stringify(Array.from({length:n},(_, i)=> i===2 ? {n:3,question:"x",cause:"nonsense"} : {n:i+1,question:i<2?"Where is the toll booth?":"own work",cause:i<2?"gap":"own-output",answer:null}))); });`);
+const tolls = { chains: Array.from({ length: 5 }, (_, i) => ({ ...chain, session: `cohen${i}`, id: `l${i}`, kit: "tolls", ts: at(10 + i) })), local: true };
+const lab = await labelKit("tolls", { scanned: tolls, command: [process.execPath, labeller], join: { provider: null } });
+assert.deepEqual([lab.waiting, lab.labelled, lab.byCause, lab.errors], [5, 4, { gap: 2, "own-output": 2 }, []], "a row with no known cause stays unlabelled");
+write("tolls", "none", []);
+const tollBrief = await improvementBrief("tolls", { scanned: tolls, answers: false });
+assert.deepEqual([tollBrief.chains.byHand, tollBrief.questions.map((q) => [q.question, q.dug, q.sessions]), tollBrief.previous], [1, [["Where is the toll booth?", 2, 2]], null]);
+const tollRecord = { since: tollBrief.since, through: tollBrief.through, outcome: "changed", summary: "Add the booths script.", addresses: ["Where is the toll booth?"], evidence: [{ chain: "l2" }], questions: [{ chain: "l2", question: "own work", cause: "own-output" }], changes: ["booths.mjs"], checks: [{ command: "node test", ok: true, result: "ok" }], commit: "abcdef1" };
+await recordImprovement("tolls", tollRecord, { scanned: tolls });
+assert.equal((await improvementBrief("tolls", { scanned: { chains: [], local: true }, answers: false })).state, "no-new-evidence", "answered, and not dug for since");
+const { appendLabels, openQuestions } = await import("../src/improve.mjs");
+appendLabels("tolls", [{ chain: "l9", ts: new Date(Date.now() + 1000).toISOString(), session: "rincewind", question: "where is the toll booth", cause: "not-reached" }], "test");
+assert.deepEqual(openQuestions("tolls").map((q) => [q.dugSince, q.addressed.commit]), [[1, "abcdef1"]], "dug for again after its fix");
+assert.deepEqual(readLabels('[{"n":1,"question":"which clacks is down?","cause":"not-this-kit","kit":"clacks"},{"n":2,"question":"unclear","cause":"not-this-kit","kit":"clacks"}]', [chain, { ...chain, id: "z" }].map((c, i) => ({ ...c, id: `z${i}`, ts: at(1) })), { clacks: "towers" }).map((l) => [l.cause, l.to ?? null]), [["not-reached", "clacks"], ["not-this-kit", null]], "a question another kit answers is that kit's");
+assert.throws(() => readLabels("sorry", []), /no list/);
+assert.match(promptFor("tolls", [{ ...chain, says: ["Read the rota"] }], ["Where is the toll booth?"]), /Known questions:\n- Where is the toll booth\?/);
 
 // Another machine's journals, chains and reviews, copied over a fake ssh that runs the script here.
 const far = path.join(tmp, "far");
@@ -135,21 +174,26 @@ farFile("improvements/lipwig.jsonl", [{ at: at(2), kit: "lipwig", since: at(0), 
 const fakeSsh = path.join(tmp, "ssh");
 fs.writeFileSync(fakeSsh, `#!/bin/sh\nfor host; do last=$host; done\ncase "$*" in *pseudopolis*) echo "ssh: no route" >&2; exit 255;; esac\nASK_KIT_STATE='${far}' sh -c "$last"\n`, { mode: 0o755 });
 const farCli = path.join(tmp, "far-ask-kit");
-fs.writeFileSync(farCli, `#!/bin/sh\necho '${JSON.stringify({ chains: [{ ...chain, id: "f1", ts: at(6), kit: "lipwig", found: "the coach left at nine" }] })}'\n`, { mode: 0o755 });
+fs.writeFileSync(farCli, `#!/bin/sh\necho '${JSON.stringify({ asks: [{ id: "fa1", ts: at(6), prompt: "x", after: 0, tokens: 1 }], chains: [{ ...chain, id: "f1", ts: at(6), kit: "lipwig", found: "the coach left at nine" }] })}'\n`, { mode: 0o755 });
 process.env.ASK_KIT_SSH = fakeSsh;
 const { syncMachines, machinesOf } = await import("../src/machines.mjs");
 const synced = await syncMachines({ config: { machines: [{ host: "ankh", command: farCli }, "pseudopolis"] } });
 assert.deepEqual(synced.map((m) => [m.host, m.ok]), [["ankh", true], ["pseudopolis", false]], JSON.stringify(synced));
 assert.match(synced[1].journals, /no route/);
 assert.equal(synced[0].chains, 1);
-assert.ok(!fs.existsSync(path.join(STATE_ROOT, "machines", "ankh", "nudges")));
+assert.ok(fs.existsSync(path.join(STATE_ROOT, "machines", "ankh", "nudges", "nudges.jsonl")), "nudges come too");
+const { scanAll, report: gapsReport } = await import("../src/gaps.mjs");
+const everywhere = await scanAll({ since: "1d" });
+assert.deepEqual([everywhere.chains.map((c) => c.id), everywhere.asks.length, everywhere.machines[0].host], [["f1"], 1, "ankh"]);
 assert.throws(() => machinesOf({ machines: ["-oProxyCommand=x"] }), /not an ssh host/);
 const lipwig = await improvementBrief("lipwig", { scanned: { chains: [] }, answers: false });
 assert.equal(lipwig.since, new Date(Date.parse(at(2)) + 1).toISOString(), "a review recorded on another machine counts");
 assert.deepEqual([lipwig.asks, lipwig.report.flaggedAsks[0].machine, lipwig.chains.shown[0].machine, lipwig.chains.shown[0].found], [1, "ankh", "ankh", "the coach left at nine"]);
 const farRecord = { since: lipwig.since, through: lipwig.through, outcome: "no-change", summary: "x", evidence: [{ journal: path.join(STATE_ROOT, "machines", "ankh", "lipwig", "carrot.jsonl"), ts: at(5) }, { chain: "f1" }], changes: [], checks: [], questions: [] };
 await assert.rejects(recordImprovement("lipwig", farRecord, { scanned: { chains: [] } }), /missing: f1/);
-await recordImprovement("lipwig", { ...farRecord, questions: [{ chain: "f1", question: "when did the coach leave?", cause: "gap" }] }, { scanned: { chains: [] } });
+await recordImprovement("lipwig", { ...farRecord, questions: [{ chain: "f1", question: "when did the coach leave?", cause: "not-this-kit" }] }, { scanned: { chains: [] } });
+const after = await scanAll({ since: "1d" });
+assert.deepEqual([after.chains[0].prompt, gapsReport(after).coverage.byHand, gapsReport(after).reviewed.notAQuestion], ["when did the coach leave?", 0, 1], "gaps uses the stored question and its cause");
 // Asks sent side by side are not re-asks; slow alone does not put a kit up the queue.
 write("side", "asks", [
   { ...ask, ts: at(50), startedAt: at(20), ms: 30_000 },

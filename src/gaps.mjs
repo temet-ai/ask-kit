@@ -19,7 +19,7 @@ import { HOME, STATE_ROOT, expand, loadConfig } from "./config.mjs";
 import { findKit, listKits, readManifest } from "./kits.mjs";
 
 // Part of the cache key: raise it when a rule changes what a cached session would hold.
-const VERSION = 7;
+const VERSION = 8;
 
 // $ per million tokens: input, cache write, cache read, output. Claude list prices as mike-ask's
 // corpus.mjs has them; other models get no price.
@@ -824,7 +824,7 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
     if (c.k === "look") {
       const looks = lookupsOf(u.tool, u.arg);
       if (!looks.length) continue; // only cd or echo
-      cur ??= { id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, cwd, afterAsk: lastAsk, says: [], uses: [] };
+      cur ??= { id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, cwd, afterAsk: lastAsk?.id ?? null, askAt: lastAsk?.ts, askQuestion: lastAsk?.arg, says: [], uses: [] };
       if (u.says && !cur.says.includes(u.says)) cur.says.push(u.says);
       for (const l of looks) {
         const dir = !l.dir ? cwd : /^[/~]/.test(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
@@ -834,7 +834,7 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
       run += looks.length;
       continue;
     }
-    if (c.k === "ask") lastAsk = u.id;
+    if (c.k === "ask") lastAsk = u;
     if (c.k === "ask") asks.push({ id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, req: u.req, after: run });
     if (c.k === "act" && u.tool === "Bash") for (const file of shellEdits(u.arg)) (writes.get(u.turn) ?? writes.set(u.turn, []).get(u.turn)).push({ ts: u.ts, file });
     if (c.k === "write") (writes.get(u.turn) ?? writes.set(u.turn, []).get(u.turn)).push({ ts: u.ts, file: u.arg });
@@ -881,7 +881,7 @@ export async function analyseSession(s, rules) {
       const targets = ch.uses.map((u) => targetOf(u, rules, repo)).filter(Boolean);
       return {
         id: ch.id, ts: ch.ts, prompt: ch.prompt, end: ch.end, purpose: ch.purpose, fam: ch.fam, n: ch.uses.length, area: areaOf(ch),
-        ...(ch.afterAsk ? { afterAsk: ch.afterAsk } : {}), ...(ch.says.length ? { says: ch.says.slice(0, 6) } : {}),
+        until: ch.lastTs, ...(ch.afterAsk ? { afterAsk: ch.afterAsk, askAt: ch.askAt, askQuestion: String(ch.askQuestion ?? "").slice(0, 500) } : {}), ...(ch.says.length ? { says: ch.says.slice(0, 6) } : {}),
         kit: mode(targets) ?? "unknown", touched: [...new Set(targets)],
         ...costOf(ch.reqs, reqs, ch.uses.reduce((a, u) => a + u.chars, 0)),
       };
@@ -985,7 +985,8 @@ const mailOrFleet = (p) => /^\[(fleet seat|mail)/.test(p ?? "");
 
 /** The gaps report from a scan. */
 export function report(sc) {
-  const toAnswer = sc.chains.filter((c) => c.purpose === "to-answer" && c.end !== "ask");
+  const all = sc.chains.filter((c) => c.purpose === "to-answer" && c.end !== "ask");
+  const toAnswer = all.filter((c) => !NOT_A_QUESTION.includes(c.cause));
   const intoAsk = sc.chains.filter((c) => c.end === "ask");
   // Every ask is one piece of digging that went to ask. One after a chain of hand lookups costs
   // that chain; one asked straight away costs the call that made it.
@@ -1022,6 +1023,7 @@ export function report(sc) {
       handUsd: +toAnswer.reduce((s, c) => s + (c.usd ?? 0), 0).toFixed(2),
     },
     allChains: sc.chains.length,
+    reviewed: { questions: all.filter((c) => c.question).length, notAQuestion: all.length - toAnswer.length, machines: sc.machines ?? [] },
     byFamily,
     excluded: {
       mailOrFleet: toAnswer.filter((c) => mailOrFleet(c.prompt)).length,
@@ -1033,8 +1035,29 @@ export function report(sc) {
   };
 }
 
-export async function gaps(o = {}) {
+/**
+ * A scan with every named machine's chains and asks, and with the questions reviews have worked out:
+ * a chain with one gets `question`, `cause` and `answer`, and its prompt is the question.
+ */
+export async function scanAll(o = {}) {
   const sc = await scan(o);
+  const { machineEvidence } = await import("./machines.mjs");
+  const { storedQuestions } = await import("./improve.mjs");
+  const since = Date.parse(sc.since), chainIds = new Set(sc.chains.map((c) => c.id)), askIds = new Set(sc.asks.map((a) => a.id));
+  const far = machineEvidence();
+  const stored = storedQuestions();
+  const chains = [...sc.chains, ...far.chains.filter((c) => Date.parse(c.ts) >= since && !chainIds.has(c.id))].map((c) => {
+    const q = stored.get(c.id);
+    return q ? { ...c, prompt: q.question, question: q.question, cause: q.cause, answer: q.answer ?? null, reviewedAs: q.kit } : c;
+  });
+  return { ...sc, chains, asks: [...sc.asks, ...far.asks.filter((a) => Date.parse(a.ts) >= since && !askIds.has(a.id))], machines: far.machines };
+}
+
+/** Causes a review gives a chain that no kit should have answered. */
+export const NOT_A_QUESTION = ["before-edit", "own-output", "not-this-kit"];
+
+export async function gaps(o = {}) {
+  const sc = await scanAll(o);
   const { nudgesSince } = await import("./nudge.mjs");
   return { ...report(sc), nudges: nudgesSince(Date.parse(sc.since)) };
 }
@@ -1050,6 +1073,8 @@ export function formatReport(r) {
     `Cost: ${r.cost.basis}.`,
     "",
     `Coverage: ${c.asks} asks against ${c.byHand} lookup chains answered by hand: ${pct(c.share)} of the digging went to ask, ${pct(c.tokenShare)} by tokens.`,
+    ...(r.reviewed?.machines.length ? [`Machines: this one and ${r.reviewed.machines.map((m) => `${m.host} (as of ${m.at.slice(0, 16)})`).join(", ")}.`] : []),
+    ...(r.reviewed?.questions ? [`Reviewed: ${r.reviewed.questions} chains have a question from a review; ${r.reviewed.notAQuestion} of them were no kit's to answer and are left out below.`] : []),
     `By hand: ${c.handSessions} sessions, ${fmtTok(c.handTokens)} tokens${c.handUsd ? `, $${c.handUsd} at list price` : ""}.`,
     ...(r.nudges ? [r.nudges.count ? `Nudges: the plugin's hook pointed ${r.nudges.count} lookup chains at ask in ${r.nudges.sessions} sessions (${Object.entries(r.nudges.by).map(([k, v]) => `${k} ${v}`).join(", ")}), the first on ${r.nudges.first.slice(0, 10)}; compare coverage before and after that date.` : "Nudges: none logged in this window."] : []),
     `Not a typed question: ${r.excluded.mailOrFleet} chains started from mail or a fleet brief, ${r.excluded.other} from a short or interrupted prompt; no example prompts come from them, and "No kit" leaves them out.`,

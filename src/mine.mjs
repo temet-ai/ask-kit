@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ADAPTERS, listSessions } from "./transcripts/index.mjs";
 import { STATE_ROOT } from "./config.mjs";
-import { informative, scan } from "./gaps.mjs";
+import { NOT_A_QUESTION, informative, scanAll } from "./gaps.mjs";
 import { findKit, readManifest } from "./kits.mjs";
 
 const norm = (q) => q.toLowerCase().replace(/\s+/g, " ").trim();
@@ -79,7 +79,7 @@ const slug = (q) => norm(q).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").sp
  */
 export async function mine(o = {}) {
   if (!o.kit) throw new Error("mine needs a kit or source name, as `ask-kit gaps` lists them");
-  const sc = o.scan ?? (await scan({ since: o.since ?? "30d", sources: o.sources }));
+  const sc = o.scan ?? (await scanAll({ since: o.since ?? "30d", sources: o.sources }));
   const have = new Set();
   const dir = findKit(o.kit);
   if (dir) {
@@ -88,10 +88,7 @@ export async function mine(o = {}) {
       for (const q of JSON.parse(fs.readFileSync(path.resolve(dir, bench), "utf8")).questions ?? []) have.add(norm(q.q ?? q.question ?? ""));
     } catch {}
   }
-  // A question a review worked out stands in for the prompt that started the chain.
-  const { storedQuestions } = await import("./improve.mjs");
-  const asked = storedQuestions();
-  const ours = sc.chains.map((c) => (asked.has(c.id) ? { ...c, prompt: asked.get(c.id).question, cause: asked.get(c.id).cause } : c)).filter((c) => !["before-edit", "own-output", "not-this-kit"].includes(c.cause));
+  const ours = sc.chains.filter((c) => !NOT_A_QUESTION.includes(c.cause));
   const chains = ours.filter((c) => c.kit === o.kit && c.purpose === "to-answer" && c.end !== "ask" && informative(c.prompt));
   // One row per question: the costliest chain that question started.
   const best = new Map();
@@ -117,7 +114,7 @@ export async function mine(o = {}) {
         events.set(key, []);
       }
     }
-    const found = answerAfter(events.get(key), c.id);
+    const found = c.answer ?? c.found ?? answerAfter(events.get(key), c.id);
     let id = slug(c.prompt);
     for (let i = 2; ids.has(id); i++) id = `${slug(c.prompt)}-${i}`;
     ids.add(id);

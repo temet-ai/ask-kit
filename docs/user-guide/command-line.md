@@ -9,6 +9,8 @@ ask-kit detect [--json]          what this machine has (agents, transcripts, log
 ask-kit doctor                   check sources, backends and tools
 ask-kit ask "<question>" [--domain sessions|code] [--backend name] [--continue]
 ask-kit run <kit> <script> [key=value ...]   run a kit script with no model (a shot)
+ask-kit kit update [--machines]                    bring every linked kit checkout to its upstream, here or on every machine in the config
+ask-kit improve [kit] [--label] [--offline]        the review queue, one kit's brief, or questions for chains that have none
 ask-kit report [--since 7d|<date>|<sha>] [--json]   flagged asks (including answers whose citations did not resolve), failed-citation rate by domain,
                                  asks that became background tasks and how they ended,
                                  asks told to stop for repeating cells, asks with a cell that could not reach a source

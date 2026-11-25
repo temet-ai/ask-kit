@@ -54,12 +54,29 @@ the prompt, what the shell calls said they were for, what the agent answered aft
 made earlier in the turn if there was one. A kit that nobody asked but that agents dug around is
 pending too. The queue's `signals` leave out asks that were only slow or costly.
 
-Each shown chain's question is stored with the review: `questions` in the record holds
-`{chain, question, cause, answer?}` for every one. The causes are `gap` (the kit has nothing that
-answers it), `not-reached` (it does, and was not asked), `fell-short` (an ask before it left it out),
-`before-edit`, `own-output` and `not-this-kit`. Later briefs list the first three under `questions`,
-with the commit that answered them, so one dug for again shows a fix that did not work. `ask-kit
-mine` drafts test questions from them.
+Each chain carries what is known of it: `ask`, the journal row of the ask made before it in the turn
+(`answeredBefore: false` when it was still running); `nudged`, when the plugin's hook named a kit
+during it; and, where an enabled kit provides `chain-outcomes`, how the turn and session ended. The
+brief's `elsewhere` lists what a kit that provides `kit-findings` found written about this kit in
+notes, lessons and threads; citing one as `{finding: id}` in a record takes it off the list. A source
+that fails is named in the brief.
+
+## Questions
+
+`ask-kit improve --label [kit] [--max 400]` gives each chain of the last 30 days its question and
+cause, in batches, with the model in the config's `labeller` (default: `claude -p --model haiku`,
+signed in on this machine; `{ "command": [...] }` is any program that reads a prompt on stdin and
+prints the reply). A question another kit answers goes to that kit. The causes are `gap` (the kit has
+nothing that answers it), `not-reached` (it does, and was not asked), `fell-short` (an ask before it
+left it out, or had not answered yet), `before-edit`, `own-output` and `not-this-kit`.
+
+A brief's `questions` are the ones that were this kit's to answer, counted: how often and in how many
+sessions each was dug for. A review names those its change answers in `addresses`; `dugSince` then
+counts the digging after it, and a question dug for again is open again. A chain is closed only by
+having a question: what a brief has no room for waits. `ask-kit gaps` and `ask-kit mine` use the
+questions too, and count every machine.
+
+A label is a model's reading. Recording the chain again with another cause corrects it.
 
 ## Other machines
 

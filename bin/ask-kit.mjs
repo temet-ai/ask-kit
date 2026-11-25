@@ -130,12 +130,29 @@ async function main() {
       }
       const { syncMachines } = await import("../src/machines.mjs");
       const machines = flag("offline") ? [] : await syncMachines();
+      if (flag("label")) {
+        const { labelKit } = await import("../src/label.mjs");
+        const { scan } = await import("../src/gaps.mjs");
+        const { listDomains } = await import("../src/domains.mjs");
+        const scanned = await scan({ since: "30d" });
+        let left = Number(flag("max")) > 0 ? Number(flag("max")) : 400;
+        const rows = [];
+        for (const k of kit ? [kit] : listDomains().sort()) {
+          if (left <= 0) break;
+          const r = await labelKit(k, { scanned, max: left, log: (l) => console.error(l) });
+          left -= r.labelled;
+          if (r.waiting) rows.push(r);
+          if (r.errors.length >= 2) break;
+        }
+        if (rows.some((r) => r.errors.length)) process.exitCode = 1;
+        return print({ ...(machines.length ? { machines } : {}), labelled: rows });
+      }
       if (kit) return print({ ...(await improvementBrief(kit, options)), ...(machines.length ? { machines } : {}) });
       const q = await improvementQueue(options);
       if (flag("json")) return print({ ...q, ...(machines.length ? { machines } : {}) });
       for (const m of machines) console.log(m.ok ? `${m.host}: ${Math.round(m.journalBytes / 1024)} KB of journals, ${m.chains} chains` : `${m.host}: NOT READ IN FULL: ${m.journals ?? m.chainsError}`);
       console.log("Per-kit review queue (real use only; since each completed review, or 30d on the first run)");
-      for (const k of q.kits) console.log(`${k.kit.padEnd(18)} ${k.state.padEnd(15)} ${k.asks} asks, ${k.outcomes} outcomes, ${k.signals} signals, ${k.chains} dug by hand${k.previous?.outcome === "blocked" ? " (last review blocked)" : ""}`);
+      for (const k of q.kits) console.log(`${k.kit.padEnd(18)} ${k.state.padEnd(15)} ${k.asks} asks, ${k.outcomes} outcomes, ${k.signals} signals, ${k.questions} open questions, ${k.chains} chains with no question yet${k.previous?.outcome === "blocked" ? " (last review blocked)" : ""}`);
       console.log("\nRead one kit: ask-kit improve <kit>\nAfter verification: ask-kit improve <kit> --record <file.json>");
       return;
     }
@@ -145,9 +162,9 @@ async function main() {
       if (flag("chains")) {
         const { scan } = await import("../src/gaps.mjs");
         const { answersAfter } = await import("../src/mine.mjs");
-        const chains = (await scan({ since })).chains.filter((c) => c.purpose === "to-answer" && c.end !== "ask");
-        const found = await answersAfter(chains);
-        return print({ chains: chains.map((c) => ({ ...c, found: found.get(c.id) ?? null })) });
+        const { chains, asks } = await scan({ since });
+        const found = await answersAfter(chains.filter((c) => c.purpose === "to-answer" && c.end !== "ask"));
+        return print({ asks, chains: chains.map((c) => ({ ...c, found: found.get(c.id) ?? null })) });
       }
       const r = await gaps({ since });
       return flag("json") ? print(r) : console.log(formatReport(r));
@@ -563,11 +580,21 @@ async function kitCommand() {
       for (const r of rows) console.log(`${r.on ? "●" : "○"} ${r.name.padEnd(20)} ${r.title}  (script ${r.script}${r.acts ? ", changes things" : ""})\n    ${r.on ? "on" : r.why}\n    last ${r.last20.runs} runs: ${r.last20.answered} answered, ${r.last20.failed} fell through on an error or the shape, ${r.last20.reasked} asked again\n    match: ${r.match.join("  |  ")}`);
       return;
     }
+    case "update": {
+      const { updateKits, updateMachines } = await import("../src/update.mjs");
+      const here = await updateKits();
+      const there = flag("machines") ? await updateMachines(loadConfig({ required: false })) : [];
+      if (flag("json")) return print(flag("machines") ? { kits: here, machines: there } : here);
+      const show = (rows) => rows.filter((r) => r.state !== "current").map((r) => `  ${r.kit}: ${r.state}${r.from && r.from !== r.version ? ` ${r.from} to ${r.version}` : ""}${r.why ? ` (${r.why})` : ""}`).join("\n") || "  every kit current";
+      console.log(`This machine\n${show(here)}`);
+      for (const m of there) console.log(`${m.host}\n${m.error ? `  NOT UPDATED: ${m.error}` : show(m.kits)}`);
+      return;
+    }
     case "install":
       if (!positional[1]) throw new Error("kit install needs a repository (owner/repo) or a folder");
       return print(await (await import("../src/gallery.mjs")).addDomain(positional[1], { yes: !!flag("yes") }));
     default:
-      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · profile [--since 30d] [--json] · install <owner/repo> [--yes] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
+      throw new Error("kit: new <name> --from folder:<path>|cli:<command> · link <dir> · list · test <name> [--backends a,b] [--only id,id] · update [--machines] · profile [--since 30d] [--json] · install <owner/repo> [--yes] · enable|disable <name> · actions <name> [--enable|--disable <action>] [--json]");
   }
 }
 

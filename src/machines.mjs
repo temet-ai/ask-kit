@@ -32,15 +32,18 @@ export function stateRoots() {
   return [STATE_ROOT, ...hosts.map(dirOf)];
 }
 
-/** The lookup chains copied from other machines, each with its `machine`. */
-export function machineChains() {
-  return stateRoots().slice(1).flatMap((dir) => {
+/** What other machines' scans found: {chains, asks, machines: [{host, at}]}; chains and asks carry their `machine`. */
+export function machineEvidence() {
+  const out = { chains: [], asks: [], machines: [] };
+  for (const dir of stateRoots().slice(1)) {
+    const host = path.basename(dir);
     try {
-      return JSON.parse(fs.readFileSync(path.join(dir, "chains.json"), "utf8")).chains.map((c) => ({ ...c, machine: path.basename(dir) }));
-    } catch {
-      return [];
-    }
-  });
+      const r = JSON.parse(fs.readFileSync(path.join(dir, "chains.json"), "utf8"));
+      for (const k of ["chains", "asks"]) out[k].push(...(r[k] ?? []).map((x) => ({ ...x, machine: host })));
+      out.machines.push({ host, at: r.at });
+    } catch {}
+  }
+  return out;
 }
 
 const SSH = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8"];
@@ -59,11 +62,15 @@ const RUN = `PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/.npm-glo
 a=$(ls -td "$HOME"/.claude/plugins/cache/*/ask-kit/*/bin/ask-kit.mjs 2>/dev/null | head -1)
 if [ -n "$a" ]; then set -- node "$a"; else set -- ask-kit; fi`;
 
-async function syncOne({ host, command }, days) {
+/** Run an ask-kit command on a machine: its stdout. */
+export const runThere = ({ host, command }, args, ms = 180_000) => ssh(host, `${command ? `set -- ${command}` : RUN}\n"$@" ${args}`, ms);
+
+async function syncOne(machine, days) {
+  const { host } = machine;
   const dir = dirOf(host);
   const out = { host, ok: true };
   try {
-    const list = `find . -name '*.jsonl' -mtime -${days} ! -path './warm/*' ! -path './nudges/*' ! -path './machines/*' ! -path './drafts/*' ! -path './gallery/*'`;
+    const list = `find . -name '*.jsonl' -mtime -${days} ! -path './warm/*' \\( ! -path './nudges/*' -o -name nudges.jsonl \\) ! -path './machines/*' ! -path './drafts/*' ! -path './gallery/*'`;
     const tar = await ssh(host, `${STATE}; [ -d "$d" ] || exit 0; cd "$d" && ${list} > /tmp/.ask-kit-$$ && { [ -s /tmp/.ask-kit-$$ ] && tar czf - -T /tmp/.ask-kit-$$; rm -f /tmp/.ask-kit-$$; } ; true`, 180_000);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (tar.length) {
@@ -78,10 +85,10 @@ async function syncOne({ host, command }, days) {
     return { ...out, ok: false, journals: e.message };
   }
   try {
-    const json = await ssh(host, `${command ? `set -- ${command}` : RUN}\n"$@" gaps --chains --since ${days}d`, 180_000);
-    const chains = JSON.parse(String(json)).chains;
+    const json = await runThere(machine, `gaps --chains --since ${days}d`);
+    const { chains, asks = [] } = JSON.parse(String(json));
     if (!Array.isArray(chains)) throw new Error("no chains in its answer");
-    fs.writeFileSync(path.join(dir, "chains.json"), JSON.stringify({ at: new Date().toISOString(), chains }), { mode: 0o600 });
+    fs.writeFileSync(path.join(dir, "chains.json"), JSON.stringify({ at: new Date().toISOString(), chains, asks }), { mode: 0o600 });
     out.chains = chains.length;
   } catch (e) {
     Object.assign(out, { ok: false, chainsError: /JSON|no chains/.test(e.message) ? "its ask-kit is older than 0.7.1" : e.message });

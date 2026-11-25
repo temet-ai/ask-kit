@@ -8,6 +8,7 @@ import { HOME, STATE_ROOT, loadConfig } from "./config.mjs";
 import { providersOf, winnersOf } from "./capabilities.mjs";
 import { indexDomain } from "./domains.mjs";
 import { findKit } from "./kits.mjs";
+import { stateRoots } from "./machines.mjs";
 import { FITS, GENERIC, PROGRAMS, classify, kitRules, lookupsOf, pathsOf, shapeOf, targetOf } from "./gaps.mjs";
 
 export const NUDGE_AFTER = 3;
@@ -213,21 +214,20 @@ export function prune(now = Date.now()) {
 
 /** Nudges logged since a time: {count, sessions, first, by}. */
 export function nudgesSince(sinceMs) {
-  let rows = [];
-  try {
-    rows = fs
-      .readFileSync(path.join(dir(), "nudges.jsonl"), "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
+  const rows = stateRoots().flatMap((root) => {
+    try {
+      return fs.readFileSync(path.join(root, "nudges", "nudges.jsonl"), "utf8").split("\n").flatMap((l) => {
         try {
-          return JSON.parse(l);
+          const r = JSON.parse(l);
+          return r?.type === "nudge" && Date.parse(r.at) >= sinceMs ? [r] : [];
         } catch {
-          return null;
+          return [];
         }
-      })
-      .filter((r) => r?.type === "nudge" && Date.parse(r.at) >= sinceMs);
-  } catch {}
+      });
+    } catch {
+      return [];
+    }
+  }).sort((a, b) => a.at.localeCompare(b.at));
   const by = {};
   for (const r of rows) by[r.about] = (by[r.about] ?? 0) + 1;
   return { count: rows.length, sessions: new Set(rows.map((r) => r.session)).size, first: rows[0]?.at ?? null, by };
