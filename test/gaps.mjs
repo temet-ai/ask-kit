@@ -225,10 +225,24 @@ for (const cut of ['rg "duty', "rg $(git log", "cat <<'EOF'\nrota", "rg ${a", "e
 
 // A Bash call with three lookups is a chain by itself; cd and echo neither count nor break one.
 const { buildChains } = await import("../src/gaps.mjs");
+{
+  // rg and git are required by kits that are not about them; lantern is one kit's own program.
+  for (const [name, req] of [["guards", '["rg", "git", "lantern"]'], ["bursar", '["git", "rg"]'], ["git", '["git"]']]) kit(name, `name = "${name}"\nsays = "x"\nrequires = ${req}\n[[sources]]\nkind = "folder"\nname = "${name}"\npath = "${tmp}/${name}"\n`);
+  const { kitRules, targetOf } = await import("../src/gaps.mjs");
+  const rules = kitRules({ version: 1, domains: { code: {}, guards: {}, bursar: {}, git: {} } });
+  const to = (arg) => targetOf({ tool: "Bash", arg, fam: "file", paths: [] }, rules, repo);
+  assert.equal(to("rg duty src"), "code");
+  assert.equal(to("lantern list"), "guards");
+  assert.equal(to("git log -3"), "git");
+  assert.equal(to("git grep duty"), "code");
+  for (const name of ["guards", "bursar", "git"]) fs.rmSync(path.join(tmp, "config", "kits", name), { recursive: true });
+}
 const use = (arg) => ({ turn: 0, prompt: "Where is the night rota?", ts: "2026-11-18T00:00:00Z", tool: "Bash", arg, req: arg, chars: 300 });
 const batched = buildChains([use("cd notes && cat a.md; rg 'duty|rota' x.md; git log -2")], { cwd: "/w" }).chains;
 assert.equal(batched.length, 1);
 assert.deepEqual(batched[0].uses.map((u) => [u.fam, u.shape, u.chars, u.paths]), [["file", "cat", 100, ["/w/notes/a.md"]], ["file", "rg", 100, ["/w/notes/x.md"]], ["git", "git log", 100, []]]);
+const asked = buildChains([use("cat a.md"), { ...use(""), tool: "mcp__ask__ask", id: "ask1" }, { ...use("cat b.md; cat c.md"), says: "Read the rota" }, { ...use("cat d.md"), says: "Read the rota" }]).chains;
+assert.deepEqual([asked.length, asked[0].afterAsk, asked[0].says], [1, "ask1", ["Read the rota"]], "a chain knows the ask before it and what its calls were for");
 assert.equal(buildChains([use("cat a.md | sort | uniq | head")]).chains.length, 0, "a pipeline counts once");
 assert.equal(buildChains([use("cat a.md"), use("echo ok"), use("cat b.md; cat c.md")]).chains[0].uses.length, 3);
 

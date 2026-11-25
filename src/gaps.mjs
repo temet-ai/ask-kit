@@ -19,7 +19,7 @@ import { HOME, STATE_ROOT, expand, loadConfig } from "./config.mjs";
 import { findKit, listKits, readManifest } from "./kits.mjs";
 
 // Part of the cache key: raise it when a rule changes what a cached session would hold.
-const VERSION = 5;
+const VERSION = 6;
 
 // $ per million tokens: input, cache write, cache read, output. Claude list prices as mike-ask's
 // corpus.mjs has them; other models get no price.
@@ -104,6 +104,12 @@ const parse = (t) => {
 };
 
 /** One tool_call event as [{tool, arg}] in Claude Code's names (MCP tools as mcp__<server>__<tool>). */
+/** What the agent wrote a shell call was for (Claude Code's and Copilot's `description`), clipped. */
+const saysOf = (e) => {
+  const input = e.input ?? (typeof e.text === "string" && e.text.startsWith("{") ? parse(e.text) : null);
+  return typeof input?.description === "string" ? input.description.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+};
+
 export function callsOf(e) {
   let name = e.tool ?? "";
   const input = e.input ?? (typeof e.text === "string" && e.text.startsWith("{") ? parse(e.text) : null) ?? {};
@@ -604,12 +610,24 @@ export const PROGRAMS = {
   lsof: "systemd", df: "systemd", du: "systemd", free: "systemd", uptime: "systemd", sensors: "systemd", "nvidia-smi": "systemd",
   git: "code", kubectl: "kubernetes", glab: "gitlab", aws: "aws", gcloud: "gcloud", sqlite3: "sqlite", mike: "mike", tether: "mike",
 };
+// The kits that fit a program, best first; the first enabled one is named. Other programs go to
+// the kit PROGRAMS names, then to the one enabled kit whose `requires` lists them.
+export const FITS = {
+  git: ["git", "code"], cargo: ["rust"], sqlite3: ["sqlite"], claude: ["claude-setup"],
+  systemctl: ["systemd", "ops"], journalctl: ["systemd", "ops"], loginctl: ["systemd", "ops"], launchctl: ["ops"], coredumpctl: ["crash", "systemd", "ops"],
+  ps: ["procs", "systemd", "ops"], pgrep: ["procs", "systemd", "ops"], pidof: ["procs", "systemd", "ops"], lsof: ["procs", "systemd", "ops"], ss: ["procs", "net", "systemd", "ops"],
+  df: ["systemd", "ops"], du: ["files", "systemd", "ops"], free: ["systemd", "ops"], uptime: ["systemd", "ops"], sensors: ["systemd", "ops"], "nvidia-smi": ["systemd", "ops"],
+  ping: ["net", "ops"], dig: ["net"], host: ["net"], nc: ["net"], tailscale: ["net", "ops"], ssh: ["ops", "systemd"],
+};
+// Programs many kits run without being about them.
+export const GENERIC = new Set("node npm npx python python3 bash sh zsh rg grep fd find cat jq git curl codex claude".split(" "));
 const BUILT_IN = ["sessions", "code"];
 
 /** What attribution needs: installed kits, their programs, folders and MCP servers. */
 export function kitRules(config = loadConfig({ required: false }) ?? {}) {
   const installed = new Set(BUILT_IN.filter((d) => config.domains?.[d]?.enabled !== false));
   const programs = { ...PROGRAMS };
+  const owners = {};
   const folders = [];
   const servers = {};
   for (const name of listKits()) {
@@ -623,7 +641,7 @@ export function kitRules(config = loadConfig({ required: false }) ?? {}) {
     installed.add(name);
     const settings = { ...Object.fromEntries((m.settings ?? []).filter((s) => s.default != null).map((s) => [s.key, s.default])), ...(config.domains?.[name]?.settings ?? {}) };
     const fill = (s) => String(s).replace(/\$\{([A-Z0-9_]+)\}/g, (_, k) => settings[k] ?? process.env[k] ?? "");
-    for (const p of [].concat(m.requires ?? [])) if (!/^mike/.test(p)) programs[p] = name;
+    for (const p of [].concat(m.requires ?? [])) if (!/^mike/.test(p)) (owners[p] ??= []).push(name);
     for (const s of m.sources ?? []) {
       if (s.kind === "folder" && s.path) {
         const dir = expand(fill(s.path));
@@ -636,6 +654,13 @@ export function kitRules(config = loadConfig({ required: false }) ?? {}) {
         else if (s.name !== "mike" && !/^mike/.test(bin)) servers[s.name] = servers[bin] = name;
       }
     }
+  }
+  // A program is the kit's it fits, else the one kit that requires it. One several kits require, or
+  // that kits run without being about it (rg, node), says nothing.
+  for (const [p, kits] of Object.entries(owners)) if (kits.length === 1 && !GENERIC.has(p)) programs[p] = kits[0];
+  for (const [p, kits] of Object.entries(FITS)) {
+    const fit = kits.find((k) => installed.has(k)) ?? programs[p];
+    if (fit) programs[p] = fit;
   }
   // Transcript stores are what the sessions domain reads.
   for (const a of Object.values(ADAPTERS)) if (installed.has("sessions")) folders.push([a.where(), "sessions"]);
@@ -687,6 +712,8 @@ export function targetOf(u, rules, repo) {
     for (const h of [...inner, ...heads]) {
       if (h === "curl" || h === "wget") return /localhost|127\.0\.0\.1|\[::1\]/.test(u.arg) ? "local http" : "web";
       const t = rules.programs[h];
+      // git grep, ls-files and a file at a commit are reading the code, not its history.
+      if (t === "git" && /^git (grep|ls-files|ls-tree|cat-file|show <ref>)/.test(shapeOf(u.tool, u.arg))) continue;
       if (t && t !== "code") return t;
     }
     if (heads.includes("ssh")) return "ssh";
@@ -747,7 +774,7 @@ export function usesOf(events) {
       if (e.toolId) seen.add(e.toolId);
       const cs = callsOf(e);
       const c = chars.get(e.toolId) ?? 0;
-      for (const x of cs) uses.push({ turn, prompt, ts: e.ts, ...x, id: e.toolId, req: e.req ?? `call:${e.i}`, chars: Math.round(c / cs.length) });
+      for (const x of cs) uses.push({ turn, prompt, ts: e.ts, ...x, says: saysOf(e), id: e.toolId, req: e.req ?? `call:${e.i}`, chars: Math.round(c / cs.length) });
     }
   }
   return { uses, reqs };
@@ -757,11 +784,12 @@ export function usesOf(events) {
  * Chains and asks of one session. Chain: {turn, ts, prompt, end, purpose, fam, uses:[{tool, fam,
  * shape, paths, req, chars}], reqs}. purpose: "to-do" when a file the chain read is edited later
  * in the turn, "find-then-edit" when other files are, "to-answer" otherwise. Ask: {turn, ts,
- * prompt, req, after} where `after` is how many lookups came just before it.
+ * prompt, req, after} where `after` is how many lookups came just before it. A chain also has
+ * `says`, what its calls said they were for, and `afterAsk`, the ask made earlier in its turn.
  */
 export function buildChains(uses, { min = 3, cwd = null } = {}) {
   const chains = [], asks = [], writes = new Map();
-  let cur = null, run = 0, prev = null;
+  let cur = null, run = 0, prev = null, lastAsk = null;
   const close = (end) => {
     if (cur && cur.uses.length >= min) chains.push({ ...cur, end });
     cur = null;
@@ -770,6 +798,7 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
     if (prev && u.turn !== prev.turn) {
       close("turn-end");
       run = 0;
+      lastAsk = null;
     }
     prev = u;
     const c = classify(u.tool, u.arg);
@@ -777,15 +806,17 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
     if (c.k === "look") {
       const looks = lookupsOf(u.tool, u.arg);
       if (!looks.length) continue; // only cd or echo
-      cur ??= { id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, cwd, uses: [] };
+      cur ??= { id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, cwd, afterAsk: lastAsk, says: [], uses: [] };
+      if (u.says && !cur.says.includes(u.says)) cur.says.push(u.says);
       for (const l of looks) {
         const dir = !l.dir ? cwd : /^[/~]/.test(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
-        cur.uses.push({ tool: u.tool, fam: l.fam, shape: shapeOf(u.tool, l.arg), arg: l.arg, paths: pathsOf(u.tool, l.arg, dir), req: u.req, chars: Math.round(u.chars / looks.length) });
+        cur.uses.push({ id: u.id, tool: u.tool, fam: l.fam, shape: shapeOf(u.tool, l.arg), arg: l.arg, paths: pathsOf(u.tool, l.arg, dir), req: u.req, chars: Math.round(u.chars / looks.length) });
       }
       cur.lastTs = u.ts;
       run += looks.length;
       continue;
     }
+    if (c.k === "ask") lastAsk = u.id;
     if (c.k === "ask") asks.push({ id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, req: u.req, after: run });
     if (c.k === "write") (writes.get(u.turn) ?? writes.set(u.turn, []).get(u.turn)).push({ ts: u.ts, file: u.arg });
     close(c.k);
@@ -831,6 +862,7 @@ export async function analyseSession(s, rules) {
       const targets = ch.uses.map((u) => targetOf(u, rules, repo)).filter(Boolean);
       return {
         id: ch.id, ts: ch.ts, prompt: ch.prompt, end: ch.end, purpose: ch.purpose, fam: ch.fam, n: ch.uses.length, area: areaOf(ch),
+        ...(ch.afterAsk ? { afterAsk: ch.afterAsk } : {}), ...(ch.says.length ? { says: ch.says.slice(0, 6) } : {}),
         kit: mode(targets) ?? "unknown", touched: [...new Set(targets)],
         ...costOf(ch.reqs, reqs, ch.uses.reduce((a, u) => a + u.chars, 0)),
       };

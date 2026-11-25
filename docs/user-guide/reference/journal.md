@@ -190,7 +190,7 @@ kit-test and benchmark callers, including linked investigator cells. Older CLI c
 caller or ask id are counted only when they fit one ask's time window; ambiguous and unmatched
 cells are excluded and counted as `unattributedCells`, with up to 20 `unattributedExamples`. These options are used by
 the [per-kit improvement workflow](../tuning.md). A re-ask must be in the same kit and state
-folder as the earlier question.
+folder as the earlier question, and start after its answer.
 
 `--since` takes `<n>h`, `<n>d`, a date, or a git commit sha or ref, which it turns into the
 commit's date (`git log -1 --format=%cI`, in the repository of the current folder), so

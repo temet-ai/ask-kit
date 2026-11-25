@@ -43,8 +43,8 @@ that CLI's service under its own terms, and the sessions appear in its history.
   off; the full result is not. Background kits can append `outcome` records with job id, caller,
   execution status, duration and the same review summary, without prompts or images.
 - `ask-kit improve <kit> --record <file>` keeps the agent’s per-kit review under
-  `improvements/<kit>.jsonl`: window, outcome, summary, journal paths and timestamps, changed
-  paths, check commands and reported results, and commit. The command makes no model calls and
+  `improvements/<kit>.jsonl`: window, outcome, summary, journal paths and timestamps or
+  chain ids, changed paths, check commands and reported results, and commit. The command makes no model calls and
   does not run the listed checks. Review records should stay outside public repositories.
 - With `journal.trajectories: true` in the config (off by default), those journals also hold each
   cell's printed result, cut at 4,000 characters, and each answer, cut at 8,000: excerpts of
@@ -55,8 +55,10 @@ that CLI's service under its own terms, and the sessions appear in its history.
   text. The shadow run sends the question to the kit's model, as any ask does.
   `actions.shadowEvery: 0` in the config stops it.
 - `ask-kit gaps` keeps the lookup chains and asks it found in each session in
-  `~/.local/state/ask-kit/index/gaps.json`: time, kit, area, token count and the first 200
-  characters of the prompt. It sends nothing.
+  `~/.local/state/ask-kit/index/gaps.json`: time, kit, area, token count, the first 200
+  characters of the prompt, up to six descriptions the chain's shell calls carried (120 characters
+  each) and the id of the ask made earlier in the turn. `ask-kit improve` reads it and prints, for
+  up to 30 chains of a kit, what the agent answered after. It sends nothing.
 - With the Claude Code plugin, in `~/.local/state/ask-kit/nudges/`: a counter file per session (and
   per subagent) holding how many lookups in a row it has made, their kinds (`rg`, `git log`, `Read`) and which
   kits would answer them, and `nudges.jsonl`, one line each

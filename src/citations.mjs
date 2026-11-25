@@ -1,7 +1,9 @@
 // Citation check: after an investigator answers, the citations in the answer are resolved with no
 // model, through the domain's own REPL globals (the same `repo` and `history` the investigator had).
 //
-//   code domain      `path:line` and `path:line-line`: the file exists and has that many lines
+//   code domain      `path:line` and `path:line-line`: the file exists and has that many lines. A
+//                    shortened path (`stage/mod.rs:12`) is the file the answer named in full, else
+//                    the only file in the repository that ends so; a name several files share fails
 //   sessions domain  `<source> <session id> #n` (what cite() prints), and `#m` chained after it
 //                    with a comma or "and" ("codex 5ca1ab1e #12, #19"): the session has that event
 //
@@ -44,14 +46,33 @@ export function eventCitations(text) {
   return [...out.values()];
 }
 
+// The line is in the file. A file that ends with a newline reports one more (empty) line than it has.
+async function hasLine(c, file, g) {
+  const r = await g.repo.read(file, { from: c.to, to: c.to });
+  return c.to <= r.lines && !(c.to === r.lines && r.text.replace(/^\d+\t/, "") === "");
+}
+
+const endsWithPath = (full, short) => full === short || full.endsWith(`/${short}`);
+
+// The file a shortened path means: the one named in full in the answer, else the only one that ends so.
+async function fullPath(file, named, filesOf) {
+  const short = file.replace(/^(\.{0,2}\/)+/, "");
+  if (file.startsWith("../") || !short) return null;
+  const inAnswer = [...named].filter((f) => f !== short && endsWithPath(f, short));
+  const hits = inAnswer.length === 1 ? inAnswer : (await filesOf()).filter((f) => endsWithPath(f, short));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 // One citation against the globals: true when it resolves.
-async function resolves(c, g, eventsOf) {
+async function resolves(c, g, eventsOf, filesOf, named) {
   try {
     if (c.file) {
-      const r = await g.repo.read(c.file, { from: c.to, to: c.to });
-      if (c.to > r.lines) return false;
-      // A file that ends with a newline reports one more (empty) line than it has.
-      return !(c.to === r.lines && r.text.replace(/^\d+\t/, "") === "");
+      try {
+        return await hasLine(c, c.file, g);
+      } catch {
+        const full = await fullPath(c.file, named, filesOf);
+        return full ? await hasLine(c, full, g) : false;
+      }
     }
     return (await eventsOf(c)).has(c.n);
   } catch {
@@ -83,13 +104,16 @@ export async function checkCitations(answer, domain, config, { max = Infinity, b
     if (!sessions.has(k)) sessions.set(k, g.history.events(`${c.source}:${c.session}`).then((ev) => new Set(ev.map((e) => e.i))));
     return sessions.get(k);
   };
+  let files = null;
+  const filesOf = () => (files ??= g.repo.files());
+  const named = new Set(String(text).match(/(?:[\w@.+-]+\/)+[\w@.+-]+\.[A-Za-z]\w{0,9}/g) ?? []);
   let checked = 0;
   const failed = [];
   for (const c of list) {
     const left = deadline - Date.now();
     if (left <= 0) break;
     let timer;
-    const ok = await Promise.race([resolves(c, g, eventsOf), new Promise((r) => (timer = setTimeout(() => r(null), left)))]);
+    const ok = await Promise.race([resolves(c, g, eventsOf, filesOf, named), new Promise((r) => (timer = setTimeout(() => r(null), left)))]);
     clearTimeout(timer);
     if (ok === null) break; // out of time: this one and the rest are left unchecked
     checked++;

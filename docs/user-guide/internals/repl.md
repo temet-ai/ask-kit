@@ -59,7 +59,7 @@ reaches data and the network only through the domain's globals. `baseline` recor
 present after creation, and `userNames()` is everything added since, which is what gets
 snapshotted.
 
-The same helpers and domain globals are passed to scripts, as `({ ...GLOBALS, tk: toolkit }, params)`.
+The same helpers and domain globals are passed to scripts, as `({ ...GLOBALS, tk: toolkit, lookupChains }, params)`.
 
 ### The toolkit
 
@@ -92,7 +92,7 @@ module. A script must export a default function and may export `meta` (`purpose`
 `returns`, `example`). A file that fails to load is reported in the next result as
 `[scripts that failed to load: ...]`.
 
-`scripts.run(name, params)` calls the function with `({ ...GLOBALS, tk: toolkit }, params)` and
+`scripts.run(name, params)` calls the function with `({ ...GLOBALS, tk: toolkit, lookupChains }, params)` and
 records `{ name, draft, ok, ms }` in `cellScripts`. `scripts.draft(name, source)` writes a draft
 file (name: lowercase letters, digits and dashes) that loads before the next cell.
 [Add a script](../guides/add-a-script.md) covers writing one.

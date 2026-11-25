@@ -310,7 +310,8 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
     if (a.ok && !a.answerChars) signals.push("empty answer");
     // The same caller asking again within three minutes, not as a follow-up: the answer fell short.
     const next = asks.slice(i + 1).find((b) => b.session === a.session && b.domain === a.domain && b.dir === a.dir);
-    if (next && !next.continued && Date.parse(next.ts) - Date.parse(a.ts) < 180_000) signals.push(next.backend !== a.backend ? "re-asked on another backend" : "re-asked");
+    const nextStart = next ? (Number.isFinite(Date.parse(next.startedAt)) ? Date.parse(next.startedAt) : Date.parse(next.ts) - (next.ms ?? 0)) : NaN;
+    if (next && !next.continued && nextStart >= end && nextStart - end < 180_000) signals.push(next.backend !== a.backend ? "re-asked on another backend" : "re-asked");
     if (a.actionFellThrough) signals.push(`action ${a.actionFellThrough.action} fell through (${a.actionFellThrough.why})`);
     if (a.citations?.failed) signals.push(`${a.citations.failed} of ${a.citations.checked} citations did not resolve${a.citations.failedList?.length ? `: ${a.citations.failedList.join(", ")}` : ""}`);
     return { ts: a.ts, domain: a.domain, backend: a.backend ?? (a.action ? `action ${a.action}` : a.shot ? "shot" : null), session: a.session, question: String(a.question).slice(0, 140), ms: a.ms, costUsd: a.costUsd ?? null, cells: a.cells ?? a.turns ?? null, shot: !!a.shot, ...(a.citations ? { citations: a.citations } : {}), ...(a.action ? { action: a.action } : {}), signals, journal: a.file };

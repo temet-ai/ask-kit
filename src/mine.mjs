@@ -33,6 +33,27 @@ export function answerAfter(events, toolId, max = 1500) {
   return last.length > max ? `${last.slice(0, max)}…` : last;
 }
 
+/** What the agent answered after each chain, by chain id, clipped. */
+export async function answersAfter(chains, max = 600) {
+  const out = new Map();
+  if (!chains.length) return out;
+  const sessions = new Map((await listSessions([...new Set(chains.map((c) => c.source))])).map((s) => [`${s.source}:${s.id}`, s]));
+  const events = new Map();
+  for (const c of chains) {
+    const key = `${c.source}:${c.session}`;
+    if (!events.has(key)) {
+      const s = sessions.get(key);
+      try {
+        events.set(key, s ? await ADAPTERS[c.source].events(s) : []);
+      } catch {
+        events.set(key, []);
+      }
+    }
+    out.set(c.id, answerAfter(events.get(key), c.id, max));
+  }
+  return out;
+}
+
 /** Backticked identifiers and path:line in an answer, as regex candidates for `expect`. */
 export function suggestions(text, n = 6) {
   const out = [];

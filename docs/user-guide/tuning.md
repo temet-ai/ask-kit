@@ -48,6 +48,12 @@ errors. A background kit can also journal an `outcome` when a detached job finis
 that never polls the result does not hide its review verdict. Outcomes are counted separately
 from asks.
 
+The brief's `chains` section lists the lookup chains agents ran by hand since the last review that
+this kit should have answered, from the same scan as [`ask-kit gaps`](#find-what-agents-look-up-by-hand):
+the prompt, what the shell calls said they were for, what the agent answered after, and the ask
+made earlier in the turn if there was one. A kit that nobody asked but that agents dug around is
+pending too. The queue's `signals` leave out asks that were only slow or costly.
+
 ## Verify and finish the review
 
 Use a synthetic offline regression for the problem and run the repository's required checks.
@@ -56,7 +62,7 @@ use the same backend and compare answer quality, steps, time and cost. An offlin
 code behavior and does not establish a model-quality or latency improvement.
 
 After verified changes have been committed, fill in the brief's `record` template and save it
-outside the repository. It includes the review window, journal paths and timestamps, changed
+outside the repository. It includes the review window, journal paths and timestamps or chain ids, changed
 paths, the check commands and their observed results, and the commit sha. For router evidence,
 use the record's `at` value as the evidence timestamp. Then run:
 

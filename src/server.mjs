@@ -17,6 +17,10 @@ import vm from "node:vm";
 import { pathToFileURL } from "node:url";
 import { rewriteCell } from "./core/rewrite.mjs";
 import { toolkit } from "./core/toolkit.mjs";
+import { buildChains, classify, lookupsOf, shapeOf } from "./gaps.mjs";
+
+// The one lookup-chain builder, for kits whose data holds tool calls (mike).
+const lookupChains = { buildChains, classify, lookupsOf, shapeOf };
 import { loadDomain } from "./domains.mjs";
 import { makeAskKit } from "./kitcall.mjs";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, slug } from "./config.mjs";
@@ -122,7 +126,7 @@ const scripts = {
     if (!s) throw new Error(`no script "${name}". scripts.list() names them.`);
     const started = Date.now();
     try {
-      const value = await s.fn({ ...GLOBALS, tk: toolkit }, params ?? {});
+      const value = await s.fn({ ...GLOBALS, tk: toolkit, lookupChains }, params ?? {});
       const review = reviewOf(value);
       cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started, ...paramsOf(params), ...(review ? { review } : {}) });
       return value;

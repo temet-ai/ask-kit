@@ -8,7 +8,7 @@ import { HOME, STATE_ROOT, loadConfig } from "./config.mjs";
 import { providersOf, winnersOf } from "./capabilities.mjs";
 import { indexDomain } from "./domains.mjs";
 import { findKit } from "./kits.mjs";
-import { PROGRAMS, classify, kitRules, lookupsOf, pathsOf, shapeOf, targetOf } from "./gaps.mjs";
+import { FITS, GENERIC, PROGRAMS, classify, kitRules, lookupsOf, pathsOf, shapeOf, targetOf } from "./gaps.mjs";
 
 export const NUDGE_AFTER = 3;
 const dir = () => path.join(STATE_ROOT, "nudges");
@@ -16,19 +16,8 @@ const slug = (s) => String(s ?? "").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 12
 
 // ---- which enabled domain or kit answers a lookup ----
 
-// The kits that fit a program, best first; the first enabled one is named. Other programs go to
-// the kit PROGRAMS names, then to the one enabled kit whose `requires` lists them.
-const FITS = {
-  git: ["git", "code"], cargo: ["rust"], sqlite3: ["sqlite"], claude: ["claude-setup"],
-  systemctl: ["systemd", "ops"], journalctl: ["systemd", "ops"], loginctl: ["systemd", "ops"], launchctl: ["ops"], coredumpctl: ["crash", "systemd", "ops"],
-  ps: ["procs", "systemd", "ops"], pgrep: ["procs", "systemd", "ops"], pidof: ["procs", "systemd", "ops"], lsof: ["procs", "systemd", "ops"], ss: ["procs", "net", "systemd", "ops"],
-  df: ["systemd", "ops"], du: ["files", "systemd", "ops"], free: ["systemd", "ops"], uptime: ["systemd", "ops"], sensors: ["systemd", "ops"], "nvidia-smi": ["systemd", "ops"],
-  ping: ["net", "ops"], dig: ["net"], host: ["net"], nc: ["net"], tailscale: ["net", "ops"], ssh: ["ops", "systemd"],
-};
 // What gaps calls a source, as the kits that answer about it.
 const TARGETS = { ssh: ["ops", "systemd"], systemd: ["systemd", "ops"], "local http": ["net", "ops", "systemd"], web: ["web", "net"] };
-// Programs many kits run without being about them.
-const GENERIC = new Set("node npm npx python python3 bash sh zsh rg grep fd find cat jq git curl codex claude".split(" "));
 // What a file is, from its name or place, as the kits that answer about it.
 const FILES = [
   [/\/\.claude\/projects\/[^/]+\/memory\/|\/\.claude\/rules\/|\/(CLAUDE|CLAUDE\.local|AGENTS)\.md$/, ["rules"]],

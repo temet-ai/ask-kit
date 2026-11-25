@@ -126,13 +126,13 @@ async function main() {
       const options = { ...(typeof flag("since") === "string" ? { since: flag("since") } : {}) };
       if (flag("record")) {
         if (!kit || typeof flag("record") !== "string") throw new Error("improve <kit> --record <file.json>");
-        return print(recordImprovement(kit, JSON.parse(fs.readFileSync(flag("record"), "utf8"))));
+        return print(await recordImprovement(kit, JSON.parse(fs.readFileSync(flag("record"), "utf8"))));
       }
-      if (kit) return print(improvementBrief(kit, options));
-      const q = improvementQueue(options);
+      if (kit) return print(await improvementBrief(kit, options));
+      const q = await improvementQueue(options);
       if (flag("json")) return print(q);
       console.log("Per-kit review queue (real use only; since each completed review, or 30d on the first run)");
-      for (const k of q.kits) console.log(`${k.kit.padEnd(18)} ${k.state.padEnd(15)} ${k.asks} asks, ${k.outcomes} outcomes, ${k.signals} signals${k.previous?.outcome === "blocked" ? " (last review blocked)" : ""}`);
+      for (const k of q.kits) console.log(`${k.kit.padEnd(18)} ${k.state.padEnd(15)} ${k.asks} asks, ${k.outcomes} outcomes, ${k.signals} signals, ${k.chains} dug by hand${k.previous?.outcome === "blocked" ? " (last review blocked)" : ""}`);
       console.log("\nRead one kit: ask-kit improve <kit>\nAfter verification: ask-kit improve <kit> --record <file.json>");
       return;
     }

@@ -41,7 +41,8 @@ describes snapshots, restore and the repeat-cell guard.
 | `console` | `log`, `info`, `warn` and `error` are captured and shown ahead of the result (at most 4000 characters). |
 | the domain's own globals | `repo` for `code`; `history` and `cite` for `sessions`. |
 
-A script gets the domain's globals and `tk`. It does not get `scripts` or the bare toolkit
+A script gets the domain's globals, `tk` and `lookupChains` (`buildChains`, `classify`, `lookupsOf` and
+`shapeOf`, the rules behind `ask-kit gaps`, for a kit whose data holds tool calls). It does not get `scripts` or the bare toolkit
 functions, so it calls `tk.table(...)`.
 
 ## Toolkit

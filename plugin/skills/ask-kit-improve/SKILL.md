@@ -1,6 +1,6 @@
 ---
 name: ask-kit-improve
-description: Improve a kit from its own journal, or review every kit in the per-kit queue. Trace failed, slow, repeated or poorly reviewed results to their cause, make a measured change, verify it and record the outcome so the next review starts with new evidence.
+description: Improve a kit from its own journal and from what agents dug for by hand instead of asking it, or review every kit in the per-kit queue. Trace failed, slow, repeated or poorly reviewed results to their cause, make a measured change, verify it and record the outcome so the next review starts with new evidence.
 ---
 
 # Improving kits from their journals
@@ -14,6 +14,10 @@ The queue includes each installed kit and domain, using its real journal since i
 review (30 days on the first run). Tests and benchmarks are excluded. `--since 7d` overrides the
 window. A kit with no new evidence needs no changes.
 
+Evidence is of two kinds, and a review covers both: the kit's journal (what it was asked), and
+`chains`, the runs of lookups agents made by hand that this kit should have answered. `afterAsk`
+marks a chain that followed an ask in the same turn.
+
 When the user requests a fleet, assign each pending kit its own task and repository ownership.
 Each task reads `ask-kit improve <name>`, then the kit's instructions, roles, skills and scripts.
 Do not use one kit's failures to rewrite another. Keep host fixes in a separate task when several
@@ -24,6 +28,13 @@ at most 30 entries per evidence section; `ask-kit report --kit <name> --real --s
 gives the full report. Read the selected rows and the investigator's cells. Ask the sessions
 investigator what the caller did next when the answer's quality is unclear. Treat a re-ask as a
 lead to inspect, not proof that the answer was wrong.
+
+For each chain shown, work out its question from `prompt`, `says` (what its calls were for) and
+`found` (what the agent said after). Then find why the kit did not answer it: no script or source
+covers it; the kit's `says` and patterns do not claim it; or the ask before it left something out.
+A chain that only looked around before doing the work, or that repeats a status check, needs no
+change. With the mike kit, `ask` it to run `chain-outcomes` on the ids: whether the turn was
+corrected and what it left undone.
 
 A script's successful execution can still return `review.status: needs_review` or `unverified`.
 These are recorded separately from execution errors. Background jobs may also write `outcome`
@@ -56,7 +67,8 @@ and reports answer quality, steps, time and cost. An offline regression proves t
 it does not establish a model-quality or latency improvement.
 
 Commit verified changes in the kit's repository when the user requested commits. Fill in the
-brief's `record` object with `since`, `through`, `outcome`, `summary`, `evidence` (`journal`, `ts`),
+brief's `record` object with `since`, `through`, `outcome`, `summary`, `evidence` (`journal`, `ts`,
+or `chain`),
 `changes`, `checks` (`command`, observed `result`, `ok`) and the commit sha for `changed`. Save it
 outside the repository: it names private journals. Run:
 

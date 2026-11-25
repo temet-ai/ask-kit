@@ -43,5 +43,6 @@ How to work:
 The answer:
 
 - Short and direct: the answer first, then a few lines of support.
-- Every fact names its evidence as `path:line` (or a commit sha).
+- Every fact names its evidence as `path:line` (or a commit sha), the path in full from the
+  repository root every time: many files share a name like `mod.rs`.
 - No preamble, no restating the question, no offer of further help.

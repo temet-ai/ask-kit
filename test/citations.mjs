@@ -85,6 +85,20 @@ assert.deepEqual(codeRows[1].citations, { checked: 2, failed: 0 });
 assert.equal(codeRows[2].citations, undefined, "nothing cited, nothing journaled");
 assert.equal(codeRows[0].answerChars, "Sam Vimes is captain (src/watch.mjs:2), the patrol is built in src/watch.mjs:2-5, and src/watch.mjs:900 and src/gone.mjs:1 are not there. Not files: http://example.com:8080 and 10:30.".length, "answerChars is the investigator's answer, not the reply");
 
+// ---- shortened paths: the file named in full in the answer, else the only one that ends so ----
+for (const f of ["src/night/mod.mjs", "src/day/mod.mjs", "src/day/beat.mjs"]) {
+  fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+  fs.writeFileSync(path.join(repo, f), "one\ntwo\n");
+}
+process.env.ASK_KIT_CODE_ROOT = repo;
+const cite = await import("../src/citations.mjs");
+const { domain: codeDomain } = await import("../domains/code/domain.mjs");
+const short = async (t) => (await cite.checkCitations(t, { ...codeDomain, name: "code" }, {}))?.journal;
+assert.deepEqual(await short("See beat.mjs:2, day/mod.mjs:1 and /src/watch.mjs:3."), { checked: 3, failed: 0 });
+assert.deepEqual(await short("See mod.mjs:1."), { checked: 1, failed: 1, failedList: ["mod.mjs:1"] }, "two files share the name");
+assert.deepEqual(await short("The shift is in src/night/mod.mjs; it starts at mod.mjs:1."), { checked: 1, failed: 0 });
+assert.deepEqual(await short("See beat.mjs:9."), { checked: 1, failed: 1, failedList: ["beat.mjs:9"] }, "the line is not there");
+
 // ---- sessions: <source> <session> #n, and #m chained after it ----
 const sessions = await connect("sessions", "cite-sessions");
 const s1 = textOf(await sessions.callTool({ name: "ask", arguments: { question: "who found the flaky test?", early: false } }));
