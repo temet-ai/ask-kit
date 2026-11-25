@@ -99,13 +99,26 @@ function aboutPath(p, to, repo) {
   const fit = to.first(kind) ?? to.byType(p);
   if (fit) return fit;
   if (inRepo) return to.first(["code"]);
+  if (kind?.[0] === "sessions") return null; // transcripts, and nothing enabled reads them
   const t = targetOf({ tool: "Read", arg: p, fam: null, paths: [p] }, to.rules, repo);
-  return t ? to.first(t.startsWith("files:") ? ["files"] : (TARGETS[t] ?? [t])) : null;
+  // Outside this repository: another repository's code, else a file on the machine (gaps has no source for /tmp).
+  if (!t || t.startsWith("files:")) return to.first([repoOf(p) ? "code" : "files"]);
+  return to.first(TARGETS[t] ?? [t]);
 }
 
 /** Relative data and log files whose long or numbered extensions pathsOf does not take. */
 const dataFiles = (tool, text, at) =>
   tool !== "Bash" || !at ? [] : [...text.matchAll(/(?:^|[\s"'=])([\w.@-]+(?:\/[\w.@-]+)*\.(?:sqlite3?|db3|parquet|ndjson|log\.\d+|log(?:\.\d+)?\.gz))(?=$|[\s"';|&)])/g)].map((m) => path.join(at, m[1]));
+
+const home = (p) => (p === "~" || p.startsWith("~/") ? path.join(HOME, p.slice(2)) : p);
+
+/** Absolute and home paths of one part (~, ~/Downloads, /etc), which pathsOf does not take. Only the first command of a pipeline, without a search's pattern. */
+const topPaths = (tool, text) =>
+  tool !== "Bash"
+    ? []
+    : [...text.split("|")[0].replace(/^(rg|grep|egrep)((?:\s+-\S+)*)\s+("[^"]*"|'[^']*'|\S+)/, "$1$2").matchAll(/(?:^|[\s"'=])(~|(?:~)?\/[\w.@+-]+)\/?(?=$|[\s"';&)])/g)]
+        .map((m) => home(m[1]))
+        .concat(/^(ls|find|fd|du|tree)\b.*\s\/(\s|$)/.test(text.split("|")[0]) ? ["/"] : []);
 
 /** Most frequent; a tie goes to the latest. */
 const most = (xs) => {
@@ -116,7 +129,7 @@ const most = (xs) => {
 
 /** The enabled domain or kit that answers one lookup ({arg, fam, dir?} of lookupsOf), or null. */
 export function aboutFor(tool, l, to, cwd = null) {
-  const at = !l.dir ? cwd : l.dir.startsWith("~/") ? path.join(HOME, l.dir.slice(2)) : path.isAbsolute(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
+  const at = !l.dir ? cwd : /^~(\/|$)/.test(l.dir) ? home(l.dir) : path.isAbsolute(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
   if (/^mcp__(mike|tether)__.*(inbox|heartbeat|wait_for)/.test(tool)) return null; // mail, not a question
   const repo = repoOf(at);
   const shape = shapeOf(tool, l.arg);
@@ -127,7 +140,7 @@ export function aboutFor(tool, l, to, cwd = null) {
   if (l.fam === "git") return to.first(["code"]);
   // The pattern of a search is not a path: quoted text goes, unless it is an absolute path.
   const text = tool === "Bash" ? l.arg.replace(/(["'])(?![~/][^\s"']*\1)(?:\\.|(?!\1).)*\1/gs, (q) => (/^(rg|grep|egrep|sed|awk)\b/.test(l.arg) ? "''" : q)) : l.arg;
-  const paths = [...new Set([...pathsOf(tool, text, at), ...dataFiles(tool, text, at)])];
+  const paths = [...new Set([...pathsOf(tool, text, at), ...dataFiles(tool, text, at), ...topPaths(tool, text)])];
   if (paths.length) return most(paths.map((p) => aboutPath(p, to, repo)).filter(Boolean));
   if (l.fam === "machine") return to.first(["ops", "systemd"]);
   return repo ? to.first(["code"]) : at ? aboutPath(at, to, null) : to.first(["code"]);

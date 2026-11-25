@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ask-kit-nudge-"));
-const env = { ...process.env, ASK_KIT_CONFIG: path.join(tmp, "cfg"), ASK_KIT_STATE: path.join(tmp, "state"), HOME: tmp };
+const env = { ...process.env, ASK_KIT_CONFIG: path.join(tmp, "cfg"), ASK_KIT_STATE: path.join(tmp, "state"), HOME: "/home/vimes" };
 process.env.ASK_KIT_CONFIG = env.ASK_KIT_CONFIG;
 process.env.ASK_KIT_STATE = env.ASK_KIT_STATE;
 
@@ -151,6 +151,17 @@ for (const [command, want, extra] of [
   ["tail -50 /srv/watch/night.log; rg ERROR /var/log/watch/day.log.1; cat logs/post.log", "logs"],
   ["ls /srv/watch/papers/rota.txt; cat /srv/watch/papers/b.txt; head /srv/watch/papers/c.txt", "files"],
   ["cat towers.clk; rg -n GNU /srv/watch/towers/a.clk; head /srv/watch/towers/b.clk", "clacks"], // a file type only its manifest names
+  // Paths of one part, from a directory inside a repository.
+  ['ls ~/Documents; find ~/Downloads -name "*.pdf"; du -sh ~/Downloads', "files"],
+  ['ls ~/Documents; find ~/Downloads -name "*.pdf"; ls ~', "files"],
+  ["ls -la ~/Documents/; ls '~/Pictures'; stat ~/Downloads | head -3", "files"],
+  ["ls /tmp; find /tmp -name 'rota*'; stat /tmp/rota.txt", "files"],
+  ["ls /etc; cat /etc/hosts; find /etc -name watch.conf", "files"],
+  ["ls /; find / -maxdepth 1; ls -d /opt", "files"],
+  ["cd ~/Downloads && ls; cd ~ && ls; ls /srv", "files"],
+  ["rg /etc src; grep -n /tmp src; rg '/login' src", "code"], // searched for, not looked in
+  ["ls src | grep /etc; cat src/a.mjs | sed 's/a/b/'; awk '/tmp/' src/b.mjs", "code"],
+  ["ls /rota-none; ls src; cat src/a.mjs", "code"],
   [three("ls"), "files", { cwd: "/srv/watch" }],
   ["cat ~/.claude/settings.json; cat .claude/settings.local.json; cat .mcp.json", "claude-setup"],
   [three("gh pr list"), "github"],
