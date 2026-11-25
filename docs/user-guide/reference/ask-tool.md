@@ -21,25 +21,40 @@ An agent gets one tool in either case. The investigator's own server, which has 
 is started with `ASK_KIT_INNER=1` and never shows `ask`. See
 [The REPL](../internals/repl.md).
 
-Both forms need a config file. Without one the server exits at start with
-`ask-kit is not set up yet`, and the agent lists no `ask` tool.
+Both forms need a config file. Without one `ask-kit serve` still lists `ask`, and a call returns
+how to set ask-kit up.
 
 ## Parameters of the router's `ask`
 
 | Parameter | Type | Required | What it does |
 |---|---|---|---|
 | `question` | string | yes | The question or request in plain words, with any ids, names or dates you know. |
-| `about` | one of the enabled domain names | no | Which investigator answers. Left out, the router chooses. |
+| `about` | one of the enabled domain names, or an alias | no | Which investigator answers. Left out, the router chooses. |
 | `continue` | boolean or string | no, default `false` | `true`: send this as a follow-up to the investigator that answered your last question. A task id such as `"ask-67821061f8d0"`: send it to the investigator of that ask. See [Follow-ups](#follow-ups). |
 | `wait` | boolean | no | `false`: hand the ask back as a task at once, with no 10-second wait. Used by a client that takes tasks; any other caller waits for the answer. See [A slow ask answered as a task](#a-slow-ask-answered-as-a-task). |
 | `backend` | string | no | A backend name from the config. Left out, the domain's backend is used. |
 | `timeoutSeconds` | integer, 30 to 900 | no | How long the investigation may run. The domain's `ask` defaults to 300. |
 | `act` | boolean | no | `true`: the request asks for a change, so the investigator gets the calls that change things. Left out, the router sets it to `true` when the request opens with what to do; `false` keeps the ask read-only. See [Asking for a change](#asking-for-a-change-act). |
 
-The tool's description lists the enabled domains with their one-line descriptions (the `says`
-field of each domain), and each capability that more than one of them provides, once, under the
-one that wins it. The server's instructions do not repeat the list, so each kit costs the calling
-agent's context once.
+### What the agent is told about it
+
+Claude Code keeps 4,096 characters of the description of a tool it loads upfront, and of the
+server's instructions, and does not cut the input schema. So the words are placed like this:
+
+| Where | What it holds |
+|---|---|
+| The tool's description | How to call `ask`, and the names of the enabled domains and aliases. It stays under 4,096 characters: an alias list that would pass that moves whole to `about`, and so does the list of names. |
+| The `about` parameter's description | The whole `says` text of every enabled domain, one per line, and each capability that more than one of them provides, under the one that wins it. |
+| The server's instructions | When to call `ask`. They are the same for every set of kits. |
+
+Each kit's `says` is listed once and never shortened.
+
+The tool's `_meta` tells Claude Code two more things:
+
+| Key | Value | What it does |
+|---|---|---|
+| `anthropic/alwaysLoad` | `true` | The tool is in context from the start of a session, with no tool search. The Claude Code plugin also sets `alwaysLoad` on its `ask` server, so startup waits for it, at most 5 seconds. |
+| `anthropic/maxResultSizeChars` | `500000` | A result of up to 500,000 characters, Claude Code's ceiling, reaches the agent whole. Without it, Claude Code saves a result over 50,000 characters to a file. |
 
 ### How the router chooses a domain
 

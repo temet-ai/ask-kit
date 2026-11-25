@@ -349,6 +349,56 @@ await fb.close();
   await fb3.close();
 }
 
+// The tool's words with many kits: loaded upfront, its description and the server's instructions stay
+// under the 4,096 characters Claude Code keeps, and the whole says of every kit is in the schema.
+{
+  const { describeAsk } = await import("../src/router.mjs");
+  const says = {};
+  for (let i = 1; i <= 60; i++) {
+    const n = `precinct${String(i).padStart(2, "0")}`;
+    says[n] = `what precinct ${i} of the Ankh-Morpork City Watch holds: ${`rosters, case files and the ledger Sergeant Colon keeps, page ${i}; `.repeat(10)}end of ${n}`;
+    const dir = path.join(config, "kits", n);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "ask-kit.toml"), `name = "${n}"\nsays = "${says[n]}"\n[[provides]]\ncapability = "beat-${i % 20}"\ncovers = ["shift-${i}"]\npriority = ${i}\n[[sources]]\nkind = "module"\nname = "${n}"\nmodule = "m.mjs"\n`);
+    fs.writeFileSync(path.join(dir, "m.mjs"), "export const make = () => ({ roster: () => ['Sam Vimes'] });\n");
+  }
+  const listed = async (extra) => {
+    fs.writeFileSync(path.join(config, "config.json"), JSON.stringify({ ...cfg, domains: { sessions: {}, ...Object.fromEntries(Object.keys(says).map((n) => [n, {}])) }, ...extra }));
+    const c = new Client({ name: "test", version: "0" });
+    await c.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, "bin", "ask-kit.mjs"), "serve"], env, stderr: "inherit" }));
+    const tool = (await c.listTools()).tools.find((t) => t.name === "ask");
+    const instructions = c.getInstructions();
+    await c.close();
+    return { tool, instructions };
+  };
+  const { capLines: caps60, enabled: on, DOMAINS: D } = await makeRouter({ ...cfg, domains: { sessions: {}, ...Object.fromEntries(Object.keys(says).map((n) => [n, {}])) } });
+  assert.equal(on.length, 61, "every kit is enabled");
+  assert.equal(caps60.length, 20);
+  const aliases = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`the-old-name-of-precinct-${i}`, "precinct01"]));
+  for (const extra of [{}, { aliases }, { taskAfterSeconds: 0 }]) {
+    const { tool, instructions } = await listed(extra);
+    const about = tool.inputSchema.properties.about;
+    assert.ok(tool.description.length < 4096, `description: ${tool.description.length}`);
+    assert.ok(instructions.length < 4096, `instructions: ${instructions.length}`);
+    for (const n of on) {
+      assert.ok(about.description.split("\n").includes(`${n}: ${D[n].says}`), `${n}'s says is whole`);
+      assert.ok(about.enum.includes(n) && tool.description.includes(n), `${n} is named`);
+    }
+    for (const [n, text] of Object.entries(says)) if (on.includes(n)) assert.equal(D[n].says, text, "the manifest's says, unshortened");
+    for (const line of caps60) assert.ok(about.description.includes(line), "every capability line is whole");
+    if (extra.aliases) for (const a of Object.keys(aliases)) assert.ok(`${tool.description}${about.description}`.includes(`"${a}" for precinct01`), `${a} is listed`);
+    assert.equal(tool._meta["anthropic/alwaysLoad"], true);
+    assert.equal(tool._meta["anthropic/maxResultSizeChars"], 500_000);
+    for (const words of [/A cheap investigator does the digging/, /pass continue: true/, /only reads unless the ask may change things/, /shots\.<script> for a continue: true question\.$/]) assert.match(tool.description, words);
+  }
+  // More names than fit: they are in `about`, all of them, and the description says so.
+  const names = Array.from({ length: 500 }, (_, i) => `precinct-house-${i}`);
+  const told = describeAsk({ enabled: names, DOMAINS: Object.fromEntries(names.map((n) => [n, { says: `the beat of ${n}` }])), aliasLine: "", capLines: [], tasks: true });
+  assert.ok(told.description.length < 4096);
+  assert.match(told.description, /the `about` parameter names and describes/);
+  for (const n of names) assert.ok(told.about.split("\n").includes(`${n}: the beat of ${n}`));
+}
+
 await fake.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("ok");

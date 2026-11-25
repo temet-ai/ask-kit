@@ -42,6 +42,42 @@ const SENT_OFF =
   "A slow ask may come back as a background task instead of an answer: the investigator is still digging and its answer is delivered to you when it is ready. " +
   "While it digs, do the work that does not depend on its answer: read the files you are about to change, prepare what the answer will not alter, send your other asks. Don't wait for it, poll it or ask the same thing again, and start on an answer as soon as it arrives, without waiting for the others. " +
   "End your turn only when every step left needs an answer that has not arrived; it will be delivered. To follow up on a task's answer, pass its task id (the one that starts with ask-) as continue. With more than one question, send each with wait: false: they are handed back as tasks at once and run side by side.";
+// Claude Code loads a tool marked alwaysLoad into context at the start of a session, and passes a
+// result of up to maxResultSizeChars (500,000 is its ceiling) on whole.
+const TOOL_META = { "anthropic/alwaysLoad": true, "anthropic/maxResultSizeChars": 500_000 };
+// Claude Code cuts the description of a tool loaded upfront, and the server's instructions, at this
+// many characters. It does not cut the input schema.
+const DESCRIPTION_LIMIT = 4096;
+/**
+ * The words of the `ask` tool: its description (how to call it and the names of what it answers
+ * about) and the text of its `about` parameter (every domain's whole `says`, and which domain wins a
+ * shared capability). A list of names or aliases that would take the description to the limit
+ * moves whole to `about`; nothing is shortened.
+ */
+export function describeAsk({ enabled, DOMAINS, aliasLine, capLines, tasks }) {
+  const aliasText = aliasLine ? ` (it also takes ${aliasLine})` : "";
+  const build = (names, alias) =>
+    "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
+    "so you pay for one call and the answer. It goes to one of: " +
+    (names ? enabled.join(", ") + " (the `about` parameter says what each answers)" : "the investigators the `about` parameter names and describes") +
+    ". Pass `about` to choose yourself" +
+    alias +
+    ". For a follow-up, pass continue: true. " +
+    (tasks ? SENT_OFF + " " : "") +
+    "The investigator only reads unless the ask may change things: a request that opens with what to do (\"fix ...\", \"restart ...\", \"send ...\") gets its acting calls, " +
+    "and so does any request sent with act: true; a follow-up keeps the act of the ask it continues. " +
+    'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.';
+  const fits = (text) => text.length < DESCRIPTION_LIMIT;
+  const aliasInside = fits(build(true, aliasText));
+  const alias = aliasInside ? aliasText : "";
+  const description = build(fits(build(true, alias)), alias);
+  const about =
+    "Which investigator; left out, the router chooses." +
+    (capLines.length ? ` Held by more than one, so the router picks by the agent a question names (first named otherwise): ${capLines.join("; ")}.` : "") +
+    (aliasLine && !aliasInside ? ` It also takes ${aliasLine}.` : "") +
+    ` What each answers:\n${enabled.map((n) => `${n}: ${DOMAINS[n].says}`).join("\n")}`;
+  return { description, about };
+}
 // How this caller can show the person a form (MCP elicitation): on revision 2026-07-28 the tool
 // returns input_required and the client sends the ask again with the answer; on earlier revisions
 // the server asks while the call waits. null when the client shows no forms.
@@ -436,6 +472,7 @@ function serveNotSetUp() {
     server.registerTool(
       "ask",
       {
+        _meta: TOOL_META,
         description: "Ask a question in plain words and get a short answer with its evidence, from a cheap investigator working outside your context. ask-kit is not set up on this machine yet; calling this says how to set it up.",
         inputSchema: { question: z.string().optional().describe("The question or request") },
       },
@@ -746,14 +783,15 @@ export async function serveRouter() {
   };
 
   // One server per connection, from the same factory for both protocol revisions; the state above is shared.
+  const told = describeAsk({ enabled, DOMAINS, aliasLine, capLines, tasks: Boolean(afterMs) });
   const build = () => {
     const server = new McpServer(
       { name: "ask", version: "0.1.0" },
       {
         capabilities: { extensions: { [TASKS_EXT]: {} } },
-        // The domains are listed once, in the tool's description; these words stay the same for every set of kits.
+        // The domains are named in the tool's description and described in its `about` parameter; these words stay the same for every set of kits.
         instructions:
-          "One `ask` for questions whose answer you would otherwise dig for; its description lists what it answers about. " +
+          "One `ask` for questions whose answer you would otherwise dig for; its description names what it answers about, and its `about` parameter says what each of those covers. " +
           "Call it before a run of searches, reads or lookups whose purpose is to answer a question; read files yourself when you are about to edit them. " +
           "It is a conversation: continue: true sends a follow-up to the investigator that answered last, which keeps what it found." +
           (afterMs ? " " + SENT_OFF : ""),
@@ -762,21 +800,11 @@ export async function serveRouter() {
     server.registerTool(
       "ask",
       {
-        description:
-          "Ask a question in plain words and get a short answer with its evidence. A cheap investigator does the digging outside your context, " +
-          "so you pay for one call and the answer. It goes to one of: " +
-          enabled.map((n) => `${n} (${DOMAINS[n].says})`).join("; ") +
-          (capLines.length ? `. Held by more than one, so the router picks by the agent a question names (first named otherwise): ${capLines.join("; ")}` : "") +
-          ". Pass `about` to choose yourself" +
-          (aliasLine ? ` (it also takes ${aliasLine})` : "") +
-          ". For a follow-up, pass continue: true. " +
-          (afterMs ? SENT_OFF + " " : "") +
-          "The investigator only reads unless the ask may change things: a request that opens with what to do (\"fix ...\", \"restart ...\", \"send ...\") gets its acting calls, " +
-          "and so does any request sent with act: true; a follow-up keeps the act of the ask it continues. " +
-          'To run a kit\'s script with no model, pass do: "<kit>.<script>" and params: the result comes back at once and stays in that kit\'s REPL as shots.<script> for a continue: true question.',
+        description: told.description,
+        _meta: TOOL_META,
         inputSchema: {
           question: z.string().optional().describe("The question or request, with any ids, names or dates you already know"),
-          about: z.enum([...enabled, ...Object.keys(aliases)]).optional().describe("Which investigator; left out, the router chooses"),
+          about: z.enum([...enabled, ...Object.keys(aliases)]).optional().describe(told.about),
           do: z.string().optional().describe('A shot: "<kit>.<script>" runs that kit script with no model and returns its result'),
           params: z.record(z.string(), z.any()).optional().describe("The shot script's parameters"),
           continue: z

@@ -26,6 +26,7 @@ for (const f of pluginFiles()) {
 
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, ".claude-plugin", "plugin.json"), "utf8"));
 for (const p of [...manifest.skills, ...manifest.agents]) assert.ok(fs.existsSync(path.join(ROOT, p)), `plugin.json names ${p}`);
+assert.equal(manifest.mcpServers.ask.alwaysLoad, true, "Claude Code loads ask at the start of a session");
 const market = JSON.parse(fs.readFileSync(path.join(ROOT, ".claude-plugin", "marketplace.json"), "utf8"));
 assert.equal(market.plugins[0].name, manifest.name);
 

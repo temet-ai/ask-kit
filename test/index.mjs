@@ -63,16 +63,18 @@ assert.ok(cut(a).length > 100 && !cut(a).includes(here), "no working directory b
 assert.match(a, new RegExp(`The coding agent is working in ${here.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.$`));
 assert.ok(r.promptTokens.sentry > 5 && r.promptTokens.sentry < 30, `router tokens per kit: ${r.promptTokens.sentry}`);
 
-// Through `ask-kit serve`: the kit list once (the tool description), not in the server's
+// Through `ask-kit serve`: the kit list once (the `about` parameter), not in the server's
 // instructions; a kit that cannot run at first use says why.
 const env = { ...process.env, ASK_KIT_CONFIG: config, ASK_KIT_STATE: state, ASK_KIT_SESSION: "index-test" };
 delete env.ASK_KIT_DOMAIN;
 const client = new Client({ name: "test", version: "0" });
 await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, "bin", "ask-kit.mjs"), "serve"], env, stderr: "ignore" }));
 const instructions = client.getInstructions();
-const desc = (await client.listTools()).tools.find((t) => t.name === "ask").description;
+const tool = (await client.listTools()).tools.find((t) => t.name === "ask");
 assert.doesNotMatch(instructions, /Ankh-Morpork/, "the server instructions do not list the kits");
-assert.equal(desc.match(/the sentry of Ankh-Morpork/g).length, 1, "the tool description lists each kit once");
+assert.equal(JSON.stringify(tool).match(/the sentry of Ankh-Morpork/g).length, 1, "the tool describes each kit once");
+assert.match(tool.inputSchema.properties.about.description, /^sentry: the sentry of Ankh-Morpork$/m);
+assert.match(tool.description, /sentry, never/);
 const nv = await client.callTool({ name: "ask", arguments: { question: "who guards it?", about: "never" } });
 assert.ok(nv.isError);
 assert.match(nv.content[0].text, /never cannot run here: needs NEVER_POST/);

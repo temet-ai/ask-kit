@@ -30,7 +30,8 @@
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/bin/ask-kit.mjs",
         "serve"
-      ]
+      ],
+      "alwaysLoad": true
     }
   },
   "hooks": {
