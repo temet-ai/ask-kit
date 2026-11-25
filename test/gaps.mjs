@@ -241,6 +241,13 @@ const use = (arg) => ({ turn: 0, prompt: "Where is the night rota?", ts: "2026-1
 const batched = buildChains([use("cd notes && cat a.md; rg 'duty|rota' x.md; git log -2")], { cwd: "/w" }).chains;
 assert.equal(batched.length, 1);
 assert.deepEqual(batched[0].uses.map((u) => [u.fam, u.shape, u.chars, u.paths]), [["file", "cat", 100, ["/w/notes/a.md"]], ["file", "rg", 100, ["/w/notes/x.md"]], ["git", "git log", 100, []]]);
+const { shellEdits } = await import("../src/gaps.mjs");
+assert.deepEqual(shellEdits("sed -i 's/a/b/' src/rota.mjs"), ["src/rota.mjs"]);
+assert.deepEqual(shellEdits("python3 - <<'E'\nopen('rota.md','w').write('x')\nE"), [""]);
+assert.deepEqual(shellEdits("cat > src/rota.mjs <<'E'\nx\nE"), ["src/rota.mjs"]);
+assert.deepEqual(shellEdits("cat > /tmp/run.mjs <<'E'\nx\nE"), []);
+assert.deepEqual(shellEdits("cargo test | head; git push"), []);
+assert.equal(buildChains([use("cat a.md; cat b.md; cat c.md"), { ...use("sed -i 's/a/b/' d.md"), ts: "9" }]).chains[0].purpose, "find-then-edit", "a shell edit is an edit");
 const asked = buildChains([use("cat a.md"), { ...use(""), tool: "mcp__ask__ask", id: "ask1" }, { ...use("cat b.md; cat c.md"), says: "Read the rota" }, { ...use("cat d.md"), says: "Read the rota" }]).chains;
 assert.deepEqual([asked.length, asked[0].afterAsk, asked[0].says], [1, "ask1", ["Read the rota"]], "a chain knows the ask before it and what its calls were for");
 assert.equal(buildChains([use("cat a.md | sort | uniq | head")]).chains.length, 0, "a pipeline counts once");

@@ -19,7 +19,7 @@ import { HOME, STATE_ROOT, expand, loadConfig } from "./config.mjs";
 import { findKit, listKits, readManifest } from "./kits.mjs";
 
 // Part of the cache key: raise it when a rule changes what a cached session would hold.
-const VERSION = 6;
+const VERSION = 7;
 
 // $ per million tokens: input, cache write, cache read, output. Claude list prices as mike-ask's
 // corpus.mjs has them; other models get no price.
@@ -388,6 +388,22 @@ function remoteOf(w, here = "") {
 }
 const deep = (cmds) => cmds.flatMap((c) => [c, ...deep(nestedOf(c))]);
 
+// An agent's own scratch files, saved tool output and logs: reading them is not a source's question.
+const SCRATCH = /\/tool-results\/|\/\.cache\/tmp\/|\/scratchpad\/|^\/(private\/)?tmp\/|^\/var\/folders\/|^\/dev\/|\.log$/;
+
+/** The files a Bash call edits (in place, by a redirect, or from inline code, where the file is not known: ""); none is []. */
+export function shellEdits(arg = "") {
+  const out = [];
+  for (const c of deep(shellOf(arg))) {
+    const w = bodyOf(c), h = baseOf(w[0]?.text);
+    if (h === "sed" && w.some((x) => !x.q && /^(-[nErsz]*i|--in-place)/.test(x.text))) out.push(w.at(-1).text);
+    else if ((h === "node" || h.startsWith("python")) && CODE_WRITES.test(w.map((x) => x.text).join(" ") + "\n" + c.here)) out.push("");
+    else if (h === "tee") out.push(...w.slice(1).filter((x) => !x.text.startsWith("-")).map((x) => x.text));
+    for (const o of c.out) if (c.here && h === "cat") out.push(typeof o === "string" ? o : o.text ?? "");
+  }
+  return out.filter((f) => !SCRATCH.test(f));
+}
+
 /** A call to ask itself: ask-kit's tool under any server name, mike-ask's, or the CLI. */
 const isAsk = (tool, arg = "") =>
   /^mcp__(.*ask.*)__ask$/.test(tool) ||
@@ -688,6 +704,7 @@ function pathTarget(p, rules, repo) {
   if (/\/tool-results\/|\/\.cache\/tmp\/|\/scratchpad\/|\/\.claude\/projects\/[^/]+\/memory\//.test(p)) return null;
   if (/\/\.local\/state\/mike\/|\/\.mike\//.test(p)) return "mike";
   for (const [dir, kit] of rules.folders) if (p === dir || p.startsWith(dir + "/")) return kit;
+  if (SCRATCH.test(p) && !/^\/var\/log\//.test(p) && !(repo && p.startsWith(repo + "/") && !p.endsWith(".log"))) return null;
   if (repo && (p === repo || p.startsWith(repo + "/"))) return "code";
   if (/^\/(var\/log|etc\/systemd|run\/systemd|usr\/lib\/systemd)\//.test(p)) return "systemd";
   if (/^\/(tmp|private\/tmp|var\/folders)\//.test(p)) return null;
@@ -720,6 +737,7 @@ export function targetOf(u, rules, repo) {
   }
   const ts = u.paths.map((p) => pathTarget(p, rules, repo)).filter(Boolean);
   if (ts.length) return mode(ts);
+  if (u.paths.length && u.paths.every((p) => SCRATCH.test(p))) return null;
   if (u.fam === "git" || u.fam === "file") return "code";
   if (u.fam === "machine") return "systemd";
   if (u.fam === "db") return "postgres";
@@ -818,6 +836,7 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
     }
     if (c.k === "ask") lastAsk = u.id;
     if (c.k === "ask") asks.push({ id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, req: u.req, after: run });
+    if (c.k === "act" && u.tool === "Bash") for (const file of shellEdits(u.arg)) (writes.get(u.turn) ?? writes.set(u.turn, []).get(u.turn)).push({ ts: u.ts, file });
     if (c.k === "write") (writes.get(u.turn) ?? writes.set(u.turn, []).get(u.turn)).push({ ts: u.ts, file: u.arg });
     close(c.k);
     run = 0;
