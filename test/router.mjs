@@ -349,6 +349,13 @@ await fb.close();
   await fb3.close();
 }
 
+// A refusal's reason reaches the person whole, however long.
+{
+  const { refusalOf } = await import("../src/router.mjs");
+  const why = `the Treasury's quota ran out: ${"see Lord Vetinari; ".repeat(60)}end`;
+  assert.equal(refusalOf(`ask failed (fake): openrouter 402: ${why}`, { fake: {} }).reason, why);
+}
+
 // The tool's words with many kits: loaded upfront, its description and the server's instructions stay
 // under the 4,096 characters Claude Code keeps, and the whole says of every kit is in the schema.
 {

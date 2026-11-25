@@ -117,7 +117,7 @@ export function taskBoard({ afterMs, onTask = () => {}, onEnd = () => {} }) {
       const state = { task: null, note: undefined };
       const startedMs = Date.now();
       const note = (message) => {
-        state.note = String(message).slice(0, 200) || undefined;
+        state.note = String(message) || undefined;
         if (state.task?.status === "working") touch(state.task, { statusMessage: state.note });
       };
       const work = run({ id, signal: ac.signal, note, detached: () => !!state.task });
@@ -138,7 +138,7 @@ export function taskBoard({ afterMs, onTask = () => {}, onEnd = () => {} }) {
       // Each ending is reported once: the "working" guard lets only the first of answer, failure and cancel through.
       work.then(
         (out) => t.status === "working" && (touch(t, { status: "completed", result: out, statusMessage: undefined }), onEnd(t.id, out?.isError ? "failed" : "answered", Date.now() - startedMs)),
-        (e) => t.status === "working" && (touch(t, { status: "failed", error: { code: -32603, message: String(e?.message ?? e) }, statusMessage: String(e?.message ?? e).slice(0, 200) }), onEnd(t.id, "failed", Date.now() - startedMs)),
+        (e) => t.status === "working" && (touch(t, { status: "failed", error: { code: -32603, message: String(e?.message ?? e) }, statusMessage: String(e?.message ?? e) }), onEnd(t.id, "failed", Date.now() - startedMs)),
       ).finally(() => setTimeout(() => tasks.delete(t.id), TASK_KEEP_MS).unref());
       return { resultType: "task", ...view(t) };
     },
@@ -175,7 +175,7 @@ export function refusalOf(text, list = {}) {
     const j = JSON.parse(reason);
     reason = j.message ?? j.error?.message ?? reason;
   } catch {}
-  reason = String(reason).replace(/\s*Manage it using https?:\/\/\S+/i, "").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+  reason = String(reason).replace(/\s*Manage it using https?:\/\/\S+/i, "").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
   return { backend, reason: reason || `HTTP ${status}` };
 }
 
@@ -540,9 +540,9 @@ export async function serveRouter() {
       fs.writeFileSync(threadsFile, JSON.stringify(Object.fromEntries([...threads].filter(([, t]) => t.task && Date.now() - Date.parse(t.at) < THREAD_KEEP_MS))));
     } catch {}
   };
-  // What a caller who sent an id this server does not hold can pick from: its latest tasks, newest first.
+  // What a caller who sent an id this server does not hold can pick from: its tasks kept here, newest first.
   const keptLine = () => {
-    const kept = [...threads].filter(([, t]) => t.task).slice(-5).reverse();
+    const kept = [...threads].filter(([, t]) => t.task).reverse();
     return kept.length ? ` Kept: ${kept.map(([id, t]) => `${id} (${t.domain}: "${t.question ?? ""}")`).join("; ")}.` : "";
   };
   // One ask at a time per conversation: a follow-up to an ask still running waits for it.

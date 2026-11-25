@@ -186,7 +186,7 @@ the investigator that finished last. To follow up on a particular ask, pass its 
 | A slow follow-up | It becomes a task with an id of its own. That id and the first one both reach the conversation. |
 | The bracketed lines | An answer delivered as a task says `continue: "<its id>"` where an answer in the call says `continue: true`. |
 | How long an id works | A day. The router keeps the ids in `<STATE_ROOT>/router/threads-<caller>.json`, so one still works after the agent restarts its `ask` server. |
-| An id that is not kept | The ask fails with `no ask with the id "<id>" is kept here` and lists the latest ids that are, each with its domain and the start of its question. |
+| An id that is not kept | The ask fails with `no ask with the id "<id>" is kept here` and lists the ids that are, newest first, each with its domain and the start of its question. |
 
 ### Asking for a change (`act`)
 
@@ -268,7 +268,6 @@ of the answer, and `isError` stays `false`.
 |---|---|
 | `[stopped at the <N>s time limit; this is what it found]` or `[stopped at a search that kept repeating; this is what it found]` | It ran out of time, or kept getting the same result, and was asked for what it had. |
 | `[stopped at ... after <N> cells, with nothing it could report]` | It ran out and the closing call returned nothing. |
-| `[the reply hit the length limit and may be cut off]` | The model's reply was cut at `max_tokens`. |
 | `[not finished: ask again with continue: true to carry on from here]` | Added to every partial answer. |
 | `[answered near the time limit: if something is missing, ask again with continue: true]` | It answered with under 30 seconds left, or within two calls of the repeat stop. |
 
