@@ -20,7 +20,8 @@
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
 //   ask-kit serve [--domain d]   the MCP server agents start (all domains behind one router)
-//   ask-kit plugin build|start|tool|subagent   write the Claude Code plugin's skill copies; its SessionStart, PostToolUse and SubagentStart hooks
+//   ask-kit warm [folder] [--json]   run the warm-ups (the code map, kits' [warm]) for a folder now
+//   ask-kit plugin build|start|warm|tool|subagent   write the Claude Code plugin's skill copies; its SessionStart, PostToolUse and SubagentStart hooks
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -77,6 +78,8 @@ async function main() {
       return init();
     case "plugin":
       return plugin(positional[0]);
+    case "warm":
+      return warm();
     case "doctor":
       return doctor();
     case "ask":
@@ -384,9 +387,30 @@ async function plugin(sub) {
     if (!loadConfig({ required: false })) console.log("\nask-kit is installed as a Claude Code plugin but not set up yet, so `ask` will say so. When the user wants to use it, follow the ask-kit-setup skill.");
     return;
   }
+  // The async SessionStart hook: starts the warm-ups detached and names what is ready on the next turn.
+  if (sub === "warm") return (await import("../src/warm.mjs")).pluginWarmHook();
   if (sub === "tool") return (await import("../src/nudge.mjs")).runToolHook();
   if (sub === "subagent") return (await import("../src/nudge.mjs")).runSubagentHook();
-  throw new Error("plugin needs build, start, tool or subagent");
+  throw new Error("plugin needs build, start, warm, tool or subagent");
+}
+
+// ---- warm: what domains and kits declare to run before the first ask (src/warm.mjs) ----
+
+async function warm() {
+  const folder = path.resolve(positional[0] ?? process.cwd());
+  if (!fs.existsSync(folder)) throw new Error(`warm: no folder ${folder}`);
+  const { gitTop } = await import("../domains/code/repo.mjs");
+  const root = gitTop(folder) ?? folder;
+  const { runWarmups } = await import("../src/warm.mjs");
+  const results = await runWarmups(root);
+  if (typeof flag("out") === "string") fs.writeFileSync(flag("out"), JSON.stringify(results) + "\n", { mode: 0o600 });
+  const text = flag("json")
+    ? JSON.stringify(results, null, 2)
+    : results.length
+      ? results.map((r) => `${r.ok ? "✓" : "✗"} ${r.name} (${(r.ms / 1000).toFixed(1)} s)${r.ok ? (r.notice ? `: ${r.notice}` : "") : `: ${r.error}`}`).join("\n")
+      : "No enabled domain or kit declares a warm-up.";
+  // A kit's sources may hold child processes open; the results are written, so the process ends here.
+  process.stdout.write(text + "\n", () => process.exit(results.every((r) => r.ok) ? 0 : 1));
 }
 
 async function uninstall() {

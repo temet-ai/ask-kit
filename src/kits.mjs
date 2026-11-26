@@ -16,6 +16,7 @@ import { makeRepo, readOnly } from "../domains/code/repo.mjs";
 import { which } from "./platform.mjs";
 import { checkProvides } from "./capabilities.mjs";
 import { checkActions, compileActions } from "./actions.mjs";
+import { checkWarm } from "./warm.mjs";
 
 export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
@@ -71,6 +72,7 @@ export function readManifest(dir) {
   if (m.skills != null && typeof m.skills !== "string") problems.push("skills: the folder of playbooks in the kit (default skills/)");
   problems.push(...checkProvides(m.provides));
   problems.push(...checkActions(m.actions));
+  problems.push(...checkWarm(m.warm));
   for (const [i, r] of (m.roles ?? []).entries()) {
     if (!NAME.test(r.name ?? "")) problems.push(`roles[${i}].name: lowercase letters, digits and dashes, starting with a letter`);
     if (!r.when) problems.push(`roles[${i}].when: plain words saying when to use the role`);
@@ -755,7 +757,10 @@ export async function kitDomain(dir, { config, stack = [] } = {}) {
     apiDoc,
     instructions,
     makeGlobals: make,
+    // [warm]: a script run with no model when a session starts (src/warm.mjs), and the warm session's first prompt.
+    warm: m.warm ?? null,
     prime:
+      m.warm?.prime ??
       `Get ready to answer questions about ${m.says}. Call the \`help\` tool, then run one repl cell: ` +
       "`scripts.list().length`. Then reply with the single word: ready",
     answerRules: `\n\nAnswer first, short; cite every fact as ${cite}, and say what you looked for and did not find. When you changed something, say what.`,

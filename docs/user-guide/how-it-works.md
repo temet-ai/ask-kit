@@ -74,7 +74,14 @@ the code, so the rows carry their source lines for the investigator to read. Doc
 files the map skips (over 1 MB, binary, minified) are searched with ripgrep in the same call, and
 the result says `PARTIAL` when it skipped any.
 
-The first `map` script builds it. A repository of 8,700 files took about 7 seconds.
+When it is built:
+
+- With the Claude Code plugin, a SessionStart hook runs in the background when a session starts
+  in a git repository and builds or updates the map. When it has finished, the session gets one
+  line, on its next turn: `ask-kit: the code map of <repository> is ready (<n> files): ...`.
+  Nothing else from the map enters the session's context.
+- Otherwise the first `map` script builds it. A repository of 8,700 files took about 7 seconds.
+- `ask-kit warm [folder]` builds it from the shell.
 
 The map is kept in the state folder by git tree, so a second session or worktree at the same
 commit reuses it. Before each answer, the files git reports as changed are compared by content

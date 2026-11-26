@@ -206,7 +206,8 @@ server in each agent's own config. `bundle/` holds the templates `ask-kit init` 
 agent (three skills, the `ask-kit-tuner` agent, the when-to-ask rule), tracked by hash so edited
 files are left alone. `plugin/`, `.claude-plugin/` and `gemini-extension.json` package the same
 things as a Claude Code plugin and a Gemini CLI extension. `src/nudge.mjs` is the plugin's
-PostToolUse hook.
+PostToolUse hook, and `src/warm.mjs` its async SessionStart hook, which runs the warm-ups (the
+code map, and any kit's `[warm]` script) in a detached process.
 
 ### Where to read before changing something
 

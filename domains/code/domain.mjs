@@ -40,6 +40,9 @@ export const domain = {
   // claims a route: its pattern is found in any question, and `lookup` returns null (so nothing is
   // added) when the question names nothing the repository holds.
   actions: [{ name: "lookup", title: "what the question names", script: "lookup", patterns: ["(?<question>\\S[\\s\\S]*)"], match: [], params: { budget: 18000 }, expect: null, acts: false }],
+  // Run with no model when a session starts (src/warm.mjs): builds or updates the code map, so the
+  // map script and lookup answer from it on the first question.
+  warm: { script: "map", params: { warm: true } },
   prime:
     "Get ready to answer questions about a codebase. Call the `help` tool, then run one repl cell: " +
     '`(await scripts.run("overview")).dirs.length`. Then reply with the single word: ready',

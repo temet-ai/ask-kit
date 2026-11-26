@@ -89,6 +89,7 @@ this table is complete for the code on `main`, with the file that reads each one
 | `makeGlobals({push, config, act})` | `server.mjs` | Returns the REPL's service globals. `push(call)` records a call in the cell's journal entry. `config` is the parsed `config.json`. `act` is true only when the caller asked for a change: build the globals that change things only then (`code` wraps `repo` in `readOnly`). |
 | `beforeCell(globals)` | `server.mjs` (`runCell`) | Optional. Runs before every cell. Neither built-in domain defines it. |
 | `prime` | `ask.mjs` | First prompt of the warm session. |
+| `warm` | `src/warm.mjs` | Optional. `{ script, params, notice }`: a script run with no model when a session starts (the plugin's async SessionStart hook) and by `ask-kit warm`. `code` sets `{ script: "map", params: { warm: true } }`, which builds the code map. A kit sets it with `[warm]` in its manifest. |
 | `answerRules` | `ask.mjs` | Appended to every question. |
 | `openWith` | `ask.mjs` | Text placed before the script list in the API loop's system prompt. |
 | `codexNote` | `ask.mjs` | Optional. Extra text in the Codex warm prompt. Neither built-in domain defines it. |

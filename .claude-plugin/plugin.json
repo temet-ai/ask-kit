@@ -50,6 +50,20 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/bin/ask-kit.mjs",
+              "plugin",
+              "warm"
+            ],
+            "async": true
+          }
+        ]
       }
     ],
     "PostToolUse": [
