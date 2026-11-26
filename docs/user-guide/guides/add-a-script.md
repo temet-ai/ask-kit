@@ -69,6 +69,25 @@ A script file has two exports:
 |---|---|
 | `meta` | `purpose`, `params`, `returns` and `example`. `help` prints them, and the investigator chooses a script from them, so write `purpose` as the question the script answers. `params` maps each name to a short description with its default. |
 | `default` | An `async function (globals, params)`. `globals` holds the domain's globals (`notes` here) and `tk`, the toolkit. `params` is the object the investigator passed. |
+| `speculate` | Optional. `(result, params) => [{ script, params }]`: the lookups the investigator is likely to ask for after reading this result. They start while the model writes its next call, and a call with the same script and params gets that result. See below. |
+
+### Lookups started ahead
+
+A slow lookup that usually follows another can start before the model asks for it. A script
+that finds sessions, say, names the digest of the first two it found:
+
+```js
+export const speculate = (result) => result.sessions.slice(0, 2).map((s) => ({ script: "session-digest", params: { session: s.id } }));
+```
+
+When `find-sessions` runs in a cell, the REPL starts those two runs as the cell ends. If the
+next cell calls `scripts.run("session-digest", { session: "<that id>" })` with the same params,
+it gets the result that is already running or done; anything else runs as usual, and runs nobody
+asked for are thrown away when that next cell ends. The model sees only what it asked for. Name
+only lookups that read: the REPL starts them only in an ask that may not act, only for library
+scripts (not drafts) that no acting action runs, and at most three per cell. Each cell's journal
+row lists them in `speculated` with `used`, so `ask-kit report` and the journal show what they
+cost and saved. `speculate: false` in the config turns it off (see [Config](../reference/config.md)).
 
 Habits that make a script work well:
 

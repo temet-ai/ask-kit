@@ -102,8 +102,9 @@ Written after every REPL cell. It has `code` and no `type`.
 | `result` | string | Only with `journal.trajectories: true`: the text the cell returned, cut at 4,000 characters. It can hold excerpts of what the cell read. |
 | `repeat` | number | Present when this cell, with its variable names blanked, has run before in this REPL: how many times now. |
 | `error` | string or `null` | The error's first lines. |
-| `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `params` when the run had any (as a string cut at 300 characters when longer) and `error` on failure. An explicit result `review` keeps `status`, up to eight warnings (300 characters each) and notes (300 characters), even with trajectories off. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. |
+| `scripts` | object[] | Scripts the cell ran: `{ name, draft, ok, ms }`, plus `params` when the run had any (as a string cut at 300 characters when longer) and `error` on failure. An explicit result `review` keeps `status`, up to eight warnings (300 characters each) and notes (300 characters), even with trajectories off. A draft saved with `scripts.draft` appears as `{ name, draft: true, saved: true }`. A run whose result was started ahead by the last cell's `speculate` has `speculative: true`, and its `ms` is how long the cell waited for it. |
 | `calls` | object[] | Calls the domain's globals made: `{ kind, detail, ms, size }`. For `repo`: `rg`, `files`, `read`, `git`. For `history`: `sessions`, `events`, `grep`. `size` is the number of results or lines. |
+| `speculated` | object[] | Lookups the last cell's scripts started ahead (`speculate` in a script): `{ script, params, used, ms }`, `running: true` in place of `ms` when it had not finished, and `ok: false` when it failed. `used: false` is a run nobody asked for, thrown away. Written only when there were any. |
 | `snapshot` | object | `{ vars, fns, bytes, dropped }` after the cell, or `{ error }`. `dropped` names variables that could not be saved. |
 | `restored` | object or `null` | On the first cell after a start: `{ from, savedAt, names }`, the variables brought back. |
 

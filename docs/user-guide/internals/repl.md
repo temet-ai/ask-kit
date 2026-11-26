@@ -164,6 +164,23 @@ collapsed, so the same search under a new variable name is caught. A repeat that
 same result gets "Running it again finds nothing new"; a repeat with a different result gets "Use
 the earlier variables".
 
+### Lookups started ahead
+
+A library script may export `speculate(result, params)`, returning the lookups the investigator
+is likely to ask for next as `[{ script, params }]`. In `scripts.run`, a script with one that
+succeeds adds its result to `cellNext`. When the cell ends, `runCell` first settles the runs the
+last cell started (`settleAhead`, journaled as `speculated`), then `startAhead` calls each
+`speculate` and starts up to `SPECULATE_MAX` (3) of the lookups outside the cell queue, with the
+same globals a script gets. They run while the investigator's model writes its next call. In the
+next cell, `scripts.run` looks the call up by script name and params (`lookupKey`, keys sorted):
+a match awaits the run already started and is recorded with `speculative: true`; a match that
+failed runs again for real; anything else runs as usual. Runs no call matched are thrown away at
+the end of that cell, so a result is never handed to a later cell. `SPECULATE` is on only in an
+inner server without `ASK_KIT_ACT=1`, so the globals withhold acting calls, and a lookup must be a
+library script (not a draft) that no acting `[[actions]]` entry names. `speculate: false` in the
+config, top level or per domain, turns it off. Calls the globals make during a run started ahead
+are counted in whichever cell is running at the time.
+
 ### Quoted rows
 
 `quote(rows, { id, text })` (`makeQuote` in `src/quotes.mjs`) keeps each row's text under its

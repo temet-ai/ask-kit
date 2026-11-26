@@ -91,7 +91,7 @@ async function refreshScripts() {
       try {
         const mod = await import(`${pathToFileURL(x.full).href}?v=${x.mtime}`);
         if (typeof mod.default !== "function") throw new Error("no default export function");
-        registry.set(path.basename(x.full, ".mjs"), { meta: mod.meta ?? {}, fn: mod.default, file: x.full, draft });
+        registry.set(path.basename(x.full, ".mjs"), { meta: mod.meta ?? {}, fn: mod.default, file: x.full, draft, speculate: !draft && typeof mod.speculate === "function" ? mod.speculate : null });
         loaded.push(x.f);
       } catch (e) {
         errors.push(`${x.f}: ${e.message}`);
@@ -114,6 +114,62 @@ const paramsOf = (params) => {
   }
 };
 
+// ---- speculative lookups ----
+
+// A library script may export `speculate(result, params)`: the lookups the investigator is likely
+// to ask for next, as [{ script, params }]. When the script runs in a cell, those start as the cell
+// ends, while the model writes its next call; a call in the next cell with the same script and
+// params gets the result already running, and the rest are thrown away when that cell ends. Only
+// in an ask that may not act (its globals withhold acting calls), only library scripts that no
+// acting action names, at most SPECULATE_MAX per cell. `speculate: false` in the config, at the
+// top level or for the domain, turns it off.
+const SPECULATE = INNER && !ACT && CONFIG.speculate !== false && CONFIG.domains?.[DOMAIN_NAME]?.speculate !== false;
+const SPECULATE_MAX = 3;
+const ACTING_SCRIPTS = new Set((DOMAIN.actions ?? []).filter((a) => a.acts).map((a) => a.script));
+// Started at the end of the last cell, by key; settled (used or thrown away) at the end of this one.
+let ahead = new Map();
+// This cell's script results that may predict the next lookups: { s, params, value }.
+let cellNext = [];
+const stable = (v) => (Array.isArray(v) ? v.map(stable) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])])) : v);
+const lookupKey = (name, params) => `${name}\u0000${JSON.stringify(stable(params ?? {}))}`;
+
+function startAhead() {
+  const next = new Map();
+  for (const { s, params, value } of cellNext) {
+    let preds;
+    try {
+      preds = [].concat(s.speculate(value, params) ?? []);
+    } catch {
+      continue;
+    }
+    for (const p of preds) {
+      if (next.size >= SPECULATE_MAX) break;
+      const target = p && typeof p.script === "string" ? registry.get(p.script) : null;
+      if (!target || target.draft || ACTING_SCRIPTS.has(p.script)) continue;
+      const key = lookupKey(p.script, p.params);
+      if (next.has(key)) continue;
+      const entry = { script: p.script, params: p.params ?? {}, started: Date.now(), ms: null, ok: null };
+      entry.promise = Promise.resolve()
+        .then(() => target.fn({ ...GLOBALS, tk: toolkit, lookupChains }, p.params ?? {}))
+        .then(
+          (v) => ((entry.ms = Date.now() - entry.started), (entry.ok = true), v),
+          (e) => ((entry.ms = Date.now() - entry.started), (entry.ok = false), Promise.reject(e)),
+        );
+      entry.promise.catch(() => {});
+      next.set(key, entry);
+    }
+  }
+  cellNext = [];
+  return next;
+}
+
+// The lookups started for this cell, for its journal row: which were used and how long each took.
+function settleAhead() {
+  const out = [...ahead.values()].map((e) => ({ script: e.script, ...paramsOf(e.params), used: !!e.used, ...(e.ms != null ? { ms: e.ms } : { running: true }), ...(e.ok === false ? { ok: false } : {}) }));
+  ahead = new Map();
+  return out;
+}
+
 const scripts = {
   list: () =>
     [...registry.entries()].map(([name, s]) => ({ name, purpose: s.meta.purpose ?? "", params: s.meta.params ?? {}, returns: s.meta.returns ?? "", draft: s.draft })),
@@ -126,10 +182,23 @@ const scripts = {
     const s = registry.get(name);
     if (!s) throw new Error(`no script "${name}". scripts.list() names them.`);
     const started = Date.now();
+    // The same lookup, started while the model wrote this call: its result, unless it failed.
+    const early = ahead.get(lookupKey(name, params));
+    if (early && !early.used) {
+      early.used = true;
+      try {
+        const value = await early.promise;
+        const review = reviewOf(value);
+        cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started, speculative: true, ...paramsOf(params), ...(review ? { review } : {}) });
+        if (s.speculate) cellNext.push({ s, params, value });
+        return value;
+      } catch {}
+    }
     try {
       const value = await s.fn({ ...GLOBALS, tk: toolkit, lookupChains }, params ?? {});
       const review = reviewOf(value);
       cellScripts.push({ name, draft: s.draft, ok: true, ms: Date.now() - started, ...paramsOf(params), ...(review ? { review } : {}) });
+      if (SPECULATE && s.speculate) cellNext.push({ s, params, value });
       return value;
     } catch (e) {
       cellScripts.push({ name, draft: s.draft, ok: false, ms: Date.now() - started, error: e.message, ...paramsOf(params) });
@@ -328,6 +397,7 @@ async function runCell(code, maxChars, timeoutSeconds) {
   const libChange = await refreshScripts();
   cellCalls = [];
   cellScripts = [];
+  cellNext = [];
   logs = [];
   cellMaxChars = maxChars;
   DOMAIN.beforeCell?.(GLOBALS);
@@ -369,6 +439,8 @@ async function runCell(code, maxChars, timeoutSeconds) {
   }
   lastFailedCode = ok ? null : code.trim();
   const ms = Date.now() - started;
+  const speculated = settleAhead();
+  if (SPECULATE) ahead = startAhead();
   let snap;
   try {
     snap = snapshot();
@@ -416,6 +488,7 @@ async function runCell(code, maxChars, timeoutSeconds) {
     error: errorText,
     scripts: cellScripts,
     calls: cellCalls,
+    ...(speculated.length ? { speculated } : {}),
     snapshot: snap,
     restored: restoreInfo,
   });
