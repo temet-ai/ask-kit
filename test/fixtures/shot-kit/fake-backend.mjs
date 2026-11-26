@@ -1,6 +1,7 @@
 // A scripted OpenAI-compatible chat backend on 127.0.0.1 for tests: no network, no model.
 // Steps are replayed in order: { code } is a `repl` tool call, { tool, args } a call of another
-// tool (early_answer), { answer } the final reply, { status, error } a refusal; { delayMs } holds the reply; a function
+// tool (early_answer), { answer } the final reply, { status, error } a refusal; { delayMs } holds the reply;
+// { fields } adds fields to the reply's message (a model's reasoning); a function
 // (body) => step answers from what the loop sent. Every request body is kept in `requests`.
 import http from "node:http";
 
@@ -27,6 +28,7 @@ export async function fakeBackend(steps) {
     const message = call
       ? { role: "assistant", content: null, tool_calls: [{ id: `call-${i}`, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) } }] }
       : { role: "assistant", content: step.answer ?? "" };
+    Object.assign(message, step.fields ?? {});
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ choices: [{ message, finish_reason: call ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0 } }));
   });

@@ -10,6 +10,8 @@
   KEY, TOKEN, SECRET or PASSWORD, `"apiKey": "..."`, the password in a `postgres://user:pass@`
   URL and private key blocks ([`src/transcripts/scrub.mjs`](https://github.com/temet-ai/ask-kit/blob/main/src/transcripts/scrub.mjs)).
   Code excerpts are sent as they are; a kit's folder `exclude` keeps credential files out.
+- On an API backend, the model's own reasoning from each reply goes back to the same provider
+  with that reply on the ask's later calls, as the provider returned it.
 - Picking the domain, when the caller did not name one and no pattern did, is one more short call
   to the router's backend (`router.backend`, else the investigator's), with the question, the
   working directory and what each enabled domain answers. On an agent CLI (`claude`, `codex`,
@@ -31,7 +33,8 @@ that CLI's service under its own terms, and the sessions appear in its history.
   whether it could change things, `act`), REPL snapshots, warm investigator sessions and the
   transcript index. The router keeps each routed question, and in
   `router/bench.jsonl` every misrouted question with where it went and where it should have gone.
-  For follow-ups, `warm/last-<caller>.json` holds the last conversation with each backend, and for
+  For follow-ups, `warm/last-<caller>.json` holds the last conversation with each backend (with
+  the model's reasoning on an API backend), and for
   an agent that takes tasks `warm/threads/` holds one per ask for a day; `router/threads-<caller>.json`
   lists the asks that became tasks, each with the first 80 characters of its question.
   An ask's row also holds how many of the answer's citations resolved and up to ten that did not

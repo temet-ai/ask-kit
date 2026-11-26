@@ -62,6 +62,17 @@ const REPLY_TOKENS = 4000;
 // The most of an opener's result put in the investigator's first message.
 const OPENER_CHARS = 20_000;
 const CARRY_ON = "Your reply was cut at the length limit. Carry on from the exact character where it stopped: do not repeat anything, do not comment on the cut, and finish it.";
+// The model's reasoning, in the fields a reply carries it: OpenRouter's `reasoning` (text) and
+// `reasoning_details` (blocks, some signed or encrypted), DeepSeek's `reasoning_content`. Each goes
+// back unchanged, under the name it came in, on the assistant message it belongs to: DeepSeek
+// refuses a request with tools whose history lacks it, OpenRouter documents passing it through.
+const REASONING_FIELDS = ["reasoning", "reasoning_details", "reasoning_content"];
+export const reasoningOf = (msg) => Object.fromEntries(REASONING_FIELDS.filter((k) => msg?.[k] != null).map((k) => [k, msg[k]]));
+const withoutReasoning = (m) => (REASONING_FIELDS.some((k) => k in m) ? Object.fromEntries(Object.entries(m).filter(([k]) => !REASONING_FIELDS.includes(k))) : m);
+// Backends that refused a request carrying reasoning, for the life of this server: their later requests go without it.
+const REFUSES_REASONING = new Set();
+// A provider's refusal that names one of those fields.
+const NAMES_REASONING = /reasoning/i;
 // A cell result that shows a connection failing, as fetch and node:net word it.
 const UNREACHABLE = /\bfetch failed\b|\bECONNREFUSED\b|\bENOTFOUND\b|\bEHOSTUNREACH\b|\bconnect ETIMEDOUT\b/;
 const SERVER = path.join(ROOT, "src", "server.mjs");
@@ -533,7 +544,9 @@ export function registerAsk(server, ctx) {
     const tried = [];
     let escalate = false;
     let escError = null;
-    const post = (body, ms) =>
+    // Reasoning goes back with each message unless this backend refused it once.
+    const post = (body, ms) => (REFUSES_REASONING.has(b) ? send({ ...body, messages: body.messages.map(withoutReasoning) }, ms) : send(body, ms));
+    const send = (body, ms) =>
       ep.ollama
         ? ollamaChat(ep.base, body, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms), numCtx: be.contextTokens ?? OLLAMA_DEFAULT_CTX })
         : fetch(ep.url, {
@@ -622,9 +635,21 @@ export function registerAsk(server, ctx) {
         }
         const body = await res.json().catch(() => ({}));
         if (signal?.aborted) throw new Error("the calling client cancelled the ask");
-        if (!res.ok || body.error) throw new Error(`${be.preset} ${res.status}: ${JSON.stringify(body.error ?? body)}`);
+        if (!res.ok || body.error) {
+          // A provider that does not take reasoning back says so once; the same step goes again without it.
+          if (!REFUSES_REASONING.has(b) && res.status >= 400 && res.status < 500 && NAMES_REASONING.test(JSON.stringify(body.error ?? body)) && messages.some((m) => withoutReasoning(m) !== m)) {
+            REFUSES_REASONING.add(b);
+            totals.reasoningRefused = true;
+            step--;
+            continue;
+          }
+          throw new Error(`${be.preset} ${res.status}: ${JSON.stringify(body.error ?? body)}`);
+        }
         account(body);
         const msg = body.choices?.[0]?.message ?? {};
+        // Kept on every assistant message this reply becomes, so the next call sees how the model got there.
+        const thought = reasoningOf(msg);
+        if (Object.keys(thought).length) totals.reasoningBack = (totals.reasoningBack ?? 0) + 1;
         let content = msg.content ?? "";
         // A text cut at the length limit is finished before it is read: as an answer, or (code-block
         // mode) as a cell whose block is still open. A complete cell or a tool call is run as it is.
@@ -682,16 +707,16 @@ export function registerAsk(server, ctx) {
             // Tool-call markup in the text is a call the provider did not parse, not an answer.
             if (!content.trim() || /DSML|<\s*\/?\s*(tool_call|invoke|function_calls)/i.test(content)) {
               totals.missteps++;
-              messages.push({ role: "assistant", content: content.trim() || "(empty reply)" });
+              messages.push({ role: "assistant", content: content.trim() || "(empty reply)", ...thought });
               messages.push({ role: "user", content: "Call the `repl` tool to run code, or reply with the final answer as plain text." });
               continue;
             }
-            messages.push({ role: "assistant", content });
+            messages.push({ role: "assistant", content, ...thought });
             answer = content.trim();
             atLimit = low;
             break;
           }
-          messages.push({ role: "assistant", content: content || null, tool_calls: calls });
+          messages.push({ role: "assistant", content: content || null, tool_calls: calls, ...thought });
           for (const [k, c] of calls.entries()) {
             let args;
             try {
@@ -715,7 +740,7 @@ export function registerAsk(server, ctx) {
         // invented result written after it never enters the history. An ```early block goes to the caller first.
         if (cut && !content.trim()) {
           totals.missteps++;
-          messages.push({ role: "assistant", content: "(empty reply)" });
+          messages.push({ role: "assistant", content: "(empty reply)", ...thought });
           messages.push({ role: "user", content: "Put one cell in a ```js block, or reply with the final answer as plain text." });
           continue;
         }
@@ -724,7 +749,7 @@ export function registerAsk(server, ctx) {
           const note = sendEarly(earlyBlock[1]);
           if (!CELL.test(content.replace(EARLY_BLOCK, ""))) {
             CELL.lastIndex = 0;
-            messages.push({ role: "assistant", content });
+            messages.push({ role: "assistant", content, ...thought });
             messages.push({ role: "user", content: `${note}${nudge()}` });
             continue;
           }
@@ -734,12 +759,12 @@ export function registerAsk(server, ctx) {
         const first = CELL.exec(cellText);
         CELL.lastIndex = 0;
         if (!first) {
-          messages.push({ role: "assistant", content });
+          messages.push({ role: "assistant", content, ...thought });
           answer = content.trim();
           atLimit = low;
           break;
         }
-        messages.push({ role: "assistant", content: cellText.slice(0, first.index + first[0].length) });
+        messages.push({ role: "assistant", content: cellText.slice(0, first.index + first[0].length), ...thought });
         messages.push({ role: "user", content: `Cell result:\n\`\`\`\n${await runCode(first[1])}\n\`\`\`${nudge()}` });
       }
     } finally {
@@ -769,6 +794,8 @@ export function registerAsk(server, ctx) {
           usage: { input: sum("input"), cacheRead: sum("cacheRead"), cacheWrite: sum("cacheWrite"), output: sum("output") },
           providers: [...new Set([...totals.providers, ...(r.providers ?? [])])],
           missteps: totals.missteps + (r.missteps ?? 0),
+          ...(totals.reasoningBack || r.reasoningBack ? { reasoningBack: (totals.reasoningBack ?? 0) + (r.reasoningBack ?? 0) } : {}),
+          ...(totals.reasoningRefused || r.reasoningRefused ? { reasoningRefused: true } : {}),
           ...(totals.stuck || r.stuck ? { stuck: (totals.stuck ?? 0) + (r.stuck ?? 0) } : {}),
           ...(unreached || r.unreached ? { unreached: unreached + (r.unreached ?? 0) } : {}),
           ...(opened ? { opened } : {}),
@@ -798,7 +825,7 @@ export function registerAsk(server, ctx) {
         const said = m.content ?? "";
         const text = (said.trim() && isCut(body) ? await finishText(said, closeMs) : said).trim() || (m.reasoning ?? "").trim();
         if (text) {
-          messages.push({ role: "assistant", content: text });
+          messages.push({ role: "assistant", content: text, ...reasoningOf(m) });
           answer = `[stopped at ${limit}; this is what it found]\n\n${text}`;
         }
       } catch {}
@@ -824,6 +851,8 @@ export function registerAsk(server, ctx) {
       usage: { input: totals.input, cacheRead: totals.cacheRead, cacheWrite: totals.cacheWrite, output: totals.output },
       providers: [...totals.providers],
       missteps: totals.missteps,
+      ...(totals.reasoningBack ? { reasoningBack: totals.reasoningBack } : {}),
+      ...(totals.reasoningRefused ? { reasoningRefused: true } : {}),
       ...(totals.stuck ? { stuck: totals.stuck } : {}),
       ...(unreached ? { unreached } : {}),
       ...(opened ? { opened } : {}),

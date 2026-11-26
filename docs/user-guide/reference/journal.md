@@ -74,6 +74,8 @@ The rest depend on the kind. A field that a kind does not produce is absent.
 | `atLimit` | `api` | The answer came with under 30 seconds left, or within two calls of the repeat stop. |
 | `providers` | `api` | The providers that served the calls, where the API says (OpenRouter does). |
 | `missteps` | `api` | Replies that were empty or held tool-call markup instead of a tool call. |
+| `reasoningBack` | `api` | How many of the model's replies carried reasoning (`reasoning`, `reasoning_details` or `reasoning_content`), which went back to the provider with that message on each later call. Written only when above zero. |
+| `reasoningRefused` | `api` | The provider refused a request that carried reasoning; that request and every later one to this backend, until the server restarts, went without it. |
 | `stuck` | `api` | How many times the ask was told to stop searching because a cell repeated an earlier one with the same result for the third time. Written only when above zero. With `escalate`, both backends' counts together. |
 | `unreached` | `api` | How many cells could not reach a source (a stopped service, a host that is off). From the second the investigator is told not to wait; after the fifth it gets two more steps. Written only when above zero; with `escalate`, both backends' counts together. |
 | `opened` | `api` | A kit action's pattern was found inside the question, and its script ran before the first model call: `{ action, script, params, ms }`. Counted in `cells`. |

@@ -205,7 +205,16 @@ through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-f
    Only the first block runs, and the stored assistant message is cut at its end, so a result the
    model wrote itself never enters the history. The result comes back as a user message. A reply
    with no block is the answer.
-7. **Running a cell.** `runCode` calls the inner `repl` tool with the call's own `maxChars` (up to
+7. **Reasoning goes back.** Each assistant message the loop keeps from a reply (a tool call, a
+   cell, a misstep, the answer) carries that reply's reasoning fields unchanged, under the names
+   they came in: `reasoning` and `reasoning_details` from OpenRouter, `reasoning_content` from
+   DeepSeek (`reasoningOf`). DeepSeek refuses a request with tools whose history lacks it, and
+   OpenRouter's reasoning-tokens page passes `reasoning_details` back as it was returned, so the
+   model's next call sees how it got to the call it made. A provider that answers a request
+   carrying them with a 4xx that names reasoning is added to `REFUSES_REASONING`: the same step
+   is sent again without the fields, and so is every later request to that backend while the
+   server runs. The journal row counts the replies with reasoning in `reasoningBack`.
+8. **Running a cell.** `runCode` calls the inner `repl` tool with the call's own `maxChars` (up to
    100,000; 4000 when the call gives none, and always in code-block mode) and a
    `timeoutSeconds` of the smaller of `CELL_MAX_S` (60) and the time left minus 2 seconds (at
    least 1). A cell that does not finish returns text telling the model to narrow it, and the loop
