@@ -20,8 +20,9 @@ import { ROOT, STATE_ROOT, loadConfig, slug } from "./config.mjs";
 
 export const warmDir = () => path.join(STATE_ROOT, "warmups");
 const BIN = path.join(ROOT, "bin", "ask-kit.mjs");
-// What a warm-up may take before it is left to finish on its own.
+// How long the hook waits for the warm-ups, and how long one warm-up may run before it is stopped.
 const WAIT_MS = 15 * 60_000;
+const RUN_MS = 10 * 60_000;
 
 /** What a warm-up declaration must hold; problems as text (src/kits.mjs readManifest uses it). */
 export function checkWarm(w) {
@@ -72,7 +73,11 @@ export async function runWarmup(w, config) {
     if (!file) return { name: w.name, ok: false, ms: Date.now() - started, error: `no script ${w.script} in ${dirs.join(", ")}` };
     const mod = await import(pathToFileURL(file).href);
     const globals = d.makeGlobals({ push: () => {}, config, act: false });
-    const value = await mod.default({ ...globals, tk: toolkit }, w.params ?? {});
+    let timer;
+    const value = await Promise.race([
+      mod.default({ ...globals, tk: toolkit }, w.params ?? {}),
+      new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`did not finish in ${RUN_MS / 60_000} minutes`)), RUN_MS))),
+    ]).finally(() => clearTimeout(timer));
     const notice = typeof value?.notice === "string" ? value.notice : w.notice;
     return { name: w.name, ok: true, ms: Date.now() - started, ...(notice ? { notice } : {}), result: typeof value === "string" ? value.slice(0, 2000) : value };
   } catch (e) {
@@ -147,7 +152,7 @@ export async function pluginWarmHook({ waitMs = WAIT_MS } = {}) {
     const out = path.join(warmDir(), `run-${process.pid}-${Date.now()}.json`);
     const env = { ...process.env };
     for (const k of CALLER_VARS) delete env[k];
-    const child = spawn(process.execPath, [BIN, "warm", root, "--out", out], { cwd: root, env, detached: true, stdio: "ignore" });
+    const child = spawn(process.execPath, [BIN, "warm", root, "--out", out], { cwd: root, env, detached: true, stdio: "ignore", windowsHide: true });
     const exited = await new Promise((resolve) => {
       const t = setTimeout(() => resolve(false), waitMs);
       child.on("exit", () => {
