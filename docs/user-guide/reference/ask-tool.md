@@ -234,8 +234,11 @@ caller has something to do, such as `[not finished: ask again with continue: tru
 
 For `code` and `sessions`, the host also resolves the answer's citations with no model (`path:line`
 and `path:line-line` against the repository; `<source> <session> #<event>` against the
-transcripts, with `#<event>` chained after a comma or "and" taken as the same session). When some
-do not resolve, a line says which, and the caller should not rely on those:
+transcripts, with `#<event>` chained after a comma or "and" taken as the same session). A relative
+path is looked for first in another repository the question or the answer names, by a path inside
+it (`/srv/semaphore-tower/src`) or, in the question, by the folder name of a repository beside this
+one (`semaphore-tower`), then in this repository. When some do not resolve, a line says which, and
+the caller should not rely on those:
 
 ```
 [2 of 7 citations did not resolve: src/x.mjs:900, codex 5ca1ab1e #41]

@@ -1061,7 +1061,7 @@ export function registerAsk(server, ctx) {
           const r = await hedged(kind, backend, asked, timeoutMs, clientMs, cont, ac.signal, onStep, onEarly);
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
-          const cited = r.ok ? await checkCitations(r.answer, D, config).catch(() => null) : null; // src/citations.mjs
+          const cited = r.ok ? await checkCitations(r.answer, D, config, { question }).catch(() => null) : null; // src/citations.mjs
           ctx.keep({ startedAt: new Date(started).toISOString(), question, backend, kind, ...r, ...(cited ? { citations: cited.journal } : {}), ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.

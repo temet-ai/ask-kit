@@ -99,6 +99,26 @@ assert.deepEqual(await short("See mod.mjs:1."), { checked: 1, failed: 1, failedL
 assert.deepEqual(await short("The shift is in src/night/mod.mjs; it starts at mod.mjs:1."), { checked: 1, failed: 0 });
 assert.deepEqual(await short("See beat.mjs:9."), { checked: 1, failed: 1, failedList: ["beat.mjs:9"] }, "the line is not there");
 
+// ---- another repository: the one the question names, or a path in the question or answer ----
+const tower = path.join(tmp, "semaphore-tower");
+fs.mkdirSync(path.join(tower, "src", "relay"), { recursive: true });
+execFileSync("git", ["init", "-q", tower]);
+fs.writeFileSync(path.join(tower, "src", "relay", "send.mjs"), "// the clacks\nexport const send = (m) => m;\nexport const overhead = 'GNU Terry Pratchett';\n");
+const other = async (answer, question) => (await cite.checkCitations(answer, { ...codeDomain, name: "code" }, {}, { question }))?.journal;
+const said = "send is at src/relay/send.mjs:2, the overhead at src/relay/send.mjs:3, and the captain at src/watch.mjs:2.";
+assert.deepEqual(await other(said, "How does semaphore-tower send a message?"), { checked: 3, failed: 0 }, "the repository the question names, then this one");
+assert.deepEqual(await other(said, "How does the clacks send a message?"), { checked: 3, failed: 2, failedList: ["src/relay/send.mjs:2", "src/relay/send.mjs:3"] }, "named nowhere: this repository only");
+assert.deepEqual(await other(said, `How does ${tower}/src send a message?`), { checked: 3, failed: 0 }, "a path inside it in the question");
+assert.deepEqual(await other(`In ${path.join(tower, "src")}, ${said}`, ""), { checked: 3, failed: 0 }, "a path inside it in the answer");
+assert.deepEqual(await other("It is relay/send.mjs:3 and send.mjs:2.", "semaphore-tower: how is a message sent?"), { checked: 2, failed: 0 }, "a shortened path, from that repository's files");
+fs.writeFileSync(path.join(tower, "src", "relay", "mod.mjs"), "one\ntwo\n");
+fs.mkdirSync(path.join(tower, "src", "tower"), { recursive: true });
+fs.writeFileSync(path.join(tower, "src", "tower", "mod.mjs"), "one\ntwo\n");
+assert.deepEqual(await other("See mod.mjs:1.", "semaphore-tower?"), { checked: 1, failed: 1, failedList: ["mod.mjs:1"] }, "two of its files share the name");
+assert.deepEqual(await other("The relay is relay/mod.mjs; it starts at mod.mjs:1.", "semaphore-tower?"), { checked: 1, failed: 0 }, "the longer path in the answer chooses");
+assert.deepEqual(await other("It is src/relay/send.mjs:30.", "semaphore-tower: how is a message sent?"), { checked: 1, failed: 1, failedList: ["src/relay/send.mjs:30"] }, "a line past its end");
+assert.deepEqual(cite.namedRepos("semaphore-towers and watch-repo, see http://example.com/a/b", "", repo), [], "a longer word, the repository itself and a URL name nothing");
+
 // ---- sessions: <source> <session> #n, and #m chained after it ----
 const sessions = await connect("sessions", "cite-sessions");
 const s1 = textOf(await sessions.callTool({ name: "ask", arguments: { question: "who found the flaky test?", early: false } }));
