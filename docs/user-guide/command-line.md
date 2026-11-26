@@ -103,6 +103,8 @@ ask-kit: that is 3 lookups in a row (rg x2, git log). One call answers the quest
 The `about` is the enabled domain or kit that fits most of the chain (a tie goes to the latest
 lookup). A lookup goes by, in order:
 
+- a command an enabled kit declares in its manifest's `reads` (`mike fleet status` to the kit that
+  lists it), which counts as a lookup even though the host has no rule for its program;
 - the program it runs (`git log` to `git`, `cargo tree` to `rust`, `sqlite3` to `sqlite`, and a
   program only one enabled kit lists in `requires` to that kit) or its MCP server;
 - the kit whose folder source holds the file;

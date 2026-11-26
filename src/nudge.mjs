@@ -121,6 +121,7 @@ const most = (xs) => {
 export function aboutFor(tool, l, to, cwd = null) {
   const at = !l.dir ? cwd : /^~(\/|$)/.test(l.dir) ? home(l.dir) : path.isAbsolute(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
   if (/^mcp__(mike|tether)__.*(inbox|heartbeat|wait_for)/.test(tool)) return null; // mail, not a question
+  if (l.kit && to.first([l.kit])) return l.kit; // a read the kit declares
   const repo = repoOf(at);
   const shape = shapeOf(tool, l.arg);
   // git grep, ls-files and a file at a commit are reading the code, not its history.
@@ -162,7 +163,13 @@ export async function onToolUse(input, { now = new Date() } = {}) {
   const tool = input?.tool_name;
   if (!tool || !input.session_id) return null;
   const arg = argOf(tool, input.tool_input);
-  const c = classify(tool, arg);
+  let c = classify(tool, arg);
+  // A command the rules here call an action may be one a kit declares in `reads`.
+  let declared = null;
+  if (c.k === "act" && tool === "Bash") {
+    declared = kitRules().declared;
+    if (declared.reads.length) c = classify(tool, arg, declared);
+  }
   const file = path.join(dir(), `${slug(input.session_id)}${input.agent_id ? `.${slug(input.agent_id)}` : ""}.json`);
   let s = { n: 0, nudged: false, to: {}, kinds: {} };
   try {
@@ -174,14 +181,14 @@ export async function onToolUse(input, { now = new Date() } = {}) {
   if (c.k === "ask" || c.k === "write" || c.k === "act") s = { n: 0, nudged: false, to: {}, kinds: {} };
   else if (c.k === "look") {
     if (s.nudged) return null; // said once for this chain
-    const looks = lookupsOf(tool, arg);
+    const looks = lookupsOf(tool, arg, declared);
     const to = looks.length ? await destinations() : null;
     if (!to) return null;
     let last = null;
     for (const l of looks) {
       const a = aboutFor(tool, l, to, input.cwd ?? null);
       if (!a) continue; // a lookup ask cannot answer neither counts nor breaks the chain
-      const kind = shapeOf(tool, l.arg);
+      const kind = l.read ?? shapeOf(tool, l.arg);
       s.n += 1;
       s.to[a] = (s.to[a] ?? 0) + 1;
       s.kinds[kind] = (s.kinds[kind] ?? 0) + 1;

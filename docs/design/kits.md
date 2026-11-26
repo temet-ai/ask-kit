@@ -115,6 +115,7 @@ command = ["npm", "ci"]
 | `uses` | Other kits whose sources this kit's REPL also gets |
 | `[[sources]]` | What the REPL can reach. Each one becomes a global with a generated `api.d.ts`. |
 | `acts` | The calls that change things. The install preview lists them, the journal marks them, and they carry the caller's session id. |
+| `reads` | The commands an agent runs by hand to read what the kit answers about (`mike fleet status`). The Claude Code plugin's nudge and `ask-kit gaps` count them as lookups for this kit. |
 | `instructions`, `scripts`, `bench` | Optional. Without `instructions`, the host writes default instructions from the source kinds. |
 | `[[settings]]` | Asked at setup and kept in the kit's config folder |
 | `[[actions]]` | Scripts callable without a model (below) |

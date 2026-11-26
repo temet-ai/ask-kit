@@ -23,12 +23,12 @@ fs.mkdirSync(bin);
 for (const p of ["gh", "cargo", "git", "docker", "psql", "clacks", "coredumpctl", "journalctl", "ssh"]) fs.writeFileSync(path.join(bin, p), "#!/bin/sh\nexit 99\n", { mode: 0o755 });
 env.PATH = `${bin}${path.delimiter}${env.PATH}`;
 const domains = { code: { enabled: true }, sessions: { enabled: true } };
-const kit = (name, { enabled = true, requires = [], keywords = [], source, settings } = {}) => {
+const kit = (name, { enabled = true, requires = [], keywords = [], reads = [], source, settings } = {}) => {
   const d = path.join(env.ASK_KIT_CONFIG, "kits", name);
   fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, "m.mjs"), "export default () => ({});\n");
   // A detect command the hook must never run.
-  fs.writeFileSync(path.join(d, "ask-kit.toml"), `name = "${name}"\nversion = "0.1.0"\nsays = "${name} of the Watch"\nrequires = ${JSON.stringify(requires)}\nkeywords = ${JSON.stringify(keywords)}\n\n[[settings]]\nkey = "WATCH_${name.replace(/-/g, "_").toUpperCase()}"\nabout = "x"\ndetect = ["touch", ${JSON.stringify(path.join(tmp, "detected"))}]\n\n[[sources]]\n${source ?? `kind = "module"\nname = "m"\nmodule = "m.mjs"`}\n`);
+  fs.writeFileSync(path.join(d, "ask-kit.toml"), `name = "${name}"\nversion = "0.1.0"\nsays = "${name} of the Watch"\nrequires = ${JSON.stringify(requires)}\nkeywords = ${JSON.stringify(keywords)}\nreads = ${JSON.stringify(reads)}\n\n[[settings]]\nkey = "WATCH_${name.replace(/-/g, "_").toUpperCase()}"\nabout = "x"\ndetect = ["touch", ${JSON.stringify(path.join(tmp, "detected"))}]\n\n[[sources]]\n${source ?? `kind = "module"\nname = "m"\nmodule = "m.mjs"`}\n`);
   if (enabled !== null) domains[name] = { enabled, ...(settings ? { settings } : {}) };
 };
 const save = (d = domains) => {
@@ -237,6 +237,17 @@ for (const [ev, sub] of [["PostToolUse", "tool"], ["SubagentStart", "subagent"]]
   assert.ok(h.timeout <= 10);
 }
 
+// A command a kit declares in `reads` is a lookup named for that kit; undeclared, it is an action.
+assert.equal(bash(three("mike fleet status watch")), "");
+kit("fleet", { reads: ["mike fleet status", "mike fleet list"] });
+save();
+assert.equal(about(bash(three("mike fleet status watch"))), "fleet");
+assert.match(bash("mike fleet list; mike fleet status watch | head; rg a src"), /3 lookups in a row \(mike fleet list, mike fleet status, rg\)[^]*about: \\"fleet\\"/);
+assert.equal(bash("mike fleet status watch; mike fleet start watch; mike fleet list"), "", "an undeclared command in the call is an action");
+post("fl", "Bash", { command: "mike fleet status watch" });
+post("fl", "Bash", { command: "mike fleet list" });
+assert.equal(about(post("fl", "Read", { file_path: `${repo}/src/a.mjs` })), "fleet");
+
 // The nudges are logged, and gaps counts them.
 const { nudgesSince } = await import("../src/nudge.mjs");
 const n = nudgesSince(0);
@@ -245,7 +256,7 @@ for (const [, a] of given) by[a] = (by[a] ?? 0) + 1;
 assert.equal(n.count, given.length);
 assert.equal(n.sessions, new Set(given.map(([x]) => x)).size);
 assert.deepEqual(n.by, by); // every nudge printed is logged under the name it gave
-for (const k of ["code", "git", "rust", "tests", "sqlite", "logs", "files", "claude-setup", "github", "ops", "crash", "sessions", "rota", "semaphore", "mike"]) assert.ok(by[k], `${k} was named`);
+for (const k of ["code", "git", "rust", "tests", "sqlite", "logs", "files", "claude-setup", "github", "ops", "crash", "sessions", "rota", "semaphore", "mike", "fleet"]) assert.ok(by[k], `${k} was named`);
 for (const k of ["postgres", "docker", "systemd", "writing"]) assert.ok(!by[k], `${k} was never named`);
 const { formatReport } = await import("../src/gaps.mjs");
 const base = { since: "2026-11-01T00:00:00Z", scanned: { sessions: 0, bySource: {}, fromCache: 0, seconds: 0 }, cost: { basis: "x" }, coverage: { asks: 0, byHand: 0, share: null, tokenShare: null, handSessions: 0, handTokens: 0, handUsd: 0 }, excluded: { mailOrFleet: 0, other: 0 }, skipped: [], noKit: [] };
