@@ -65,6 +65,9 @@ slashes removed and every other run of characters outside `A-Z a-z 0-9 . _ -` tu
 | `<STATE_ROOT>/machines/<host>/` | `ask-kit improve` | Another machine's journals, action logs and review records, laid out as a state folder, and `chains.json`, its lookup chains. Safe to delete: the next run copies 30 days again. |
 | `<STATE_ROOT>/improvements/<kit>.jsonl` | `ask-kit improve <kit> --record` | The reviews of one kit, with the question and cause of each chain they read. The one place improvement findings are kept. |
 | `<STATE_ROOT>/gallery/<owner>-<repo>/` | `ask-kit add` | A shallow clone of a shared domain, replaced on each add. |
+| `<STATE_ROOT>/code-map/<tree>.json.gz` | the code domain's `map` script | The [code map](../how-it-works.md#the-code-map) of the files at one git tree (`dir-<hash>` for a folder outside git): per file, its path, git blob id, language, line count, every identifier on each line with the kind of use (call, write, key, read, import, string, comment), its definitions with the lines they span, and which name implements or extends which. No source text. Shared by every checkout and worktree at that tree. The 16 most recently used are kept. Safe to delete. |
+| `<STATE_ROOT>/code-map/checkout-<root>.json.gz` | the same | One checkout's files whose content differs from its tree's map, in the same form, and which tree that was. Removed after 60 days unused. |
+| `<STATE_ROOT>/code-map/<tree>.lock` | the same | Held while a map is built from nothing, so a second process waits for it instead of building it again. |
 
 `<session>` is the file-safe form of the session id the server runs under. A calling agent's own
 server uses the caller's session id. An investigator's REPL uses `ask-<uuid>` for `api` and
@@ -73,7 +76,8 @@ Copilot CLI asks. `<caller>` is the file-safe form of the calling agent's sessio
 `ask-kit report` reads every `.jsonl` file under the state folder except in folders named `warm`,
 `drafts`, `gallery`, `index` and `actions`, and reads `actions` separately for its action sections.
 
-Deleting the state folder loses journals, snapshots, warm sessions and drafts. Nothing else.
+Deleting the state folder loses journals, snapshots, warm sessions, drafts and code maps. Nothing
+else: the next question or session builds the map again.
 
 ## Files in the agents
 

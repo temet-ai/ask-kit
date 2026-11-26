@@ -7,6 +7,12 @@ export const NOISE = [
   "!**/__snapshots__/**", "!**/*.snap",
 ];
 
+// The same files as NOISE, for a path git lists (NOISE is ripgrep's form of it).
+const NOISE_DIRS = new Set(["node_modules", "target", "dist", "build", ".git", "vendor", ".sqlx", "__snapshots__"]);
+const NOISE_FILES = /(?:\.lock|(?:^|\/)package-lock\.json|(?:^|\/)pnpm-lock\.yaml|\.min\.js|\.map|\.snap)$/;
+/** Whether a repository-relative path is generated, vendored or a lock file (left out of searches and the code map). */
+export const noisy = (file) => NOISE_FILES.test(file) || String(file).split("/").slice(0, -1).some((d) => NOISE_DIRS.has(d));
+
 // Every spelling a name has: fooBar, FooBar, foo_bar, FOO_BAR, foo-bar.
 export function spellings(name) {
   const words = String(name)
@@ -33,4 +39,31 @@ export function definitionPattern(names) {
     `|(^\\s*(export\\s+)?(${alt})\\s*\\(\\))` +
     `|(\\bcreate\\s+(table|view|function|index)\\s+(if\\s+not\\s+exists\\s+)?[\\w.]*(${alt})\\b)`
   );
+}
+
+const indent = (l) => /^\s*/.exec(l)[0].replace(/\t/g, "    ").length;
+
+/** The last line (1-based) of the definition that starts on `line`, read from the indentation. */
+export function bodyEnd(lines, line) {
+  const base = indent(lines[line - 1]);
+  let end = line;
+  for (let i = line; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.trim()) continue;
+    const t = l.trim();
+    if (indent(l) > base) {
+      end = i + 1;
+      continue;
+    }
+    if (t === "{" || /^where\b/.test(t)) {
+      end = i + 1;
+      continue;
+    }
+    if (/^[)}\]]/.test(t)) {
+      end = i + 1;
+      if (/[{([]$|^\)\s*(->|:)/.test(t)) continue;
+    }
+    break;
+  }
+  return end;
 }

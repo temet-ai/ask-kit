@@ -75,6 +75,13 @@ that CLI's service under its own terms, and the sessions appear in its history.
   `~/.local/state/ask-kit/index/digests.json`: title, the first 200 characters of the first
   prompt, project, dates and the twelve most used words of your prompts. It sends nothing; the
   investigator reads the digests of the sessions it searched.
+- In `~/.local/state/ask-kit/code-map/`: the code map of each repository the code domain answers
+  about, built by the first `map` script. For each file in a language it reads: the path, the git blob id, the line count,
+  every identifier on each line (words in comments and strings included) with the kind of use,
+  the definitions with the lines they span, and which name implements or extends which. No line of
+  source is kept: the scripts read lines from the files when they answer. One map per git tree,
+  the 16 most recently used, and one record per checkout of the files that differ from it. It
+  sends nothing.
 - The skills, agent and rule it installed into your agents, each listed with its hash in
   `installed.json`.
 

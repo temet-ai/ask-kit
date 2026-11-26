@@ -184,7 +184,8 @@ the agent (Claude Code, Codex, ...)
 A domain is one thing `ask` can answer about. Each has a `domain.mjs` (its globals and the words
 of its `ask` tool), `instructions.md` (the investigator's system prompt), `api.d.ts` (the typed API
 the investigator reads) and `scripts/`. Two are built in under `domains/`: `code` (the `repo`
-global over ripgrep, file reads and git) and `sessions` (the `history` global over
+global over ripgrep, file reads and git, and the code map in `domains/code/map.mjs` and
+`scan.mjs`, which `scripts/map-check.mjs` checks against ripgrep) and `sessions` (the `history` global over
 `src/transcripts/`, one adapter per agent's transcript format).
 
 A kit is a folder with an `ask-kit.toml` manifest that points at sources: a folder, a CLI, an MCP

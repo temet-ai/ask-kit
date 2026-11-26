@@ -13,6 +13,11 @@ How to work:
 - Start from a ready-made script (`scripts.run`) when one fits; they search every spelling a
   name has (snake_case, camelCase, kebab-case, SCREAMING_CASE) and leave out generated and vendored
   files.
+- A question about every, each or all of something (every caller, through how many levels; every
+  implementation of a trait or interface; every writer of a field, variable or table; every use):
+  `scripts.run("map", { names: [...], callers: N })`. Its rows carry their source lines; read the
+  ones that decide the answer. When it says `STALE` or `PARTIAL`, part of the repository was
+  searched with ripgrep instead, and the answer says so if it matters.
 - Every cell costs a model turn, so put all you already know you need in one:
   `scripts.run("lookup", { names: [...] })` for several names, searches in `Promise.all`, the next
   reads beside them. One lookup holds where something is, its code and what calls it.

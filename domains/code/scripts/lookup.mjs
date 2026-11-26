@@ -1,4 +1,8 @@
-import { NOISE, definitionPattern, escape, spellings } from "../lib.mjs";
+import nodePath from "node:path";
+import { NOISE, bodyEnd, definitionPattern, escape, spellings } from "../lib.mjs";
+import { defsOf, enclosing, ensureMap, mapped, textHits, usesOf } from "../map.mjs";
+
+export { bodyEnd };
 
 export const meta = {
   purpose:
@@ -45,31 +49,6 @@ export function named(question) {
 
 const indent = (l) => /^\s*/.exec(l)[0].replace(/\t/g, "    ").length;
 
-/** The last line (1-based) of the definition that starts on `line`, read from the indentation. */
-export function bodyEnd(lines, line) {
-  const base = indent(lines[line - 1]);
-  let end = line;
-  for (let i = line; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l.trim()) continue;
-    const t = l.trim();
-    if (indent(l) > base) {
-      end = i + 1;
-      continue;
-    }
-    if (t === "{" || /^where\b/.test(t)) {
-      end = i + 1;
-      continue;
-    }
-    if (/^[)}\]]/.test(t)) {
-      end = i + 1;
-      if (/[{([]$|^\)\s*(->|:)/.test(t)) continue;
-    }
-    break;
-  }
-  return end;
-}
-
 /** The first line of the comments and attributes directly above `line`. */
 function bodyStart(lines, line) {
   let from = line;
@@ -94,9 +73,22 @@ export default async function ({ repo }, { question, names: asked, path, budget 
   const gone = path ? await repo.files(null, { path, max: 1 }).then((l) => l.missing, () => null) : null;
   if (gone) return gone;
   const places = [path, ...outside];
-  const search = async (pattern, o) => {
+  // The code map, when this checkout has one that is up to date: definitions with the line they
+  // end on, the definition each use sits in, and every use in the files it covers. Files it does not
+  // cover and folders outside the repository are searched with ripgrep, as with no map.
+  let map = null;
+  const rel = path == null ? null : nodePath.relative(repo.root, nodePath.resolve(repo.root, path));
+  if (rel == null || !(rel.startsWith("..") || nodePath.isAbsolute(rel)))
+    try {
+      map = await ensureMap(repo.root, { build: false, budgetMs: 3000 });
+      if (map?.stale.length) map = null;
+    } catch {
+      map = null;
+    }
+  const mapPlace = rel && rel !== "." ? rel : undefined;
+  const search = async (pattern, o, only = places) => {
     const parts = await Promise.all(
-      places.map((p) =>
+      only.map((p) =>
         repo.rg(pattern, { glob: NOISE, max: 5000, ...o, path: p }).catch((e) => {
           problems.push(`search for ${pattern.slice(0, 80)} in ${p ?? "the repository"} failed: ${e.message.slice(0, 200)}`);
           return Object.assign([], { total: 0, complete: false });
@@ -122,8 +114,15 @@ export default async function ({ repo }, { question, names: asked, path, budget 
     return cache.get(file);
   };
   const numbered = (file, from, to) => linesOf(file).slice(from - 1, to).map((l, i) => `${from + i}\t${l}`).join("\n");
+  const label = (l) => l.trim().replace(/\s*[{(=:].*$/, "").replace(/^(export |default |pub(\([^)]*\))? |async )+/, "");
   const inside = (file, line) => {
     if (PROSE.test(file)) return null;
+    if (map?.files.has(file)) {
+      const d = enclosing(map, file, line);
+      if (!d || d.line === line) return null;
+      const l = label(linesOf(file)[d.line - 1] ?? d.name) || d.name;
+      return d.container && !l.includes(d.container) ? `${l} in ${d.container}` : l;
+    }
     const lines = linesOf(file);
     let at = indent(lines[line - 1] ?? "");
     for (let i = line - 2; i >= 0; i--) {
@@ -145,7 +144,29 @@ export default async function ({ repo }, { question, names: asked, path, budget 
     return true;
   };
 
+  const elsewhere = map ? await textHits(repo, map, names.filter(mapped), { path: mapPlace }) : new Map();
+  const outsideOnly = places.slice(1);
+  const fromMap = async (name) => {
+    const at = (file, line) => ({ file, line, text: linesOf(file)[line - 1] ?? "" });
+    const hits = [...usesOf(map, name, { path: mapPlace }).map((u) => at(u.file, u.line)), ...(elsewhere.get(name) ?? [])];
+    if (outsideOnly.length) hits.push(...(await search(`\\b${escape(name)}\\b`, {}, outsideOnly)));
+    if (!hits.length) return null;
+    const defs = defsOf(map, name, { path: mapPlace }).map((d) => ({ ...at(d.file, d.line), end: d.end }));
+    // What the definition pattern finds too, so lookup never shows fewer definitions than without the map.
+    const known = new Set(defs.map((d) => `${d.file}:${d.line}`));
+    for (const d of await search(definitionPattern([name]), { max: 200 }))
+      if (!PROSE.test(d.file) && !known.has(`${d.file}:${d.line}`)) {
+        known.add(`${d.file}:${d.line}`);
+        defs.push(d);
+      }
+    const rank = (d) => (TEST.test(d.file) ? 1 : 0);
+    return { name, spelled: [name], hits: Object.assign(hits, { total: hits.length, complete: true }), defs: defs.sort((a, b) => rank(a) - rank(b)), partial: false };
+  };
   const look = async (name, needDef) => {
+    if (map && mapped(name)) {
+      const got = await fromMap(name);
+      if (got) return needDef && !got.defs.length ? null : got;
+    }
     let spelled = [name];
     let hits = await search(`\\b${escape(name)}\\b`);
     if (!hits.total) {
@@ -171,7 +192,7 @@ export default async function ({ repo }, { question, names: asked, path, budget 
   const addBody = (r, d) => {
     const lines = linesOf(d.file);
     const from = bodyStart(lines, d.line);
-    const to = Math.max(d.line, bodyEnd(lines, d.line));
+    const to = Math.max(d.line, d.end ?? bodyEnd(lines, d.line));
     const key = `${d.file}:${d.line}`;
     if (shown.has(key)) return;
     shown.add(key);
@@ -257,7 +278,7 @@ export default async function ({ repo }, { question, names: asked, path, budget 
   }
 
   if (!out.length && !left.length) return null;
-  const searched = `Searched: ${path ?? repo.root}${outside.length ? `, ${outside.join(", ")}` : ""}; git-ignored, generated, vendored and lock files left out.`;
+  const searched = `Searched: ${path ?? repo.root}${outside.length ? `, ${outside.join(", ")}` : ""}; git-ignored, generated, vendored and lock files left out.${map ? ` Names from the code map (${map.files.size} files${map.changed ? `, ${map.changed} changed since it was built, read again` : ""}${Object.keys(map.skipped).length ? `; ${Object.keys(map.skipped).length} not mapped, searched with ripgrep` : ""}); scripts.run("map") lists callers through several levels, implementations and writers.` : ""}`;
   // What is left out comes first, so it is read even when a reader's own limit cuts the end.
   const note = (title, rows, sep) => {
     if (!rows.length) return [];

@@ -140,7 +140,9 @@ investigator also goes, with the working directory and what each investigator an
 router's model (the investigator's unless you chose another). Keys, tokens and passwords
 in transcript excerpts are masked before the model sees them. There's no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
 including each ask's conversation with its investigator (kept for follow-ups; one per ask for a day when the agent takes tasks), the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
-session `find-sessions` matched (title, first prompt, top words), a lookup counter per
+session `find-sessions` matched (title, first prompt, top words), the code map of each repository
+`ask` answers about (paths, line numbers, the identifiers on each line and the definitions; no
+source lines), a lookup counter per
 Claude Code session (with the kinds of lookup, such as `git log`, and the kits that would answer them) and a log of the nudges the plugin's hook gave (time, session id, kind of
 lookup; no commands or prompts) and, for the one in 20
 action answers that a model checks in the background, both answers. Each ask's journal row
