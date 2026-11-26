@@ -55,7 +55,7 @@ Written once per ask, whether it succeeded or not. `type` is `"ask"`.
 | `noData` | boolean | The domain provides a capability and its answer ended with the line `[no data]`: it held nothing for the question. The line is cut from the answer, and the router asks the next provider. |
 | `action` | string | The kit's action that answered with no model. The row has `do` (the script), `params`, `ms` and `cells: 1`, and no backend, model or cost. See [Actions](../kits.md#actions). |
 | `actionFellThrough` | object | On a model ask: `{ action, why }` for the action that matched first and fell through (`why` is `error`, `empty` or `expect`), with `turnedOff` when that run turned the action off. |
-| `citations` | object | `{ checked, failed, failedList? }`: the host resolved the answer's citations with no model (`code`: `path:line` or `path:line-line`, the file exists and has that line, in a repository the question or answer names or else in this one; `sessions`: `<source> <session> #<event>`, the session has that event). At most 20 are checked, within 3 seconds; those not reached are not counted. `failedList` holds up to 10 that did not resolve. Absent when the answer cites nothing checkable. When `failed` is above 0 the reply ends with `[<failed> of <checked> citations did not resolve: ...]`. |
+| `citations` | object | `{ checked, failed, failedList?, otherRepo? }`: the host resolved the answer's citations with no model (`code`: `path:line` or `path:line-line`, the file exists and has that line, in a repository the question or answer names or else in this one; `sessions`: `<source> <session> #<event>`, the session has that event). At most 20 are checked, within 3 seconds; those not reached are not counted. `failedList` holds up to 10 that did not resolve; `otherRepo`, when above 0, how many resolved in a repository other than this one. Absent when the answer cites nothing checkable. When `failed` is above 0 the reply ends with `[<failed> of <checked> citations did not resolve: ...]`. |
 | `reviews` | object[] | Shots and actions: explicit script reviews, each `{ script, status, warnings?, notes? }`. Status is `pass`, `needs_review` or `unverified`. Execution `ok` remains separate. |
 | `askId` | string | Shots, actions and `api` asks: the investigator's REPL session is `ask-<askId>`, so `report` finds the ask's cells. |
 
@@ -267,6 +267,7 @@ Since 2026-11-11T09:27:08.327Z: 12 asks, 2 flagged, $0.0341, median 18 s
   <question, cut at 140 characters>
   <journal file>
 Citations that did not resolve: code 2 of 14 (14%, 1 of 6 asks), sessions 0 of 9 (0%, 0 of 4 asks)
+code (6 asks): 2 opened by an action's script, reasoning sent back in 5, 8 lookups started ahead, 4 used (50%), 3 citations resolved in another repository
 Scripts: code/where 9, sessions/grep 4 (1 failed)
 Written by hand 3+ times (worth a script):
   4×  <shape>
@@ -288,7 +289,8 @@ Misroutes: 1 of 9 routed by the router (router bench rows: <state>/router/bench.
 | `reviewFindings` | Script verdicts needing review, with kit, script, status, bounded notes/warnings, timestamp and journal. They remain visible even without a matching ask row. |
 | `realOnly`, `kit` | Whether synthetic sessions were excluded, and the kit filter when supplied. |
 | `flaggedAsks` | `[{ ts, domain, backend, session, question, ms, costUsd, cells, signals, journal }]`. `cells` is `cells` or else `turns`. |
-| `citations` | By domain, from the asks that have a `citations` field: `{ <domain>: { asks, checked, failed, failedRate, asksWithFailures } }`. `failedRate` is `failed / checked`. |
+| `citations` | By domain, from the asks that have a `citations` field: `{ <domain>: { asks, checked, failed, failedRate, asksWithFailures, otherRepo } }`. `failedRate` is `failed / checked`; `otherRepo` counts citations resolved in another repository. |
+| `domains` | By domain, what the host did besides the model's work: `{ <domain>: { asks, opened, reasoningBack, reasoningRefused, quoted, quotesInserted, quotesUnknown, quotesSentBack, speculated, speculatedUsed, speculatedUsedShare, citationsOtherRepo } }`. `opened`, `reasoningBack`, `reasoningRefused`, `quoted` and `quotesSentBack` count asks (with an `opened` field, with `reasoningBack` above 0, with `reasoningRefused`, with `quotes`, with `quotesSentBack` above 0); `quotesInserted` and `quotesUnknown` add up `quotes.inserted` and the ids in `quotes.unknown`; `speculated` and `speculatedUsed` count the cells' `speculated` runs and those with `used: true`, and `speculatedUsedShare` is their ratio (`null` with none); `citationsOtherRepo` adds up `citations.otherRepo`. A domain with none of these is left out. |
 | `scripts` | `[{ name, runs, failed }]`, most used first. |
 | `worthAScript` | `[{ shape, n }]`. |
 | `routed` | Routes the router decided itself (`action`, `pattern`, `model`, `timeout`, `rules`) in range. |

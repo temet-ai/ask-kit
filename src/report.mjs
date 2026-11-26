@@ -223,6 +223,8 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
   const reviewFindings = [];
   const outcomes = [];
   const unattributedCells = [];
+  // Lookups a cell's scripts started ahead (`speculated` on a cell row), by domain: { runs, used }.
+  const speculated = {};
   let routed = 0;
   // afterMs of each ask that became a background task (the router's {task, afterMs} row).
   const taskHandoffs = [];
@@ -276,6 +278,11 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
           }
           if (!realSession(candidates[0].session)) continue;
         }
+        if (Array.isArray(r.speculated) && r.speculated.length) {
+          const e = (speculated[domain] ??= { runs: 0, used: 0 });
+          e.runs += r.speculated.length;
+          e.used += r.speculated.filter((x) => x?.used).length;
+        }
         r.scripts = Array.isArray(r.scripts) ? r.scripts.filter((s) => s && typeof s === "object") : [];
         if (r.scripts?.length) (cellsByDir[dir] ??= []).push({ session: r.session, t: Date.parse(r.ts), scripts: r.scripts, code: r.code });
         for (const s of r.scripts ?? []) {
@@ -327,13 +334,39 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
   const citations = {};
   for (const r of rows) {
     if (!r.citations) continue;
-    const e = (citations[r.domain] ??= { asks: 0, checked: 0, failed: 0, asksWithFailures: 0 });
+    const e = (citations[r.domain] ??= { asks: 0, checked: 0, failed: 0, asksWithFailures: 0, otherRepo: 0 });
     e.asks++;
     e.checked += r.citations.checked;
     e.failed += r.citations.failed;
+    e.otherRepo += r.citations.otherRepo ?? 0;
     if (r.citations.failed) e.asksWithFailures++;
   }
   for (const e of Object.values(citations)) e.failedRate = Math.round((e.failed / e.checked) * 100) / 100;
+  // What the host did for each domain's asks besides the model's work: openers, reasoning sent
+  // back, quoted rows written in, lookups started ahead. Plain counts; a domain with none is left out.
+  const domains = {};
+  const dom = (d) => (domains[d] ??= { asks: 0, opened: 0, reasoningBack: 0, reasoningRefused: 0, quoted: 0, quotesInserted: 0, quotesUnknown: 0, quotesSentBack: 0, speculated: 0, speculatedUsed: 0, speculatedUsedShare: null, citationsOtherRepo: 0 });
+  for (const a of asks) {
+    const e = dom(a.domain);
+    e.asks++;
+    if (a.opened) e.opened++;
+    if (a.reasoningBack > 0) e.reasoningBack++;
+    if (a.reasoningRefused) e.reasoningRefused++;
+    if (a.quotes) {
+      e.quoted++;
+      e.quotesInserted += a.quotes.inserted ?? 0;
+      e.quotesUnknown += Array.isArray(a.quotes.unknown) ? a.quotes.unknown.length : 0;
+    }
+    if (a.quotesSentBack > 0) e.quotesSentBack++;
+    e.citationsOtherRepo += a.citations?.otherRepo ?? 0;
+  }
+  for (const [d, x] of Object.entries(speculated)) {
+    const e = dom(d);
+    e.speculated = x.runs;
+    e.speculatedUsed = x.used;
+    e.speculatedUsedShare = Math.round((x.used / x.runs) * 100) / 100;
+  }
+  for (const [d, e] of Object.entries(domains)) if (!e.opened && !e.reasoningBack && !e.reasoningRefused && !e.quoted && !e.quotesSentBack && !e.speculated && !e.citationsOtherRepo) delete domains[d];
   return {
     since: new Date(from).toISOString(),
     ...(until ? { until: new Date(to).toISOString() } : {}),
@@ -358,6 +391,7 @@ export function report({ since = "7d", kit = null, real = false, until = null } 
     asksStuck: asks.filter((a) => a.stuck > 0).length,
     asksUnreached: asks.filter((a) => a.unreached > 0).length,
     citations,
+    domains,
     scripts: Object.entries(scripts).sort((a, b) => b[1].runs - a[1].runs).map(([name, s]) => ({ name, ...s })),
     worthAScript: Object.entries(handCells).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([shape, n]) => ({ shape, n })),
     // Routes the router chose itself (model, rules, pattern, timeout) and those that were wrong.

@@ -145,21 +145,21 @@ const gitFiles = (root) =>
     execFile("git", ["-C", root, "ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 64 << 20, timeout: 10_000 }, (err, out) => resolve(err ? [] : out.split("\n").filter(Boolean))),
   );
 
-// One citation against the globals: true when it resolves. A relative path is tried in each named
-// repository, then in the domain's own.
+// One citation against the globals: true when it resolves in the domain's own repository, "other"
+// when in another one. A relative path is tried in each named repository, then in the domain's own.
 async function resolves(c, g, eventsOf, filesOf, named, others) {
   try {
     if (c.file) {
       const relative = !path.isAbsolute(c.file) && !c.file.startsWith("../");
       for (const o of relative ? others : []) {
-        if (await hasLine(c, path.join(o.root, c.file), g).catch(() => false)) return true;
+        if (await hasLine(c, path.join(o.root, c.file), g).catch(() => false)) return "other";
       }
       try {
         if (await hasLine(c, c.file, g)) return true;
       } catch {}
       for (const o of relative ? others : []) {
         const full = await fullPathIn(c.file, named, o.files);
-        if (full && (await hasLine(c, path.join(o.root, full), g).catch(() => false))) return true;
+        if (full && (await hasLine(c, path.join(o.root, full), g).catch(() => false))) return "other";
       }
       const full = await fullPath(c.file, named, filesOf);
       return full ? await hasLine(c, full, g) : false;
@@ -173,7 +173,7 @@ async function resolves(c, g, eventsOf, filesOf, named, others) {
 /**
  * Check the citations in an answer. Returns null when the domain has nothing to check against or
  * the answer cites nothing checkable; else `{ journal, line }`: `journal` is the ask row's
- * `citations` field ({ checked, failed, failedList? }), `line` the bracketed line to add to the
+ * `citations` field ({ checked, failed, failedList?, otherRepo? }), `line` the bracketed line to add to the
  * reply ("" when every checked citation resolved).
  */
 export async function checkCitations(answer, domain, config, { max = Infinity, budgetMs = BUDGET_MS, question = "" } = {}) {
@@ -203,6 +203,7 @@ export async function checkCitations(answer, domain, config, { max = Infinity, b
     return { root, files: () => (list ??= gitFiles(root)) };
   }) : [];
   let checked = 0;
+  let otherRepo = 0;
   const failed = [];
   for (const c of list) {
     const left = deadline - Date.now();
@@ -213,9 +214,10 @@ export async function checkCitations(answer, domain, config, { max = Infinity, b
     if (ok === null) break; // out of time: this one and the rest are left unchecked
     checked++;
     if (!ok) failed.push(c.key);
+    else if (ok === "other") otherRepo++;
   }
   if (!checked) return null;
-  const journal = { checked, failed: failed.length, ...(failed.length ? { failedList: failed.slice(0, MAX_JOURNALED) } : {}) };
+  const journal = { checked, failed: failed.length, ...(failed.length ? { failedList: failed.slice(0, MAX_JOURNALED) } : {}), ...(otherRepo ? { otherRepo } : {}) };
   const line = failed.length ? `\n\n[${failed.length} of ${checked} citation${checked === 1 ? "" : "s"} did not resolve: ${failed.join(", ")}]` : "";
   return { journal, line };
 }

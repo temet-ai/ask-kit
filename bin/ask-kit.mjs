@@ -100,6 +100,18 @@ async function main() {
       if (r.asksStuck || r.asksUnreached) console.log(`Stuck or unreachable: ${r.asksStuck} of ${r.asks} asks were told to stop because their cells kept repeating, ${r.asksUnreached} had a cell that could not reach a source`);
       const cites = Object.entries(r.citations);
       if (cites.length) console.log(`Citations that did not resolve: ${cites.map(([d, c]) => `${d} ${c.failed} of ${c.checked} (${Math.round(c.failedRate * 100)}%, ${c.asksWithFailures} of ${c.asks} asks)`).join(", ")}`);
+      for (const [d, e] of Object.entries(r.domains)) {
+        const said = [
+          e.opened && `${e.opened} opened by an action's script`,
+          e.reasoningBack && `reasoning sent back in ${e.reasoningBack}`,
+          e.reasoningRefused && `reasoning refused in ${e.reasoningRefused}`,
+          e.quoted && `${e.quotesInserted} quoted rows written into ${e.quoted}${e.quotesUnknown ? ` (${e.quotesUnknown} unknown ids)` : ""}`,
+          e.quotesSentBack && `${e.quotesSentBack} sent back for unknown quote ids`,
+          e.speculated && `${e.speculated} lookups started ahead, ${e.speculatedUsed} used (${Math.round(e.speculatedUsedShare * 100)}%)`,
+          e.citationsOtherRepo && `${e.citationsOtherRepo} citations resolved in another repository`,
+        ].filter(Boolean);
+        console.log(`${d} (${e.asks} asks): ${said.join(", ")}`);
+      }
       for (const a of r.flaggedAsks) console.log(`\n${a.ts}  ${a.domain} · ${a.backend} · ${Math.round(a.ms / 1000)}s  ${a.signals.join("; ")}\n  ${a.question}\n  ${a.journal}`);
       for (const o of r.flaggedOutcomes) console.log(`\n${o.ts}  ${o.domain} · outcome ${o.jobId ?? ""}  ${o.signals.join("; ")}\n  ${[o.review?.notes, ...(o.review?.warnings ?? [])].filter(Boolean).join("; ")}\n  ${o.journal}`);
       if (r.reviewFindings.length) console.log(`\nScript results needing review:\n${r.reviewFindings.map((r) => `  ${r.ts}  ${r.domain}/${r.script}: ${r.status}\n    ${r.journal}`).join("\n")}`);
