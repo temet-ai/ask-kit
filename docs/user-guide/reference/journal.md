@@ -74,7 +74,7 @@ The rest depend on the kind. A field that a kind does not produce is absent.
 | `atLimit` | `api` | The answer came with under 30 seconds left, or within two calls of the repeat stop. |
 | `providers` | `api` | The providers that served the calls, where the API says (OpenRouter does). |
 | `missteps` | `api` | Replies that were empty or held tool-call markup instead of a tool call. |
-| `quotes` | all, when the answer had quote markers | `{ inserted, unknown }`: how many `{{quote:<id>}}` markers were filled with a row the investigator kept with `quote`, and up to ten ids that matched no row (left in the answer as `[no fetched row has id <id>]`). Filled for `api` and `copilot-cli` backends. |
+| `quotes` | all, when the answer had quote markers | `{ inserted, unknown }`: how many `{{quote:<id>}}` markers were filled with a row the investigator kept with `quote`, and up to ten ids that matched no row (left in the answer as `[no fetched row has id <id>]`). Filled for every backend. |
 | `quotesSentBack` | `api` | How many unknown quote ids sent the answer back to the model, once per ask. |
 | `reasoningBack` | `api` | How many of the model's replies carried reasoning (`reasoning`, `reasoning_details` or `reasoning_content`), which went back to the provider with that message on each later call. Written only when above zero. |
 | `reasoningRefused` | `api` | The provider refused a request that carried reasoning; that request and every later one to this backend, until the server restarts, went without it. |

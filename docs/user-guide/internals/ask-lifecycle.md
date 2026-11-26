@@ -167,8 +167,8 @@ two agents do not continue each other's investigations.
 
 | Kind | What is saved | What `continue: true` does |
 |---|---|---|
-| `claude-cli` | `innerSession`, `reportedTotalUsd` | `--resume <innerSession>` (no new fork) |
-| `codex-cli` | `innerSession` (the thread id) | `codex exec resume <innerSession>` |
+| `claude-cli` | `askId`, `innerSession`, `reportedTotalUsd` | `--resume <innerSession>` (no new fork) |
+| `codex-cli` | `askId`, `innerSession` (the thread id) | `codex exec resume <innerSession>` |
 | `copilot-cli` | `askId`, `innerSession` | `--resume <innerSession>` |
 | `api` | `askId` and the whole `messages` array | appends the question to the saved messages |
 
@@ -299,7 +299,7 @@ It appends one JSON line to `STATE_DIR/<session>.jsonl`, where `STATE_DIR` is
 ask has `ok: false`, `error` and `cancelled` instead.
 
 The investigator's own cells are journaled by the inner server into a different file in the same
-folder, named after its session (`ask-<askId>.jsonl` for the API loop). `ask-kit report` reads
+folder, named after its session (`ask-<askId>.jsonl`). `ask-kit report` reads
 both. [Journal](../reference/journal.md) lists every field.
 
 ```

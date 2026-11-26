@@ -80,6 +80,8 @@ const QUOTE_HOW =
   "When the answer must list rows word for word (messages, commands, a fleet's tasks), do not copy them out: " +
   "pass the rows to `quote(rows, { id, text })` (field names or functions of a row) and it shows a `{{quote:<id>}}` marker for each; " +
   "write the marker where the row goes, and the host writes the row's whole text there. ";
+// The same text for an agent CLI's first question, whose work-loop text is the warm session's.
+const QUOTE_NOTE = `\n\n${QUOTE_HOW.trim()}`;
 const quoteFix = (unknown, held) =>
   `Your answer has quote markers whose ids match no row you passed to \`quote\`: ${unknown.map((id) => `{{quote:${id}}}`).join(", ")}. ` +
   (held.length ? `The ids kept: ${held.slice(0, 40).join(", ")}${held.length > 40 ? `, and ${held.length - 40} more` : ""}. ` : "No rows are kept: call `quote` with the rows first. ") +
@@ -253,10 +255,11 @@ export function registerAsk(server, ctx) {
 
   // ---- claude-cli ----
 
-  function claudeMcpFile(inherit) {
+  // `ownId` names the REPL of one ask (ask-<askId>), so the handler can read the rows it quoted.
+  function claudeMcpFile(inherit, ownId) {
     // One file per call: a shared one could be rewritten by another session's ask in between.
     const file = path.join(WARM_DIR, `mcp-${process.pid}-${crypto.randomUUID()}.json`);
-    fs.writeFileSync(file, JSON.stringify({ mcpServers: { repl: { type: "stdio", command: process.execPath, args: [SERVER], env: replEnv(inherit) } } }), { mode: 0o600 });
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { repl: { type: "stdio", command: process.execPath, args: [SERVER], env: replEnv(inherit, ownId) } } }), { mode: 0o600 });
     return file;
   }
   const claudeArgs = (be, mcpFile) => [
@@ -291,15 +294,17 @@ export function registerAsk(server, ctx) {
     }
     const prev = cont ? readLast()[b] : null;
     if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const askId = prev?.askId ?? crypto.randomUUID();
     const started = Date.now();
     const target = prev ? ["--resume", prev.innerSession] : ["--resume", warm.sessionId, "--fork-session"];
-    const cfg = claudeMcpFile(warm.sessionId);
-    const j = await claudeCall(be, ["-p", question + rulesFor(), ...target, ...claudeArgs(be, cfg)], timeoutMs, signal).finally(() => fs.rmSync(cfg, { force: true }));
+    const cfg = claudeMcpFile(warm.sessionId, `ask-${askId}`);
+    const j = await claudeCall(be, ["-p", question + rulesFor() + (prev ? "" : QUOTE_NOTE), ...target, ...claudeArgs(be, cfg)], timeoutMs, signal).finally(() => fs.rmSync(cfg, { force: true }));
     const u = j.usage ?? {};
     const before = prev ? prev.reportedTotalUsd ?? 0 : warm.warmCostUsd ?? 0;
-    if (!j.is_error) writeLast(b, { innerSession: j.session_id, reportedTotalUsd: j.total_cost_usd ?? 0 });
+    if (!j.is_error) writeLast(b, { askId, innerSession: j.session_id, reportedTotalUsd: j.total_cost_usd ?? 0 });
     return {
       answer: String(j.result ?? ""),
+      quotesFrom: `ask-${askId}`,
       ok: !j.is_error,
       model: be.model,
       continued: !!prev,
@@ -314,8 +319,8 @@ export function registerAsk(server, ctx) {
   // ---- codex-cli ----
 
   const tomlString = (s) => JSON.stringify(String(s));
-  function codexArgs(be, inherit) {
-    const env = replEnv(inherit);
+  function codexArgs(be, inherit, ownId) {
+    const env = replEnv(inherit, ownId);
     const envToml = `{${Object.entries(env).map(([k, v]) => `${k}=${tomlString(v)}`).join(",")}}`;
     return [
       "--json",
@@ -362,15 +367,18 @@ export function registerAsk(server, ctx) {
     }
     const prev = cont ? readLast()[b] : null;
     if (cont && !prev) throw new Error(`nothing to continue: no earlier ${b} question in this session`);
+    const askId = prev?.askId ?? crypto.randomUUID();
     const started = Date.now();
+    const forkArgs = codexArgs(be, warm.sessionId, `ask-${askId}`).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1]));
     const args = prev
-      ? ["exec", "resume", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), prev.innerSession, question + rulesFor()]
-      : ["exec", "fork", ...codexArgs(be, warm.sessionId).filter((a, i, all) => !["-s", "-C"].includes(a) && !["-s", "-C"].includes(all[i - 1])), warm.sessionId, question + rulesFor()];
+      ? ["exec", "resume", ...forkArgs, prev.innerSession, question + rulesFor()]
+      : ["exec", "fork", ...forkArgs, warm.sessionId, question + rulesFor() + QUOTE_NOTE];
     const r = codexResult(await run(bin, args, { cwd: WARM_CWD, env: childEnv(), timeoutMs, signal }));
-    if (r.thread) writeLast(b, { innerSession: r.thread });
+    if (r.thread) writeLast(b, { askId, innerSession: r.thread });
     else if (prev) writeLast(b, prev);
     return {
       answer: r.answer || (r.error ? `codex failed: ${r.error}` : ""),
+      quotesFrom: `ask-${askId}`,
       ok: !!r.answer,
       model: be.model || "codex default",
       continued: !!prev,
@@ -394,7 +402,7 @@ export function registerAsk(server, ctx) {
     fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { repl: { type: "local", command: process.execPath, args: [SERVER], env: replEnv(null, `ask-${askId}`), tools: ["*"] } } }), { mode: 0o600 });
     const prompt = prev
       ? question + rulesFor()
-      : `${fs.readFileSync(INSTRUCTIONS, "utf8")}\n\nWork only through the \`repl\` MCP server's tools (call its \`help\` first); do not run shell commands or read files yourself.\n\nThe question:\n${question}${rulesFor()}`;
+      : `${fs.readFileSync(INSTRUCTIONS, "utf8")}\n\nWork only through the \`repl\` MCP server's tools (call its \`help\` first); do not run shell commands or read files yourself.\n\n${QUOTE_HOW.trim()}\n\nThe question:\n${question}${rulesFor()}`;
     const started = Date.now();
     const r = await run(
       be.bin ?? "copilot",

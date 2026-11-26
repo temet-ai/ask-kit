@@ -199,9 +199,12 @@ earlier ask kept. The API loop checks every answer's markers against that file: 
 no kept row sends the answer back once ("Your answer has quote markers whose ids match no row
 ..."), with the ids that are kept, while more than `WRAP_MS` is left. An id still unknown after
 that is never filled from a guess; it becomes `[no fetched row has id <id>]` in the answer, and the
-ask row's `quotes.unknown` names it. The work-loop text tells API investigators about `quote`
-(`QUOTE_HOW` in `src/ask.mjs`); the `claude-cli` and `codex-cli` backends do not fill markers,
-because the handler does not know their REPL's session id, and they are not told.
+ask row's `quotes.unknown` names it. Every backend fills markers, because every ask's REPL is
+named `ask-<askId>` (`ASK_KIT_SESSION` in its environment, from `replEnv`), so the handler knows
+which file to read. Every investigator is told about `quote` (`QUOTE_HOW` in `src/ask.mjs`): the
+API loop in its work-loop text, `copilot-cli` in its first prompt, and `claude-cli` and
+`codex-cli` after their first question (`QUOTE_NOTE`). Only the API loop sends an answer back for
+an unknown id; the agent CLIs answer in one run, so an unknown id there is marked.
 
 ## Timeouts
 
