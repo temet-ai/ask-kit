@@ -571,6 +571,13 @@ export function classify(tool, arg = "", declared = null) {
   return { k: "other" };
 }
 
+/** The words of the command one lookup ({arg} of lookupsOf) runs, keywords and wrappers off: [{text, q}]. */
+export function wordsOf(arg = "") {
+  const ps = pipelinesOf(arg);
+  const cmd = ((ps.find((p) => p.counts) ?? ps.find((p) => p.real.length))?.real[0] ?? {}).c;
+  return cmd ? bodyOf(cmd).map((x) => ({ text: x.text, q: x.q })) : [];
+}
+
 /** A normalised form of one lookup, so the same kind of command counts once. */
 export function shapeOf(tool, arg = "") {
   if (tool !== "Bash") return tool.startsWith("mcp__") ? tool.replace(/^mcp__(.+?)__/, "$1:") : tool;

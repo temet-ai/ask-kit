@@ -205,7 +205,7 @@ and `--ref` pins a version. The manifest also names every call that changes some
 | mike kit | Built (2026-11-19): `temet-ai/ask-kit-mike` (private). mike-ask is now a launcher that runs ask-kit's router with the mike kit, `ops` as a kit, `claude-code-docs` and the built-in `code` and `sessions` |
 | Marketplace page | Built (2026-11-19): https://temet-ai.github.io/ask-kit/, from `site/` and the `kits-site` workflow, rebuilt every six hours from the topic |
 | `[[settings]]` `about` | Built (2026-11-19): shown by `kit list` for a missing required setting, in the install preview and on the kits page |
-| Claude Code plugin | Built (2026-11-19): `.claude-plugin/` makes the repository its own marketplace (`ask-kit@temet-ai`); `init` and `setup` skip Claude Code while it is installed. Its PostToolUse hook nudges after the third lookup in a row and its SubagentStart hook gives subagents the rule (built 2026-11-20, `src/nudge.mjs`) |
+| Claude Code plugin | Built (2026-11-19): `.claude-plugin/` makes the repository its own marketplace (`ask-kit@temet-ai`); `init` and `setup` skip Claude Code while it is installed. Its PostToolBatch hook (PostToolUse until 2026-11-26) nudges after the third lookup in a row, naming the question the lookups seem to be for, and its SubagentStart hook gives subagents the rule (built 2026-11-20, `src/nudge.mjs`) |
 | Share of asks answered with no model, in `kit test` and `report` | Built (commit a17229c, 2026-11-19): cells per question and `noModel` in `kit test`, bench questions with `do` run as shots, `shots` and `noModelShare` in `ask-kit report` |
 
 ## What changes, in order, with the measure for each

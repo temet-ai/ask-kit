@@ -69,8 +69,12 @@ that CLI's service under its own terms, and the sessions appear in its history.
   per subagent) holding how many lookups in a row it has made, their kinds (`rg`, `git log`, `Read`) and which
   kits would answer them, and `nudges.jsonl`, one line each
   time the hook told an agent to use `ask`: time, session id, subagent type, the `about` named, the
-  kind of lookup and the count. No command, path or prompt is kept. Counter files older than a
-  week are removed. It sends nothing.
+  kind of lookup, the count and whether the line named a question. Until the hook names the
+  question a chain of lookups seems to be for (at its third lookup), the counter file also holds
+  what the last twelve lookups were about: search terms, file paths and, for commands that are not
+  file reads, the command, each cut to 80 characters. It forgets them when it names the question
+  and when the chain ends (an `ask`, an edit or an action). `nudges.jsonl` holds no command, path
+  or prompt. Counter files older than a week are removed. It sends nothing.
 - `find-sessions` keeps a digest of each session it found a match in, in
   `~/.local/state/ask-kit/index/digests.json`: title, the first 200 characters of the first
   prompt, project, dates and the twelve most used words of your prompts. It sends nothing; the

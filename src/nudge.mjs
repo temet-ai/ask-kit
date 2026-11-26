@@ -1,6 +1,7 @@
-// The plugin's PostToolUse hook: counts the lookups an agent makes in a row (each one inside a Bash
-// call counts) and, at the third that an enabled domain or kit could have answered, adds one line
-// naming it to the agent's context. It never blocks a call and never fails: a bad input or an
+// The plugin's PostToolBatch hook: counts the lookups an agent makes in a row (each one inside a Bash
+// call counts, and every call of a batch in order) and, at the third that an enabled domain or kit
+// could have answered, adds one line to the agent's context naming it and the question the
+// lookups seem to be for. It never blocks a call and never fails: a bad input or an
 // unwritable state folder means no line and exit 0. No network, no model, no `detect` command.
 import fs from "node:fs";
 import path from "node:path";
@@ -9,7 +10,7 @@ import { providersOf, winnersOf } from "./capabilities.mjs";
 import { indexDomain } from "./domains.mjs";
 import { findKit } from "./kits.mjs";
 import { stateRoots } from "./machines.mjs";
-import { FITS, GENERIC, PROGRAMS, classify, kitRules, lookupsOf, pathsOf, shapeOf, targetOf } from "./gaps.mjs";
+import { FITS, GENERIC, PROGRAMS, classify, kitRules, lookupsOf, pathsOf, shapeOf, targetOf, wordsOf } from "./gaps.mjs";
 
 export const NUDGE_AFTER = 3;
 const dir = () => path.join(STATE_ROOT, "nudges");
@@ -138,11 +139,107 @@ export function aboutFor(tool, l, to, cwd = null) {
   return repo ? to.first(["code"]) : at ? aboutPath(at, to, null) : to.first(["code"]);
 }
 
-/** The line: what the lookups were, and the call that replaces them. */
-export function nudgeLine(about, kinds) {
+// ---- the question a run of lookups was for, guessed from its calls ----
+
+const PLACEHOLDER = "<the whole question these lookups were for>";
+const clip = (x, n = 60) => (x.length > n ? `${x.slice(0, n - 1)}…` : x);
+const SEARCHES = /^(rg|grep|egrep|fgrep|ag|ack|ast-grep|sg)$/;
+// Options of a search that take a value, so the value is not the pattern or a place.
+const VALUED = /^(-[egtTmABCfMd]|--(regexp|glob|type|type-not|max-count|after-context|before-context|context|file|max-depth|max-columns|lang|rule|include|exclude|color|colour))$/;
+
+/** A search pattern as words a question can carry: regex syntax out, alternatives apart. */
+function termsOf(pattern) {
+  return String(pattern ?? "")
+    .replace(/\\[bBsSwWdD]|\\[^\w\s]|[\^$]/g, (m) => (m === "\\." || m === "\\-" || m === "\\_" ? m[1] : " "))
+    .split(/\||\.\*|\.\+|[()[\]{}?*+\s]{2,}|[()[\]{}?*+]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && /[A-Za-z]/.test(t))
+    .map((t) => clip(t, 40));
+}
+
+/** A path as the question names it: relative inside the folder the agent works in, ~ for the home folder. */
+function shown(p, cwd) {
+  let x = String(p ?? "");
+  if (!x) return null;
+  if (cwd && path.isAbsolute(x) && within(x, cwd)) x = path.relative(cwd, x) || ".";
+  else if (path.isAbsolute(x) && within(x, HOME)) x = `~${x.slice(HOME.length)}`;
+  return clip(x, 80);
+}
+
+/** What one lookup was about: [{k: "term"|"place"|"cmd", v}]. */
+export function subjectsOf(tool, input, l, cwd = null) {
+  const i = input && typeof input === "object" ? input : {};
+  const out = [];
+  const term = (t) => termsOf(t).forEach((v) => out.push({ k: "term", v }));
+  const place = (p) => {
+    const v = shown(p, cwd);
+    if (v && v !== ".") out.push({ k: "place", v });
+  };
+  if (/^(Read|NotebookRead)$/.test(tool)) place(i.file_path ?? i.notebook_path);
+  else if (tool === "Grep") {
+    term(i.pattern);
+    place(i.path ?? i.glob);
+  } else if (tool === "Glob" || tool === "LS") place(tool === "Glob" ? i.pattern : i.path);
+  else if (tool === "WebSearch") term(i.query);
+  else if (tool === "WebFetch") place(String(i.url ?? "").replace(/[?#].*$/, "").replace(/^https?:\/\//, ""));
+  else if (tool.startsWith("mcp__")) {
+    const t = [i.query, i.question, i.text, i.pattern, i.term, i.name].find((x) => typeof x === "string" && x.trim());
+    if (t) out.push({ k: "term", v: clip(t.trim(), 60) });
+  } else if (tool === "Bash") {
+    const w = wordsOf(l.arg);
+    const words = w.map((x) => x.text);
+    const h = path.basename(words[0] ?? "");
+    const free = (from) => {
+      const xs = [];
+      for (let k = from; k < words.length; k++) {
+        if (VALUED.test(words[k])) k++;
+        else if (!words[k].startsWith("-")) xs.push(words[k]);
+      }
+      return xs;
+    };
+    if (l.read || !["file", "git"].includes(l.fam)) out.push({ k: "cmd", v: clip(words.join(" "), 80) });
+    else if (SEARCHES.test(h) || (h === "git" && words.includes("grep"))) {
+      const e = words.findIndex((x) => x === "-e" || x === "--regexp");
+      const rest = free(h === "git" ? words.indexOf("grep") + 1 : 1);
+      term(e > 0 ? words[e + 1] : rest[0]);
+      rest.slice(e > 0 ? 0 : 1).forEach(place);
+    } else if (h === "git") {
+      const s = words.findIndex((x) => /^-[SG]/.test(x));
+      if (s > 0) term(words[s].length > 2 ? words[s].slice(2) : words[s + 1]);
+      const dd = words.indexOf("--");
+      for (const x of dd > 0 ? words.slice(dd + 1) : free(2).filter((x) => /[/.]\w/.test(x) && !/^[\w.-]*\.\.[\w.-]*$/.test(x))) place(x.replace(/^[^:]*:(?=.)/, ""));
+    } else if (/^(sed|awk|gawk|jq|yq)$/.test(h)) free(1).slice(words.some((x) => x === "-e" || x === "-f") ? 0 : 1).forEach(place);
+    else free(1).filter((x) => !/^\d+$/.test(x)).forEach(place);
+  }
+  return out;
+}
+
+const list = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
+/** The question the lookups seem to be for, in words the investigator takes, or null when the calls say too little. */
+export function questionOf(about, seen = []) {
+  const pick = (k, n) => [...new Set(seen.filter((x) => x.k === k).map((x) => x.v))].slice(0, n);
+  const terms = pick("term", 3).map((t) => `\`${t}\``);
+  const places = pick("place", 3);
+  const cmds = pick("cmd", 2).map((c) => `\`${c}\``);
+  const many = (xs, one, more) => (xs.length > 1 ? more : one);
+  const parts = [];
+  const where = places.length ? ` in ${list(places)}` : "";
+  if (about === "git" && (terms.length || places.length)) parts.push(`When and why did ${list(terms.length ? terms : places)} change${terms.length ? where : ""}?`);
+  else if (about === "code" && terms.length) parts.push(`Where ${many(terms, "is", "are")} ${list(terms)} defined and used${where}, and how ${many(terms, "does it", "do they")} work?`);
+  else if (about === "code" && places.length) parts.push(`What ${many(places, "does", "do")} ${list(places)} do, and how ${many(places, "does it work", "do they fit together")}?`);
+  else if (terms.length) parts.push(places.length ? `What ${many(places, "does", "do")} ${list(places)} say about ${list(terms)}?` : `What is there about ${list(terms)}?`);
+  else if (places.length) parts.push(`What is in ${list(places)}?`);
+  if (cmds.length) parts.push(`${parts.length ? "And what" : "What"} ${many(cmds, "does", "do")} ${list(cmds)} show?`);
+  return parts.length ? clip(parts.join(" "), 400) : null;
+}
+
+/** The line: what the lookups were, and the call that replaces them, with the question they seem to be for. */
+export function nudgeLine(about, kinds, question = null) {
   const n = Object.values(kinds).reduce((a, b) => a + b, 0);
   const what = Object.entries(kinds).map(([k, c]) => (c > 1 ? `${k} x${c}` : k)).join(", ");
-  return `ask-kit: that is ${n} lookups in a row (${what}). One call answers the question behind them outside your context, with its evidence: ask({ about: "${about}", question: "<the whole question these lookups were for>" }). Add continue: true to follow up.`;
+  const guess = question ? " That question is a guess from your calls: send the whole question you have." : "";
+  return `ask-kit: that is ${n} lookups in a row (${what}). One call answers the question behind them outside your context, with its evidence: ask({ about: "${about}", question: ${question ? JSON.stringify(question) : `"${PLACEHOLDER}"`} }).${guess} Add continue: true to follow up.`;
 }
 
 export const subagentRule = () =>
@@ -154,63 +251,87 @@ const argOf = (tool, i) =>
 
 const counts = (o) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).filter(([, n]) => Number.isInteger(n) && n > 0));
 
+const MAX_SEEN = 12;
+const fresh = () => ({ n: 0, nudged: false, to: {}, kinds: {}, seen: [] });
+const seenOf = (xs) => (Array.isArray(xs) ? xs.filter((x) => ["term", "place", "cmd"].includes(x?.k) && typeof x.v === "string").slice(-MAX_SEEN) : []);
+
+/** The calls of one hook input: PostToolBatch's `tool_calls`, or the one call of a PostToolUse input. */
+const callsOf = (input) => (Array.isArray(input?.tool_calls) ? input.tool_calls : input?.tool_name ? [{ tool_name: input.tool_name, tool_input: input.tool_input }] : []);
+
 /**
- * One PostToolUse input. Returns the line to add, or null. The counter is per session and per
- * agent, so a subagent's chain is its own. It holds the kinds of lookup and where each would go,
- * never a command or a path.
+ * One PostToolBatch input (or PostToolUse, one call): its calls in order. Returns the line to add,
+ * or null. The counter is per session and per agent, so a subagent's chain is its own. It holds the
+ * kinds of lookup and where each would go, and, until the chain is nudged, what its lookups were
+ * about (search terms, files, commands) for the question the line names.
  */
-export async function onToolUse(input, { now = new Date() } = {}) {
-  const tool = input?.tool_name;
-  if (!tool || !input.session_id) return null;
-  const arg = argOf(tool, input.tool_input);
-  let c = classify(tool, arg);
-  // A command the rules here call an action may be one a kit declares in `reads`.
-  let declared = null;
-  if (c.k === "act" && tool === "Bash") {
-    declared = kitRules().declared;
-    if (declared.reads.length) c = classify(tool, arg, declared);
-  }
+export async function onToolBatch(input, { now = new Date() } = {}) {
+  const calls = callsOf(input);
+  if (!input?.session_id || !calls.length) return null;
   const file = path.join(dir(), `${slug(input.session_id)}${input.agent_id ? `.${slug(input.agent_id)}` : ""}.json`);
-  let s = { n: 0, nudged: false, to: {}, kinds: {} };
+  let s = fresh();
   try {
     const j = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (Number.isInteger(j.n) && j.n >= 0) s = { n: j.n, nudged: !!j.nudged, to: counts(j.to), kinds: counts(j.kinds) };
+    if (Number.isInteger(j.n) && j.n >= 0) s = { n: j.n, nudged: !!j.nudged, to: counts(j.to), kinds: counts(j.kinds), seen: seenOf(j.seen) };
   } catch {}
-  let about = null;
-  let fam = null;
-  if (c.k === "ask" || c.k === "write" || c.k === "act") s = { n: 0, nudged: false, to: {}, kinds: {} };
-  else if (c.k === "look") {
-    if (s.nudged) return null; // said once for this chain
+  const cwd = input.cwd ?? null;
+  let changed = false, to = null, declared = null, last = null, fam = null;
+  for (const call of calls) {
+    const tool = call?.tool_name;
+    if (typeof tool !== "string" || !tool) continue;
+    const arg = argOf(tool, call.tool_input);
+    let c = classify(tool, arg);
+    // A command the rules here call an action may be one a kit declares in `reads`.
+    if (c.k === "act" && tool === "Bash") {
+      declared ??= kitRules().declared;
+      if (declared.reads.length) c = classify(tool, arg, declared);
+    }
+    if (c.k === "ask" || c.k === "write" || c.k === "act") {
+      changed ||= s.n > 0 || s.nudged;
+      s = fresh();
+      last = null;
+      continue;
+    }
+    if (c.k !== "look" || s.nudged) continue; // said once for this chain
     const looks = lookupsOf(tool, arg, declared);
-    const to = looks.length ? await destinations() : null;
+    if (!looks.length) continue;
+    to ??= await destinations();
     if (!to) return null;
-    let last = null;
     for (const l of looks) {
-      const a = aboutFor(tool, l, to, input.cwd ?? null);
+      const a = aboutFor(tool, l, to, cwd);
       if (!a) continue; // a lookup ask cannot answer neither counts nor breaks the chain
       const kind = l.read ?? shapeOf(tool, l.arg);
       s.n += 1;
       s.to[a] = (s.to[a] ?? 0) + 1;
       s.kinds[kind] = (s.kinds[kind] ?? 0) + 1;
+      try {
+        s.seen = [...s.seen, ...subjectsOf(tool, call.tool_input, l, cwd)].slice(-MAX_SEEN);
+      } catch {}
       last = a;
       fam = l.fam;
+      changed = true;
     }
-    if (!last) return null;
-    if (s.n >= NUDGE_AFTER) {
-      s.nudged = true;
-      // The whole chain chooses; a tie goes to the latest lookup's.
-      const top = Math.max(...Object.values(s.to));
-      const best = Object.keys(s.to).filter((a) => s.to[a] === top && to.first([a]));
-      about = best.includes(last) ? last : (best.at(-1) ?? last);
-    }
-  } else return null;
+  }
+  let about = null, question = null;
+  if (last && !s.nudged && s.n >= NUDGE_AFTER) {
+    s.nudged = true;
+    // The whole chain chooses; a tie goes to the latest lookup's.
+    const top = Math.max(...Object.values(s.to));
+    const best = Object.keys(s.to).filter((a) => s.to[a] === top && to.first([a]));
+    about = best.includes(last) ? last : (best.at(-1) ?? last);
+    question = questionOf(about, s.seen);
+    s.seen = []; // what the lookups were about is kept only until the line names it
+  }
+  if (!changed) return null;
   fs.mkdirSync(dir(), { recursive: true, mode: 0o700 });
   fs.writeFileSync(`${file}.${process.pid}.tmp`, JSON.stringify({ ...s, at: now.toISOString() }), { mode: 0o600 });
   fs.renameSync(`${file}.${process.pid}.tmp`, file);
   if (!about) return null;
-  fs.appendFileSync(path.join(dir(), "nudges.jsonl"), JSON.stringify({ at: now.toISOString(), type: "nudge", session: input.session_id, agent: input.agent_type ?? null, about, fam, lookups: s.n }) + "\n", { mode: 0o600 });
-  return nudgeLine(about, s.kinds);
+  fs.appendFileSync(path.join(dir(), "nudges.jsonl"), JSON.stringify({ at: now.toISOString(), type: "nudge", session: input.session_id, agent: input.agent_type ?? null, about, fam, lookups: s.n, guessed: !!question }) + "\n", { mode: 0o600 });
+  return nudgeLine(about, s.kinds, question);
 }
+
+/** One PostToolUse input: a batch of one call. */
+export const onToolUse = (input, o) => onToolBatch(input, o);
 
 /** Counters of sessions not touched for a week are removed. */
 export function prune(now = Date.now()) {
@@ -248,11 +369,13 @@ const readStdin = () => {
   }
 };
 
-/** `ask-kit plugin tool`: the hook. Always exits 0. */
+/** `ask-kit plugin tool`: the PostToolBatch hook (a PostToolUse input works too). Always exits 0. */
 export async function runToolHook(raw = readStdin()) {
   try {
-    const line = await onToolUse(JSON.parse(raw));
-    if (line) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: line } }) + "\n");
+    const input = JSON.parse(raw);
+    const line = await onToolBatch(input);
+    const event = input?.hook_event_name === "PostToolUse" ? "PostToolUse" : "PostToolBatch";
+    if (line) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: line } }) + "\n");
     else if (Math.random() < 0.02) prune();
   } catch {}
   process.exit(0);

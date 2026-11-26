@@ -205,7 +205,7 @@ server in each agent's own config. `bundle/` holds the templates `ask-kit init` 
 agent (three skills, the `ask-kit-tuner` agent, the when-to-ask rule), tracked by hash so edited
 files are left alone. `plugin/`, `.claude-plugin/` and `gemini-extension.json` package the same
 things as a Claude Code plugin and a Gemini CLI extension. `src/nudge.mjs` is the plugin's
-PostToolUse hook.
+PostToolBatch hook.
 
 ### Where to read before changing something
 
