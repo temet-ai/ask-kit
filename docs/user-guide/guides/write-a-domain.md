@@ -321,6 +321,7 @@ What each field does:
 | `scriptsDir`, `apiDoc`, `instructions` | Paths to the scripts folder, `api.d.ts` and `instructions.md`. |
 | `makeGlobals({ push, config, act })` | Returns the REPL's globals. `push(call)` journals a call. `config` is the whole `config.json`, so a domain can read its own keys under `domains.<name>`. Here that is `dir`. `act` is true only when the caller asked for a change; leave out the globals that change things when it is false. |
 | `prime` | The first prompt of a warm session (used for the `claude-cli` and `codex-cli` backends). It makes the model call `help` and run a cell, so the session holds the instructions and API before the first real question. |
+| `warm` | Optional: `{ script, params, notice }`, a script run with no model when a session starts and by `ask-kit warm`, for work the first question should not wait on (the code domain builds its map this way). `notice` is one line for the session once it has run. |
 | `answerRules` | Added to every question: how to cite. |
 | `openWith` | Tells an `api` model which script to start from. |
 | `askDescription` | The `ask` tool's description for this domain, which the calling agent reads. Say when to use it. |

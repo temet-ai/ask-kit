@@ -11,6 +11,7 @@
 //   makeGlobals({push, config, act})  the REPL's service globals; push(call) journals each call;
 //                                     act: the caller asked for a change, so build the acting ones too
 //   prime                 the warm session's first prompt
+//   warm?                 { script, params, notice }: run with no model when a session starts (src/warm.mjs)
 //   answerRules           appended to every question (how to cite)
 //   openWith              which script to start from, for the chat-API loop
 //   askDescription, serverInstructions, replInstructions   the MCP words

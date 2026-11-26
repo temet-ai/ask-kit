@@ -133,10 +133,36 @@ programs in the folder, and the host's `find`, `outline` and `tree` scripts. The
 | `[[roles]]` `name`, `when`, `instructions`, `patterns` | A playbook for one kind of question: `when` in plain words, `instructions` a file in the kit, `patterns` (regexes; checked when the manifest loads, not yet used to pick a role) |
 | `uses` | Names of other installed kits whose sources and scripts join this kit's REPL. See [Use another kit's sources](#use-another-kits-sources). |
 | `bench` | Real questions with the patterns each answer must hold (default `bench/questions.json`) |
+| `[warm]` `script`, `params`, `notice`, `prime` | Work to do before the first question. `script` is one of the kit's scripts, run with no model when a session starts and by `ask-kit warm`; `params` are its params; `notice` is one line for the session once it has run (a script that returns `{ notice }` sets its own). `prime` replaces the first prompt of the kit's warm investigator session. See [Warm up before the first question](#warm-up-before-the-first-question). |
 | `[[build]] command` | Run at install, after the preview (the docs kit downloads its copy) |
 
 `ask-kit kit link <dir>` uses a working folder in place: edits load on the next question.
 `ask-kit kit list` shows every kit; `kit enable` and `kit disable` switch one.
+
+## Warm up before the first question
+
+A kit whose first question would wait on slow work (an index to build, a cache to fill) can do
+that work when a session starts. The code domain uses the same field to build the
+[code map](how-it-works.md#the-code-map).
+
+```toml
+[warm]
+script = "build-index"          # a script in scripts/, run with no model
+params = { days = 30 }
+notice = "the build index is ready"
+prime = "Get ready to answer questions about builds. Call `help`, then reply: ready"
+```
+
+- With the Claude Code plugin, an async SessionStart hook (`ask-kit plugin warm`) starts every
+  enabled kit's warm-up in a separate process when a session starts in a git repository, and does
+  not hold the session up. When they have run, the session gets one line naming each `notice`,
+  on its next turn. A warm-up with no notice adds nothing.
+- `ask-kit warm [folder]` runs them in the foreground and prints how each went.
+- The script gets the kit's globals and params as in an ask, with `act` off, and runs in the
+  session's repository. Write what it builds where the kit's other scripts read it, such as a file
+  beside them (`new URL("../cache.json", import.meta.url)`). The last result of each warm-up is
+  kept in `<state>/warmups/`.
+- `prime` alone, with no `script`, only changes the warm investigator session's first prompt.
 
 ## Run a script with no model
 

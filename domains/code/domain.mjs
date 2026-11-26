@@ -40,6 +40,9 @@ export const domain = {
   // claims a route: its pattern is found in any question, and `lookup` returns null (so nothing is
   // added) when the question names nothing the repository holds.
   actions: [{ name: "lookup", title: "what the question names", script: "lookup", patterns: ["(?<question>\\S[\\s\\S]*)"], match: [], params: { budget: 18000 }, expect: null, acts: false }],
+  // Run with no model when a session starts (src/warm.mjs): builds or updates the code map, so the
+  // map script and lookup answer from it on the first question.
+  warm: { script: "map", params: { warm: true } },
   prime:
     "Get ready to answer questions about a codebase. Call the `help` tool, then run one repl cell: " +
     '`(await scripts.run("overview")).dirs.length`. Then reply with the single word: ready',
@@ -50,6 +53,7 @@ export const domain = {
     "When the question came with a lookup already run, start from that: it holds definitions and callers, and names what it left out. " +
     "Otherwise open with a script, not raw calls:\n" +
     '- What names are, with their code, and what uses or calls them, several together: `await scripts.run("lookup", { names: ["Thing", "other_thing"], budget: 18000 })`, sent with `maxChars: 20000`\n' +
+    '- Every caller (several levels), implementation, writer or use of names, and what a range of lines defines and calls, from the code map: `await scripts.run("map", { names: ["Thing", "*Worker"], callers: 3 })`, sent with `maxChars: 20000`\n' +
     '- Every use of one name, counted by file: `await scripts.run("where", { name: "Thing", uses: 60 })`\n' +
     '- Settings, env vars, flags and constants about a topic: `await scripts.run("knobs", { topic: "embedding speed" })`\n' +
     '- When and why something changed: `await scripts.run("history", { term: ["Thing", "other_thing"] })`; in another repository, with `path: "/its/folder"`\n' +
@@ -69,6 +73,6 @@ export const domain = {
     "is to answer a question (where, how, is there, what calls, why changed); read files yourself when you are about to edit them.",
   replInstructions:
     "A JavaScript REPL over one repository (`repo`: rg, files, read, git), with ready-made scripts. Variables persist. Call `help` once.",
-  fingerprintFiles: () => [path.join(DIR, "domain.mjs"), path.join(DIR, "repo.mjs"), path.join(DIR, "lib.mjs")],
+  fingerprintFiles: () => ["domain.mjs", "repo.mjs", "lib.mjs", "map.mjs", "scan.mjs"].map((f) => path.join(DIR, f)),
   root: ROOT,
 };

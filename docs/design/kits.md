@@ -120,6 +120,7 @@ command = ["npm", "ci"]
 | `[[settings]]` | Asked at setup and kept in the kit's config folder |
 | `[[actions]]` | Scripts callable without a model (below) |
 | `[[build]]` | Runs at install after the preview, as in herdr |
+| `[warm]` | A script run with no model when a session starts (the plugin's async SessionStart hook), with its params and a one-line notice, and the warm session's first prompt (`prime`). The code domain builds its map this way. |
 
 `domain.mjs` keeps loading: a `module` source plus fields mapped onto the manifest, so the
 current domains and the gallery keep working while they move over.

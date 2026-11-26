@@ -51,7 +51,7 @@ ${now}
 | Your kits (an \`ask-kit.toml\` folder each, installed or linked) | \`${kitDirs()[0]}\` |
 | Your own domains (win over built-ins of the same name) | \`${domainDirs()[0]}\` |
 | Built-in domains | \`${domainDirs()[1]}\` |
-| Journals (one JSON line per ask and per cell), REPL snapshots, warm sessions | \`${STATE_ROOT}\` |
+| Journals (one JSON line per ask and per cell), REPL snapshots, warm sessions, code maps | \`${STATE_ROOT}\` |
 | ask-kit itself | \`${ROOT}\` |
 
 Domains available now (yours and built-in): ${listDomains().join(", ")}.

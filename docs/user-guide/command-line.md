@@ -26,6 +26,7 @@ ask-kit add <repo> [--yes]       show a shared domain's files; --yes installs an
 ask-kit lines                    the one-line prompts for any agent
 ask-kit uninstall [--dry-run]    remove what ask-kit installed (not your edits)
 ask-kit serve [--domain d]       the MCP server your agents start
+ask-kit warm [folder] [--json]   run the warm-ups for a folder now: the code map, and each enabled kit's [warm]
 ```
 
 ## ask-kit kit actions
@@ -133,6 +134,18 @@ first nudge>` with the same window before it.
 
 A second hook, SubagentStart (`ask-kit plugin subagent`), adds a short form of the `ask` rule to
 each subagent's context, because the SessionStart rule reaches only the main conversation.
+
+A third, an async SessionStart hook (`ask-kit plugin warm`), runs `ask-kit warm` for the session's
+repository in a separate process, so the session does not wait for it and a `claude -p` run that
+ends first does not stop it. It builds or updates the [code map](how-it-works.md#the-code-map) and
+runs each enabled kit's `[warm]` script. When they have run, it adds one line to the session,
+which Claude Code delivers on the next turn:
+
+```
+ask-kit: the code map of shop-api is ready (812 files): `ask` with about: "code" answers the callers, implementations, writers and uses of a name from it.
+```
+
+Outside a git repository, before setup, or with no warm-up declared, it adds nothing.
 
 ## ask-kit mine
 

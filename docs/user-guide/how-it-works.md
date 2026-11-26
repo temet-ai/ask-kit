@@ -48,11 +48,46 @@ Each domain lists what it provides in a typed file, `api.d.ts`.
 
 | Domain | Scripts |
 |---|---|
-| code | `where`, `knobs`, `history`, `outline`, `overview` |
+| code | `lookup`, `map`, `where`, `knobs`, `history`, `outline`, `overview` |
 | sessions | `find-sessions`, `session-digest`, `grep`, `session-tools`, `session-changes`, `recent` |
 
 When the investigator writes something useful by hand, it can save it as a draft script.
 [Make it better](tuning.md) shows how to turn a draft into a script.
+
+## The code map
+
+For questions about every caller, implementation, writer or use of something, the code domain
+keeps a map of the repository. For each name it holds the lines that define it and the line each
+definition ends on, every line the name is on with the kind of use (a call, a write, a key, a
+read, an import, a word in a string or a comment), and which types implement or extend which. The
+`map` script answers from it: several names and line ranges in one call, callers followed through
+as many levels as asked, and each row with its source line. `lookup` uses the map when there is
+one and ripgrep when there is not.
+
+The map reads JavaScript, TypeScript, Rust, Go, Python, Java, Kotlin, Scala, Swift, C, C++, C#,
+PHP, Dart, Ruby, Lua, shell and SQL with a small lexer for each family of languages; there is no
+parser and no dependency. Every line ripgrep's word search finds for a name in those files is in
+the map, whatever the lexer makes of the line around it, and
+[`scripts/map-check.mjs`](https://github.com/temet-ai/ask-kit/blob/main/scripts/map-check.mjs)
+checks that on any repository. The kinds of use and where a definition ends come from the shape of
+the code, so the rows carry their source lines for the investigator to read. Docs, config and the
+files the map skips (over 1 MB, binary, minified) are searched with ripgrep in the same call, and
+the result says `PARTIAL` when it skipped any.
+
+When it is built:
+
+- With the Claude Code plugin, a SessionStart hook runs in the background when a session starts
+  in a git repository and builds or updates the map. When it has finished, the session gets one
+  line, on its next turn: `ask-kit: the code map of <repository> is ready (<n> files): ...`.
+  Nothing else from the map enters the session's context.
+- Otherwise the first `map` script builds it. A repository of 8,700 files took about 7 seconds.
+- `ask-kit warm [folder]` builds it from the shell.
+
+The map is kept in the state folder by git tree, so a second session or worktree at the same
+commit reuses it. Before each answer, the files git reports as changed are compared by content
+and only those are read again; after a commit or a checkout, only the files it changed. Files the
+`map` script could not read within 40 seconds (a cell has 60) are named as `STALE` and searched
+with ripgrep, and the next call reads on from there. [What it stores and sends](privacy.md) lists what the map holds; it keeps no source text.
 
 ## How the investigator is chosen
 

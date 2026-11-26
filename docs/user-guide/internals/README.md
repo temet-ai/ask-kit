@@ -41,7 +41,7 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 
 | File | What it holds |
 |---|---|
-| [bin/ask-kit.mjs](https://github.com/temet-ai/ask-kit/blob/main/bin/ask-kit.mjs) | The `ask-kit` command: `serve`, `detect`, `questions`, `apply`, `setup` (terminal wizard), `init`, `doctor`, `ask`, `report`, `gallery`, `add`, `lines`, `uninstall`. Every command imports what it needs on demand. |
+| [bin/ask-kit.mjs](https://github.com/temet-ai/ask-kit/blob/main/bin/ask-kit.mjs) | The `ask-kit` command: `serve`, `detect`, `questions`, `apply`, `setup` (terminal wizard), `init`, `doctor`, `ask`, `report`, `gallery`, `add`, `lines`, `uninstall`, `warm`, and `plugin` (the Claude Code plugin's hooks). Every command imports what it needs on demand. |
 
 ### src/
 
@@ -57,6 +57,7 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 | [src/providers.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/providers.mjs) | The tables `API_PRESETS`, `AGENT_CLIS` and `AGENTS`: every model source and every coding agent ask-kit knows. |
 | [src/ollama.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/ollama.mjs) | `ollamaChat` and `ollamaContextLength`: Ollama through `/api/chat` so the context size can be set. |
 | [src/report.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/report.mjs) | `report`: what `ask-kit report` prints from the journals. See [setup.md](setup.md). |
+| [src/warm.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/warm.mjs) | Warm-ups: `warmups` (the enabled domains and kits that declare `warm`), `runWarmup`, `runWarmups` (`ask-kit warm`), `pluginWarmHook` (the plugin's async SessionStart hook), `checkWarm` (the manifest's `[warm]`). |
 | [src/agentsmd.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/agentsmd.mjs) | `agentsMd`, `writeAgentsMd`: the per-machine guide, `~/.config/ask-kit/AGENTS.md`. See [setup.md](setup.md). |
 | [src/quotes.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/quotes.mjs) | Quoted rows: the REPL's `quote` global (`makeQuote`), the `{{quote:<id>}}` marker, and `insertQuotes`, which writes the kept rows into an answer. See [repl.md](repl.md#quoted-rows). |
 | [src/core/rewrite.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/core/rewrite.mjs) | `rewriteCell`: turns a REPL cell into a script whose top-level names stay global. See [repl.md](repl.md). |
@@ -80,7 +81,11 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 |---|---|
 | [domains/code/domain.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/domain.mjs) | The `code` domain: repository root, `repo` global, the words of its `ask` tool. |
 | [domains/code/repo.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/repo.mjs) | `makeRepo`: the `repo` client (ripgrep, file reads, writes and edits, any program, git). |
-| [domains/code/lib.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/lib.mjs) | `NOISE`, `spellings`, `escape`, `definitionPattern`: shared by the code scripts. |
+| [domains/code/lib.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/lib.mjs) | `NOISE`, `noisy`, `spellings`, `escape`, `definitionPattern`, `bodyEnd`: shared by the code scripts and the map. |
+| [domains/code/scan.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scan.mjs) | The code map's reader of one file: `lex` (comments and strings blanked, per language family), `scanFile` (every identifier with its line and kind of use, definitions with their spans from brackets or indentation, implements and extends), `LANGS`, `STOP`. |
+| [domains/code/map.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/map.mjs) | The code map of a repository: `ensureMap` (stored by git tree under `STATE_ROOT/code-map`, brought up to date from `git ls-files` and `git status` before each answer, `stale` past its time budget, a lock while one is built from nothing), and the reads: `defsOf`, `usesOf`, `relsTo`, `enclosing`, `callsIn`, `defsIn`, `namesLike`, `methodSetImplementations`, `textHits` (ripgrep over the files it does not cover), `statusLine`. |
+| [domains/code/scripts/lookup.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/lookup.mjs) | Script: what a question names, with bodies and callers; from the code map when this checkout has one, else ripgrep. The code domain's opener runs it before the first model call. |
+| [domains/code/scripts/map.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/map.mjs) | Script: the code map's rows for names (definitions, implementations, callers through levels, writers, uses, other files) and for line ranges (what they define and call). With `warm: true`, the code domain's warm-up. |
 | [domains/code/api.d.ts](https://github.com/temet-ai/ask-kit/blob/main/domains/code/api.d.ts) | The typed API the investigator reads for `code`. |
 | [domains/code/instructions.md](https://github.com/temet-ai/ask-kit/blob/main/domains/code/instructions.md) | The investigator's system prompt for `code`. |
 | [domains/code/scripts/where.mjs](https://github.com/temet-ai/ask-kit/blob/main/domains/code/scripts/where.mjs) | Script: where a name is defined and used. |
@@ -113,6 +118,7 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 | File | What it holds |
 |---|---|
 | [scripts/notices.mjs](https://github.com/temet-ai/ask-kit/blob/main/scripts/notices.mjs) | Generates `THIRD-PARTY-NOTICES.md` from the production dependency tree. |
+| [scripts/map-check.mjs](https://github.com/temet-ai/ask-kit/blob/main/scripts/map-check.mjs) | `node scripts/map-check.mjs <repository> [--names a,b] [--n 10] [--json]`: the code map against `rg -w` for each name, in a scratch state folder, with no model. Exits 1 when the map misses a line ripgrep finds. |
 
 ### bench/
 

@@ -42,7 +42,8 @@ exclude = ["*.env", "private/**"]   # never searched or read: what it reads goes
   "api.d.ts"` describes what it returns. Use it when the client needs logic (parsing, checks).
 - Optional: `instructions = "instructions.md"`, `scripts/` (each with `meta` and a default
   function taking the globals), `bench/questions.json`, `[[build]] command = [...]` run at install,
-  `state_key = "${SETTING}"` for one state folder per repository or database.
+  `state_key = "${SETTING}"` for one state folder per repository or database, `[warm] script =
+  "..."` for work the first question should not wait on (run with no model when a session starts).
 
 ## Add one someone shared
 
