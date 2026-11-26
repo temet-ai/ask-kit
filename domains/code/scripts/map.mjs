@@ -26,6 +26,22 @@ const MAX_CALL_ROWS = 240;
 const PROSE = /\.(md|mdx|txt|rst)$/i;
 const TEST = /(^|[/_.-])(tests?|spec|fixtures?|bench)([/_.-]|$)/i;
 const ORDER = { call: 0, write: 0, read: 0, key: 1, import: 2, string: 3, comment: 4 };
+const ANY_PATH = new Set(["self", "Self", "super", "crate"]);
+
+/** Whether a use on `text` of `name` can be a use of `def`: true unless the line names `name` through
+ *  a `path::` whose last segment is neither def's file (or its folder, for mod.rs, index and the like)
+ *  nor def's container. */
+export function reaches(text, name, def) {
+  const esc = name.replace(/[$]/g, "\\$&");
+  const quals = [...String(text).matchAll(new RegExp(`([A-Za-z_]\\w*)\\s*::\\s*(?:<[^>]*>\\s*::\\s*)?${esc}(?![\\w$])`, "g"))].map((m) => m[1]);
+  const bare = new RegExp(`(?<![\\w$:])${esc}(?![\\w$])`).test(String(text).replace(new RegExp(`\\w+\\s*::\\s*${esc}`, "g"), ""));
+  if (!quals.length || bare) return true;
+  const parts = def.file.split("/");
+  const stem = parts.at(-1).replace(/\.[^.]+$/, "");
+  const fits = new Set([stem, ...(/^(mod|lib|main|index|__init__)$/.test(stem) && parts.length > 1 ? [parts.at(-2)] : [])]);
+  if (def.container) fits.add(String(def.container).split(/::|\./).at(-1).replace(/<.*$/, ""));
+  return quals.some((q) => ANY_PATH.has(q) || fits.has(q));
+}
 
 export default async function ({ repo }, { names: asked, at, callers = 2, uses = true, path, rows = false, budget = 3900, warm = false } = {}) {
   // In an ask a cell has 60 s at most: what is not read in 40 s is searched with ripgrep and read on the next call.
@@ -98,12 +114,16 @@ export default async function ({ repo }, { names: asked, at, callers = 2, uses =
     // Callers: the definitions holding each use in code, then theirs, `callers` levels deep.
     let count = 0;
     const seen = new Set(defs.map((d) => `${d.file}:${d.line}`));
-    const tree = (target, level) => {
+    // `def`: the one definition whose callers are wanted, when several share its name. A use that
+    // names its module or type (`memory::call_tool(`, `Store::open(`) is then kept only when that
+    // path can lead to `def`; unqualified uses, and `self`/`super`/`crate`, are kept.
+    const tree = (target, level, def = null) => {
       if (level > callers || count >= MAX_CALL_ROWS) return [];
       const own = new Set(defsOf(map, target).map((d) => `${d.file}:${d.line}`));
       const out = [];
       for (const u of usesOf(map, target, { path: where })) {
         if (own.has(`${u.file}:${u.line}`) || (u.kind !== "call" && u.kind !== "read")) continue;
+        if (def && !reaches(lineOf(u.file, u.line), target, def)) continue;
         if (++count > MAX_CALL_ROWS) break;
         const row = { level, ...useRow(u), callers: [] };
         const c = enclosing(map, u.file, u.line);
@@ -113,7 +133,7 @@ export default async function ({ repo }, { names: asked, at, callers = 2, uses =
           if (same > 1) row.sameName = same;
           if (!seen.has(id)) {
             seen.add(id);
-            row.callers = tree(c.name, level + 1);
+            row.callers = tree(c.name, level + 1, same > 1 ? c : null);
           }
         }
         out.push(row);
@@ -207,7 +227,7 @@ export default async function ({ repo }, { names: asked, at, callers = 2, uses =
       const lines = [];
       const walk = (rows, depth) => {
         for (const c of rows) {
-          lines.push(`${"  ".repeat(depth)}${rowText(c)}${c.sameName ? ` (${c.sameName} definitions named ${c.caller.split(".").at(-1)}; callers of any are listed)` : ""}`);
+          lines.push(`${"  ".repeat(depth)}${rowText(c)}${c.sameName ? ` (${c.sameName} definitions named ${c.caller.split(".").at(-1)}; a caller that names another module or type through a path is left out)` : ""}`);
           walk(c.callers, depth + 1);
         }
       };

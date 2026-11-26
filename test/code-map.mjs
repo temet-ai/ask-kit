@@ -183,6 +183,30 @@ try {
   assert.deepEqual(hits.get("sergeant_colon").map((h) => `${h.file}:${h.line}`), ["guild/assassins.py:25"]);
   assert.equal(await maps.ensureMap(root, { build: false }).then((m) => m.stale.length), 0, "with time, the change is read");
 
+  // Several functions share a name: a caller that names another module through `path::` is not a
+  // caller of the one that holds the use; one that names its module, or no module, is.
+  const guilds = path.join(tmp, "guilds");
+  fs.mkdirSync(path.join(guilds, "src", "tools"), { recursive: true });
+  fs.writeFileSync(path.join(guilds, "src", "tools", "thieves.rs"), "pub fn call_tool() {\n    pay_dues();\n}\n");
+  fs.writeFileSync(path.join(guilds, "src", "tools", "seamstresses.rs"), "pub fn call_tool() {}\n");
+  fs.writeFileSync(path.join(guilds, "src", "tools", "mod.rs"), "pub fn call_tool() {}\n");
+  fs.writeFileSync(path.join(guilds, "src", "lib.rs"), "fn pay_dues() {}\n");
+  fs.writeFileSync(
+    path.join(guilds, "src", "dispatch.rs"),
+    "fn by_guild(g: u8) {\n    if g == 1 {\n        thieves::call_tool();\n    }\n    seamstresses::call_tool();\n}\nfn any() {\n    crate::tools::call_tool();\n}\n",
+  );
+  git(guilds, "init", "-q");
+  const guildRepo = makeRepo({ root: guilds, push() {} });
+  await maps.ensureMap(guilds);
+  const dues = await mapScript({ repo: guildRepo }, { names: ["pay_dues"], callers: 2, rows: true });
+  const level2 = dues.names.pay_dues.callers.flatMap((c) => c.callers.map((x) => `${x.file}:${x.line}`));
+  assert.deepEqual(level2, ["src/dispatch.rs:3"], "thieves::call_tool reaches thieves.rs; seamstresses:: and crate::tools:: (mod.rs) do not");
+  const { reaches } = await import("../domains/code/scripts/map.mjs");
+  assert.equal(reaches("crate::tools::call_tool();", "call_tool", { file: "src/tools/mod.rs" }), true);
+  assert.equal(reaches("self::call_tool();", "call_tool", { file: "src/x.rs" }), true);
+  assert.equal(reaches("Store::open(p)", "open", { file: "src/a.rs", container: "Store" }), true);
+  assert.equal(reaches("Other::open(p)", "open", { file: "src/a.rs", container: "Store" }), false);
+
   // A repository with no map yet: lookup does not build one.
   const bare = path.join(tmp, "bare");
   fs.mkdirSync(path.join(bare, "src"), { recursive: true });
