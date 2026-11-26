@@ -37,6 +37,8 @@ that CLI's service under its own terms, and the sessions appear in its history.
   the model's reasoning on an API backend), and for
   an agent that takes tasks `warm/threads/` holds one per ask for a day; `router/threads-<caller>.json`
   lists the asks that became tasks, each with the first 80 characters of its question.
+  `<session>.quotes.json` beside each REPL snapshot holds the rows the investigator kept with
+  `quote` for its answer to quote word for word.
   An ask's row also holds how many of the answer's citations resolved and up to ten that did not
   (`path:line`, or source, session and event). The check reads local files and transcripts, and
   calls no model.

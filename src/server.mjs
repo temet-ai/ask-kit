@@ -26,6 +26,7 @@ import { makeAskKit } from "./kitcall.mjs";
 import { ROOT, STATE_ROOT, callerSession, loadConfig, slug } from "./config.mjs";
 import { reviewOf, REVIEW_META } from "./review.mjs";
 import { ERROR_META } from "./shots.mjs";
+import { makeQuote, quotesPath, readQuotes } from "./quotes.mjs";
 
 const CONFIG = loadConfig();
 // `journal.trajectories: true` also keeps each cell's printed result and the answer on the ask row.
@@ -145,6 +146,28 @@ const scripts = {
   },
 };
 
+// ---- quoted rows (src/quotes.mjs) ----
+
+// Rows the investigator kept with `quote`, by id; saved beside the snapshot, for the caller's answer.
+const quoted = {};
+const clearQuotes = () => {
+  for (const k of Object.keys(quoted)) delete quoted[k];
+};
+function saveQuotes() {
+  const file = quotesPath(STATE_DIR, SESSION);
+  const tmp = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify({ session: SESSION, caller: CALLER, quotes: quoted }), { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+const quote = makeQuote(quoted, saveQuotes);
+// The rows a follow-up or a fork starts with, under the snapshot's rules (mayRestore).
+function restoreQuotes(id, opts = {}) {
+  const r = readQuotes(quotesPath(STATE_DIR, id));
+  if (!r || !mayRestore(id, r, opts)) return false;
+  Object.assign(quoted, r.quotes);
+  return true;
+}
+
 // ---- the REPL context ----
 
 let context;
@@ -159,6 +182,7 @@ function newContext() {
   context = vm.createContext({
     ...GLOBALS,
     scripts,
+    quote,
     ask: { kit: askKit },
     tk: toolkit,
     ...toolkit,
@@ -467,6 +491,8 @@ replTool("help", { description: "The ready-made scripts with their parameters an
 replTool("reset", { description: "Clear this session's REPL variables and its snapshot. Drafts and the journal are kept." }, async () => {
   newContext();
   fs.rmSync(snapshotPath(SESSION), { force: true });
+  clearQuotes();
+  fs.rmSync(quotesPath(STATE_DIR, SESSION), { force: true });
   return { content: [{ type: "text", text: "REPL cleared." }] };
 });
 
@@ -477,6 +503,7 @@ replTool(
     const r = restoreFrom(sessionId);
     if (!r) return { content: [{ type: "text", text: `No saved REPL for session ${sessionId}.` }], isError: true };
     if (r.refused) return { content: [{ type: "text", text: `Not loaded: ${r.refused}.` }], isError: true };
+    if (restoreQuotes(sessionId)) saveQuotes();
     snapshot();
     return { content: [{ type: "text", text: JSON.stringify(r, null, 1) }] };
   },
@@ -514,6 +541,7 @@ await refreshScripts();
 try {
   let r = restoreFrom(SESSION);
   if (!r && INHERIT) r = restoreFrom(INHERIT, { neutral: true });
+  if (!restoreQuotes(SESSION) && INHERIT) restoreQuotes(INHERIT, { neutral: true });
   if (r?.refused) startupNote = `[did not restore ${r.from}: ${r.refused}]`;
   else if (r) {
     restoreInfo = { from: r.from, savedAt: r.savedAt, names: r.restored };

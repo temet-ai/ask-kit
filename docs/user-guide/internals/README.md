@@ -58,6 +58,7 @@ Every file in the repository except `docs/`, `package-lock.json` and the notices
 | [src/ollama.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/ollama.mjs) | `ollamaChat` and `ollamaContextLength`: Ollama through `/api/chat` so the context size can be set. |
 | [src/report.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/report.mjs) | `report`: what `ask-kit report` prints from the journals. See [setup.md](setup.md). |
 | [src/agentsmd.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/agentsmd.mjs) | `agentsMd`, `writeAgentsMd`: the per-machine guide, `~/.config/ask-kit/AGENTS.md`. See [setup.md](setup.md). |
+| [src/quotes.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/quotes.mjs) | Quoted rows: the REPL's `quote` global (`makeQuote`), the `{{quote:<id>}}` marker, and `insertQuotes`, which writes the kept rows into an answer. See [repl.md](repl.md#quoted-rows). |
 | [src/core/rewrite.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/core/rewrite.mjs) | `rewriteCell`: turns a REPL cell into a script whose top-level names stay global. See [repl.md](repl.md). |
 | [src/core/toolkit.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/core/toolkit.mjs) | The helpers every cell and script can use: `clip`, `shape`, `pick`, `omit`, `table`, `top`, `groupBy`, `countBy`, `sumBy`, `since`, `minutes`. |
 | [src/setup/detect.mjs](https://github.com/temet-ai/ask-kit/blob/main/src/setup/detect.mjs) | `detect`: what the machine has. |

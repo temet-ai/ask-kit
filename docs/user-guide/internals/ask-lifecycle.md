@@ -214,7 +214,12 @@ through the snapshot; see [The REPL](repl.md#saved-state-between-cells-and-for-f
    carrying them with a 4xx that names reasoning is added to `REFUSES_REASONING`: the same step
    is sent again without the fields, and so is every later request to that backend while the
    server runs. The journal row counts the replies with reasoning in `reasoningBack`.
-8. **Running a cell.** `runCode` calls the inner `repl` tool with the call's own `maxChars` (up to
+8. **Quoted rows.** The work-loop text says that rows to be listed word for word go through
+   `quote(rows)` and come back as `{{quote:<id>}}` markers in the answer. Before a reply is taken
+   as the answer, `quoteCheck` reads the rows the REPL kept (`ask-<askId>.quotes.json`); markers
+   whose ids match none send the reply back once with the kept ids. The handler fills the markers
+   after the citation check. [The REPL](repl.md#quoted-rows) has the details.
+9. **Running a cell.** `runCode` calls the inner `repl` tool with the call's own `maxChars` (up to
    100,000; 4000 when the call gives none, and always in code-block mode) and a
    `timeoutSeconds` of the smaller of `CELL_MAX_S` (60) and the time left minus 2 seconds (at
    least 1). A cell that does not finish returns text telling the model to narrow it, and the loop

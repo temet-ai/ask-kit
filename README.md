@@ -140,7 +140,7 @@ a slow ask, to the second backend you set with `escalate` or `hedge`). A questio
 investigator also goes, with the working directory and what each investigator answers, to the
 router's model (the investigator's unless you chose another). Keys, tokens and passwords
 in transcript excerpts are masked before the model sees them. There's no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
-including each ask's conversation with its investigator, the model's reasoning included (kept for follow-ups; one per ask for a day when the agent takes tasks), the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
+including each ask's conversation with its investigator, the model's reasoning included, and the rows it kept to quote in its answer (kept for follow-ups; one per ask for a day when the agent takes tasks), the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
 session `find-sessions` matched (title, first prompt, top words), a lookup counter per
 Claude Code session (with the kinds of lookup, such as `git log`, and the kits that would answer them) and a log of the nudges the plugin's hook gave (time, session id, kind of
 lookup; no commands or prompts) and, for the one in 20

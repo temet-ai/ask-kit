@@ -47,6 +47,7 @@ added on purpose:
 vm.createContext({
   ...GLOBALS,          // the domain's globals: repo for code, history and cite for sessions
   scripts,             // run, list, show, draft
+  quote,               // keeps rows for the answer to quote by id (below)
   tk: toolkit,         // the same helpers, namespaced
   ...toolkit,          // and as plain globals
   console: { log, info, warn, error },  // captured, returned with the result
@@ -162,6 +163,28 @@ loop in `askApi` always passes 4000.
 collapsed, so the same search under a new variable name is caught. A repeat that returns the
 same result gets "Running it again finds nothing new"; a repeat with a different result gets "Use
 the earlier variables".
+
+### Quoted rows
+
+`quote(rows, { id, text })` (`makeQuote` in `src/quotes.mjs`) keeps each row's text under its
+id for the answer. `id` and `text` are a field name or a function of the row; by default the
+row's `id` (else `q1`, `q2`, ...) and its `text`, `content` or `message` (else the row as JSON).
+It returns one line per row, the marker and the first 160 characters: `{{quote:w1}} Sam Vimes
+signed ...`. The investigator writes the marker in its answer where the row goes, and the domain
+server's `ask` handler writes the row's whole text there, after the citation check, which reads
+the model's own text. The point is speed and whole quotes: the model writes a few characters per
+row instead of the row, and the row cannot come back shortened.
+
+The rows are kept in `STATE_DIR/<session>.quotes.json` (`session`, `caller`, `quotes`), written
+on every call, restored on start-up under the snapshot's rules (`mayRestore`, and from `INHERIT`
+for a fork), copied by `load` and deleted by `reset`. A follow-up can therefore quote rows an
+earlier ask kept. The API loop checks every answer's markers against that file: an id that matches
+no kept row sends the answer back once ("Your answer has quote markers whose ids match no row
+..."), with the ids that are kept, while more than `WRAP_MS` is left. An id still unknown after
+that is never filled from a guess; it becomes `[no fetched row has id <id>]` in the answer, and the
+ask row's `quotes.unknown` names it. The work-loop text tells API investigators about `quote`
+(`QUOTE_HOW` in `src/ask.mjs`); the `claude-cli` and `codex-cli` backends do not fill markers,
+because the handler does not know their REPL's session id, and they are not told.
 
 ## Timeouts
 

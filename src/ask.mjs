@@ -28,6 +28,7 @@ import { NO_DATA_META } from "./capabilities.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ACTION_META, SHADOW_EVERY, asksForChange, logRun, logShadow, matchAction, noteQuestion, openerFor, runCount, shapeProblem, statusOf } from "./actions.mjs";
 import { kitProfile } from "./report.mjs";
+import { insertQuotes, quotedIds, quotesPath, readQuotes, unknownIds } from "./quotes.mjs";
 
 // Set while a run goes on in the background (a shadow run or a hedge): `true`, or `{ last }` to
 // collect what the run would have saved for a follow-up.
@@ -73,6 +74,16 @@ const withoutReasoning = (m) => (REASONING_FIELDS.some((k) => k in m) ? Object.f
 const REFUSES_REASONING = new Set();
 // A provider's refusal that names one of those fields.
 const NAMES_REASONING = /reasoning/i;
+// Quoted rows (src/quotes.mjs): the work-loop text that tells the investigator, and the one message
+// that sends back an answer whose ids match no kept row.
+const QUOTE_HOW =
+  "When the answer must list rows word for word (messages, commands, a fleet's tasks), do not copy them out: " +
+  "pass the rows to `quote(rows, { id, text })` (field names or functions of a row) and it shows a `{{quote:<id>}}` marker for each; " +
+  "write the marker where the row goes, and the host writes the row's whole text there. ";
+const quoteFix = (unknown, held) =>
+  `Your answer has quote markers whose ids match no row you passed to \`quote\`: ${unknown.map((id) => `{{quote:${id}}}`).join(", ")}. ` +
+  (held.length ? `The ids kept: ${held.slice(0, 40).join(", ")}${held.length > 40 ? `, and ${held.length - 40} more` : ""}. ` : "No rows are kept: call `quote` with the rows first. ") +
+  "Send the whole answer again with only ids that are kept, or leave those rows out and say so.";
 // A cell result that shows a connection failing, as fetch and node:net word it.
 const UNREACHABLE = /\bfetch failed\b|\bECONNREFUSED\b|\bENOTFOUND\b|\bEHOSTUNREACH\b|\bconnect ETIMEDOUT\b/;
 const SERVER = path.join(ROOT, "src", "server.mjs");
@@ -226,6 +237,9 @@ export function registerAsk(server, ctx) {
   // Shots kept for this caller: the REPL they ran in (ask-<askId>) and the names a follow-up has not been told about.
   const SHOTS_KEY = "__shots";
   const readShots = () => readLast()[SHOTS_KEY] ?? null;
+
+  // An answer's quote markers filled from the rows its REPL (`from`, a session id) kept: { text, inserted, unknown }.
+  const fillQuotes = (text, from) => insertQuotes(text, readQuotes(quotesPath(STATE_DIR, from))?.quotes);
 
   const warmFile = (b) => path.join(WARM_DIR, `${b}.json`);
   const readWarm = (b, fp) => {
@@ -409,6 +423,7 @@ export function registerAsk(server, ctx) {
     const usage = ev.filter((e) => e.type === "session.usage_record").map((e) => e.data?.usage ?? {});
     return {
       answer,
+      quotesFrom: `ask-${askId}`,
       ok: true,
       model: be.model || "copilot default",
       continued: !!prev,
@@ -488,11 +503,13 @@ export function registerAsk(server, ctx) {
           "variables persist between calls) and the tool result is what it returned. Only a tool result is real: never write " +
           "a result yourself. Searches that do not depend on each other (`repo.rg`, `repo.sg`, `history.grep`) run together in one call " +
           "with `await Promise.all([...])`. Each result says how much time is left. " +
+          QUOTE_HOW +
           "When you have the answer, reply with the answer only and no tool call.\n\n"
         : "\n\nYou work by writing JavaScript cells. Put one cell in one ```js fenced block and stop: it runs in a persistent " +
           "REPL (top-level await, variables persist between cells) and the result comes back in the next message. Only that " +
           "message is real: never write a result yourself. Searches that do not depend on each other (`repo.rg`, `repo.sg`, " +
           "`history.grep`) run together in one cell with `await Promise.all([...])`. Each result says how much time is left. " +
+          QUOTE_HOW +
           "When you have the answer, reply with the answer only and no code block.\n\n";
       const early = !onEarly
         ? ""
@@ -593,6 +610,18 @@ export function registerAsk(server, ctx) {
       }
       cutAtLength = true;
       return whole;
+    };
+    // An answer whose quote markers name rows the REPL does not hold goes back once, while there is time.
+    const quotesFrom = `ask-${askId}`;
+    let quoteChecked = false;
+    const quoteCheck = (text) => {
+      if (quoteChecked || !quotedIds(text).length || leftMs() < WRAP_MS) return null;
+      const held = readQuotes(quotesPath(STATE_DIR, quotesFrom))?.quotes ?? {};
+      const unknown = unknownIds(text, held);
+      if (!unknown.length) return null;
+      quoteChecked = true;
+      totals.quotesSentBack = unknown.length;
+      return quoteFix(unknown, Object.keys(held));
     };
     // Lowered by the repeat guard below; otherwise only time ends the loop.
     let stopAt = Infinity;
@@ -696,7 +725,7 @@ export function registerAsk(server, ctx) {
           if (!t) return "Error: early_answer needs the answer text.";
           if (earlySent) return "An early answer was already sent; finish with your final answer.";
           earlySent = true;
-          onEarly(t);
+          onEarly(t, quotesFrom);
           return "Sent to the caller. Carry on checking; your final answer replaces it.";
         };
         if (native) {
@@ -712,6 +741,11 @@ export function registerAsk(server, ctx) {
               continue;
             }
             messages.push({ role: "assistant", content, ...thought });
+            const fix = quoteCheck(content);
+            if (fix) {
+              messages.push({ role: "user", content: fix });
+              continue;
+            }
             answer = content.trim();
             atLimit = low;
             break;
@@ -760,6 +794,11 @@ export function registerAsk(server, ctx) {
         CELL.lastIndex = 0;
         if (!first) {
           messages.push({ role: "assistant", content, ...thought });
+          const fix = quoteCheck(content);
+          if (fix) {
+            messages.push({ role: "user", content: fix });
+            continue;
+          }
           answer = content.trim();
           atLimit = low;
           break;
@@ -851,6 +890,8 @@ export function registerAsk(server, ctx) {
       usage: { input: totals.input, cacheRead: totals.cacheRead, cacheWrite: totals.cacheWrite, output: totals.output },
       providers: [...totals.providers],
       missteps: totals.missteps,
+      quotesFrom,
+      ...(totals.quotesSentBack ? { quotesSentBack: totals.quotesSentBack } : {}),
       ...(totals.reasoningBack ? { reasoningBack: totals.reasoningBack } : {}),
       ...(totals.reasoningRefused ? { reasoningRefused: true } : {}),
       ...(totals.stuck ? { stuck: totals.stuck } : {}),
@@ -1083,7 +1124,7 @@ export function registerAsk(server, ctx) {
       let earlyHit;
       let detachedMs;
       const earlyP = new Promise((resolve) => (earlyHit = resolve));
-      const onEarly = kind === "api" && early ? (text) => earlyHit({ text, ms: Date.now() - started }) : undefined;
+      const onEarly = kind === "api" && early ? (text, from) => earlyHit({ text: from && quotedIds(text).length ? fillQuotes(text, from).text : text, ms: Date.now() - started }) : undefined;
       const run = (async () => {
         try {
           if (!KINDS[kind]) throw new Error(`backend ${backend} has unknown kind "${kind}"`);
@@ -1091,7 +1132,12 @@ export function registerAsk(server, ctx) {
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
           const cited = r.ok ? await checkCitations(r.answer, D, config).catch(() => null) : null; // src/citations.mjs
-          ctx.keep({ startedAt: new Date(started).toISOString(), question, backend, kind, ...r, ...(cited ? { citations: cited.journal } : {}), ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
+          // Quote markers become the rows the investigator kept, after the citation check, which reads the model's own text.
+          const filled = r.ok && r.quotesFrom && quotedIds(r.answer).length ? fillQuotes(r.answer, r.quotesFrom) : null;
+          if (filled) r.answer = filled.text;
+          const quotes = filled ? { inserted: filled.inserted, ...(filled.unknown.length ? { unknown: filled.unknown.slice(0, 10) } : {}) } : null;
+          delete r.quotesFrom;
+          ctx.keep({ startedAt: new Date(started).toISOString(), question, backend, kind, ...r, ...(cited ? { citations: cited.journal } : {}), ...(quotes ? { quotes } : {}), ...(noData ? { noData } : {}), ...(detached ? { earlyMs: detachedMs } : {}), ...(fell ? { actionFellThrough: fell } : {}) });
           // Run details go to the journal; the reply shows them only with `footer: true` in config,
           // because callers quote whatever the reply carries.
           const footer = config.footer ? `\n\n[${domainName} · ${backend} · ${Math.round(r.ms / 1000)}s]` : "";
