@@ -20,6 +20,10 @@ import { checkActions, compileActions } from "./actions.mjs";
 export const MANIFEST = "ask-kit.toml";
 const NAME = /^[a-z][a-z0-9-]*$/;
 const SOURCE_KINDS = ["folder", "cli", "module", "mcp"];
+// A `reads` entry, and an `acts` entry written as a command: the program, then words ("mike fleet status").
+export const COMMAND_PHRASE = /^[\w.-]+( [\w=:.\/@-]+)*$/;
+// Programs that run other programs: a `reads` entry names what they run ("npm ls", not "npm").
+const RUNNERS = new Set("bash sh zsh fish dash node bun deno npx bunx npm pnpm yarn python python3 uv uvx env sudo xargs ssh docker podman".split(" "));
 
 // Kits smith drafts sit in STATE_ROOT/drafts/kits. Only `smith prove` sees them (ASK_KIT_DRAFTS=1
 // in its own and its children's environment); nothing else lists or routes to a draft.
@@ -69,6 +73,13 @@ export function readManifest(dir) {
   if (m.uses != null && !(Array.isArray(m.uses) && m.uses.every((u) => NAME.test(u)))) problems.push("uses: a list of kit names, e.g. [\"github\"]");
   if (m.uses?.includes?.(m.name)) problems.push("uses: a kit cannot use itself");
   if (m.skills != null && typeof m.skills !== "string") problems.push("skills: the folder of playbooks in the kit (default skills/)");
+  if (m.reads != null && !Array.isArray(m.reads)) problems.push('reads: a list of the commands that read what the kit answers about, e.g. ["mike fleet status", "tmux list-panes"]');
+  for (const [i, r] of (Array.isArray(m.reads) ? m.reads : []).entries()) {
+    const t = typeof r === "string" ? r.trim() : "";
+    if (!COMMAND_PHRASE.test(t)) problems.push(`reads[${i}]: a command as the program and its words, e.g. "mike fleet status" (got ${JSON.stringify(r)})`);
+    else if (!/\s/.test(t) && RUNNERS.has(t)) problems.push(`reads[${i}]: ${t} runs other programs; name what it runs, e.g. "${t} ls"`);
+    else if ([].concat(m.acts ?? []).some((a) => String(a).trim() === t)) problems.push(`reads[${i}]: ${t} is in acts too; a command either reads or changes things`);
+  }
   problems.push(...checkProvides(m.provides));
   problems.push(...checkActions(m.actions));
   for (const [i, r] of (m.roles ?? []).entries()) {

@@ -1131,7 +1131,7 @@ export function registerAsk(server, ctx) {
           const r = await hedged(kind, backend, asked, timeoutMs, clientMs, cont, ac.signal, onStep, onEarly);
           const noData = !!(r.ok && D.provides?.length && NO_DATA.test(r.answer ?? ""));
           if (noData) r.answer = r.answer.replace(NO_DATA, "").trimEnd();
-          const cited = r.ok ? await checkCitations(r.answer, D, config).catch(() => null) : null; // src/citations.mjs
+          const cited = r.ok ? await checkCitations(r.answer, D, config, { question }).catch(() => null) : null; // src/citations.mjs
           // Quote markers become the rows the investigator kept, after the citation check, which reads the model's own text.
           const filled = r.ok && r.quotesFrom && quotedIds(r.answer).length ? fillQuotes(r.answer, r.quotesFrom) : null;
           if (filled) r.answer = filled.text;

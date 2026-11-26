@@ -20,7 +20,7 @@
 //   ask-kit lines                the one-line prompts to paste into any agent
 //   ask-kit uninstall [--dry-run]   remove registrations and what init installed (not your edits)
 //   ask-kit serve [--domain d]   the MCP server agents start (all domains behind one router)
-//   ask-kit plugin build|start|tool|subagent   write the Claude Code plugin's skill copies; its SessionStart, PostToolUse and SubagentStart hooks
+//   ask-kit plugin build|start|tool|subagent   write the Claude Code plugin's skill copies; its SessionStart, PostToolBatch and SubagentStart hooks
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1,6 +1,6 @@
-// The plugin's PostToolUse and SubagentStart hooks: fed sample hook JSON, the tool hook prints one
-// line after the third lookup in a row and never exits non-zero; the nudge is logged and
-// `ask-kit gaps` counts it. No model, no network.
+// The plugin's PostToolBatch and SubagentStart hooks: fed sample hook JSON, the tool hook prints one
+// line after the third lookup in a row, naming the question the lookups seem to be for, and never
+// exits non-zero; the nudge is logged and `ask-kit gaps` counts it. No model, no network.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -23,12 +23,12 @@ fs.mkdirSync(bin);
 for (const p of ["gh", "cargo", "git", "docker", "psql", "clacks", "coredumpctl", "journalctl", "ssh"]) fs.writeFileSync(path.join(bin, p), "#!/bin/sh\nexit 99\n", { mode: 0o755 });
 env.PATH = `${bin}${path.delimiter}${env.PATH}`;
 const domains = { code: { enabled: true }, sessions: { enabled: true } };
-const kit = (name, { enabled = true, requires = [], keywords = [], source, settings } = {}) => {
+const kit = (name, { enabled = true, requires = [], keywords = [], reads = [], source, settings } = {}) => {
   const d = path.join(env.ASK_KIT_CONFIG, "kits", name);
   fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, "m.mjs"), "export default () => ({});\n");
   // A detect command the hook must never run.
-  fs.writeFileSync(path.join(d, "ask-kit.toml"), `name = "${name}"\nversion = "0.1.0"\nsays = "${name} of the Watch"\nrequires = ${JSON.stringify(requires)}\nkeywords = ${JSON.stringify(keywords)}\n\n[[settings]]\nkey = "WATCH_${name.replace(/-/g, "_").toUpperCase()}"\nabout = "x"\ndetect = ["touch", ${JSON.stringify(path.join(tmp, "detected"))}]\n\n[[sources]]\n${source ?? `kind = "module"\nname = "m"\nmodule = "m.mjs"`}\n`);
+  fs.writeFileSync(path.join(d, "ask-kit.toml"), `name = "${name}"\nversion = "0.1.0"\nsays = "${name} of the Watch"\nrequires = ${JSON.stringify(requires)}\nkeywords = ${JSON.stringify(keywords)}\nreads = ${JSON.stringify(reads)}\n\n[[settings]]\nkey = "WATCH_${name.replace(/-/g, "_").toUpperCase()}"\nabout = "x"\ndetect = ["touch", ${JSON.stringify(path.join(tmp, "detected"))}]\n\n[[sources]]\n${source ?? `kind = "module"\nname = "m"\nmodule = "m.mjs"`}\n`);
   if (enabled !== null) domains[name] = { enabled, ...(settings ? { settings } : {}) };
 };
 const save = (d = domains) => {
@@ -77,11 +77,14 @@ const run = (sub, stdin) => {
   return r.stdout;
 };
 const given = []; // [session, about] of every nudge the hook printed
-const post = (session, tool, input, extra = {}) => {
-  const out = run("tool", JSON.stringify({ session_id: session, hook_event_name: "PostToolUse", tool_name: tool, tool_input: input, tool_response: {}, cwd: repo, ...extra }));
+// One PostToolBatch input: the calls [tool, input] of one batch.
+const batch = (session, calls, extra = {}) => {
+  const out = run("tool", JSON.stringify({ session_id: session, hook_event_name: "PostToolBatch", tool_calls: calls.map(([tool_name, tool_input], k) => ({ tool_name, tool_input, tool_use_id: `toolu_${k}`, tool_response: "1\tthe Watch" })), cwd: repo, ...extra }));
   if (out) given.push([session, JSON.parse(out).hookSpecificOutput.additionalContext.match(/about: "([^"]+)"/)[1]]);
   return out;
 };
+const post = (session, tool, input, extra = {}) => batch(session, [[tool, input]], extra);
+const questionIn = (o) => JSON.parse(JSON.parse(o).hookSpecificOutput.additionalContext.match(/question: ("(?:[^"\\]|\\.)*")/)[1]);
 
 // Before setup nothing is enabled, so nothing is named.
 assert.equal(post("s0", "Bash", { command: "rg a src; rg b src; rg c src" }), "");
@@ -92,8 +95,8 @@ assert.equal(post("s1", "Bash", { command: "rg -n handler src/" }), "");
 assert.equal(post("s1", "Read", { file_path: `${repo}/src/a.mjs` }), "");
 const out = post("s1", "Grep", { pattern: "Vimes" });
 const j = JSON.parse(out);
-assert.equal(j.hookSpecificOutput.hookEventName, "PostToolUse");
-assert.equal(j.hookSpecificOutput.additionalContext, 'ask-kit: that is 3 lookups in a row (rg, Read, Grep). One call answers the question behind them outside your context, with its evidence: ask({ about: "code", question: "<the whole question these lookups were for>" }). Add continue: true to follow up.');
+assert.equal(j.hookSpecificOutput.hookEventName, "PostToolBatch");
+assert.equal(j.hookSpecificOutput.additionalContext, 'ask-kit: that is 3 lookups in a row (rg, Read, Grep). One call answers the question behind them outside your context, with its evidence: ask({ about: "code", question: "Where are `handler` and `Vimes` defined and used in src/ and src/a.mjs, and how do they work?" }). That question is a guess from your calls: send the whole question you have. Add continue: true to follow up.');
 assert.equal(out.trim().split("\n").length, 1);
 
 // Not again within the same chain.
@@ -216,9 +219,13 @@ fs.writeFileSync(path.join(env.ASK_KIT_CONFIG, "config.json"), "{{{");
 assert.equal(bash(three("git log")), "");
 save();
 assert.ok(!fs.existsSync(path.join(tmp, "detected")), "no detect command ran");
-// The counter keeps kinds of lookup and destinations, no command or path.
+// The counter keeps kinds of lookup and destinations; what the lookups were about only until the line names it.
 const kept = JSON.parse(fs.readFileSync(path.join(env.ASK_KIT_STATE, "nudges", "grep.json"), "utf8"));
-assert.deepEqual({ ...kept, at: null }, { n: 3, nudged: true, to: { logs: 3 }, kinds: { Grep: 3 }, at: null });
+assert.deepEqual({ ...kept, at: null }, { n: 3, nudged: true, to: { logs: 3 }, kinds: { Grep: 3 }, seen: [], at: null });
+post("half", "Bash", { command: "rg -n Carrot src/" });
+assert.deepEqual(JSON.parse(fs.readFileSync(path.join(env.ASK_KIT_STATE, "nudges", "half.json"), "utf8")).seen, [{ k: "term", v: "Carrot" }, { k: "place", v: "src/" }]);
+post("half", "Edit", { file_path: `${repo}/src/a.mjs` });
+assert.deepEqual(JSON.parse(fs.readFileSync(path.join(env.ASK_KIT_STATE, "nudges", "half.json"), "utf8")).seen, [], "a reset forgets it");
 const before = JSON.parse(fs.readFileSync(path.join(env.ASK_KIT_STATE, "nudges", "s4.json"), "utf8"));
 assert.deepEqual(before.to, { github: 3 });
 
@@ -228,14 +235,57 @@ assert.equal(sub.hookSpecificOutput.hookEventName, "SubagentStart");
 assert.match(sub.hookSpecificOutput.additionalContext, /call it before a run of searches/);
 assert.match(run("subagent", ""), /SubagentStart/);
 
-// The plugin names both hooks, and its commands exist.
+// The plugin names both hooks, and its commands exist. PostToolBatch has no matcher.
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, ".claude-plugin", "plugin.json"), "utf8"));
-for (const [ev, sub] of [["PostToolUse", "tool"], ["SubagentStart", "subagent"]]) {
+assert.ok(!manifest.hooks.PostToolUse, "the nudge runs once per batch, not once per tool");
+assert.equal(manifest.hooks.PostToolBatch[0].matcher, undefined);
+for (const [ev, sub] of [["PostToolBatch", "tool"], ["SubagentStart", "subagent"]]) {
   const h = manifest.hooks[ev][0].hooks[0];
   assert.equal(h.type, "command");
   assert.deepEqual(h.args.slice(-2), ["plugin", sub]);
   assert.ok(h.timeout <= 10);
 }
+
+// One batch of parallel calls counts each, in order, and gives at most one line.
+const par = batch("par", [["Read", { file_path: `${repo}/src/watch.mjs` }], ["Grep", { pattern: "captain|sergeant", path: `${repo}/src` }], ["Bash", { command: "git log -S'Colon' --oneline -- src/watch.mjs" }], ["Read", { file_path: `${repo}/src/night.mjs` }]]);
+assert.match(par, /4 lookups in a row \(Read x2, Grep, git log -S\/-G <term>\)/);
+assert.equal(questionIn(par), "Where are `captain`, `sergeant` and `Colon` defined and used in src/watch.mjs, src and src/night.mjs, and how do they work?");
+assert.equal(par.trim().split("\n").length, 1);
+assert.equal(batch("par", [["Read", { file_path: `${repo}/src/a.mjs` }], ["Read", { file_path: `${repo}/src/b.mjs` }]]), "", "said once for the chain");
+// An edit in the batch after the lookups ends the chain: no line for a chain already over.
+assert.equal(batch("par2", [["Read", { file_path: `${repo}/src/a.mjs` }], ["Read", { file_path: `${repo}/src/b.mjs` }], ["Read", { file_path: `${repo}/src/c.mjs` }], ["Edit", { file_path: `${repo}/src/a.mjs` }]]), "");
+// An ask in the batch resets before the lookups after it.
+assert.equal(batch("par3", [["Read", { file_path: `${repo}/src/a.mjs` }], ["Read", { file_path: `${repo}/src/b.mjs` }], ["mcp__plugin_ask-kit_ask__ask", { question: "where is the rota?" }], ["Read", { file_path: `${repo}/src/c.mjs` }]]), "");
+// Neutral calls in a batch neither count nor break it; a batch of only those writes nothing.
+assert.equal(batch("par4", [["TodoWrite", { todos: [] }], ["ToolSearch", { query: "x" }]]), "");
+assert.ok(!fs.existsSync(path.join(env.ASK_KIT_STATE, "nudges", "par4.json")));
+// The question by kind: file reads, history, commands; with nothing to go on, the placeholder.
+assert.equal(questionIn(batch("q1", [["Read", { file_path: `${repo}/src/a.mjs` }], ["Read", { file_path: `${repo}/src/b.mjs` }], ["Bash", { command: "sed -n 1,40p src/c.mjs" }]])), "What do src/a.mjs, src/b.mjs and src/c.mjs do, and how do they fit together?");
+assert.equal(questionIn(bash(three("git log -3 -- src/rota.mjs"))), "When and why did src/rota.mjs change?");
+assert.equal(questionIn(bash("gh pr view 4; gh pr checks 4; gh run list")), "What do `gh pr view 4` and `gh pr checks 4` show?");
+assert.equal(questionIn(bash("tail -50 /srv/watch/night.log; rg ERROR /srv/watch/night.log; rg WARN /srv/watch/night.log")), "What does /srv/watch/night.log say about `ERROR` and `WARN`?");
+assert.equal(questionIn(bash(three("git status"))), "<the whole question these lookups were for>");
+assert.doesNotMatch(bash(three("git status")), /a guess/);
+// A question that holds quotes stays one string.
+assert.equal(questionIn(bash(`rg 'say "hello"' src; rg x1y src; rg z2w src`)), 'Where are `say "hello"`, `x1y` and `z2w` defined and used in src, and how do they work?');
+// A PostToolUse input still works, answered as PostToolUse.
+const one = (tool, tool_input) => run("tool", JSON.stringify({ session_id: "old", hook_event_name: "PostToolUse", tool_name: tool, tool_input, tool_response: {}, cwd: repo }));
+one("Read", { file_path: `${repo}/src/a.mjs` });
+one("Read", { file_path: `${repo}/src/b.mjs` });
+const old = one("Read", { file_path: `${repo}/src/c.mjs` });
+assert.equal(JSON.parse(old).hookSpecificOutput.hookEventName, "PostToolUse");
+given.push(["old", "code"]);
+
+// A command a kit declares in `reads` is a lookup named for that kit; undeclared, it is an action.
+assert.equal(bash(three("mike fleet status watch")), "");
+kit("fleet", { reads: ["mike fleet status", "mike fleet list"] });
+save();
+assert.equal(about(bash(three("mike fleet status watch"))), "fleet");
+assert.match(bash("mike fleet list; mike fleet status watch | head; rg a src"), /3 lookups in a row \(mike fleet list, mike fleet status, rg\)[^]*about: \\"fleet\\"/);
+assert.equal(bash("mike fleet status watch; mike fleet start watch; mike fleet list"), "", "an undeclared command in the call is an action");
+post("fl", "Bash", { command: "mike fleet status watch" });
+post("fl", "Bash", { command: "mike fleet list" });
+assert.equal(about(post("fl", "Read", { file_path: `${repo}/src/a.mjs` })), "fleet");
 
 // The nudges are logged, and gaps counts them.
 const { nudgesSince } = await import("../src/nudge.mjs");
@@ -245,7 +295,7 @@ for (const [, a] of given) by[a] = (by[a] ?? 0) + 1;
 assert.equal(n.count, given.length);
 assert.equal(n.sessions, new Set(given.map(([x]) => x)).size);
 assert.deepEqual(n.by, by); // every nudge printed is logged under the name it gave
-for (const k of ["code", "git", "rust", "tests", "sqlite", "logs", "files", "claude-setup", "github", "ops", "crash", "sessions", "rota", "semaphore", "mike"]) assert.ok(by[k], `${k} was named`);
+for (const k of ["code", "git", "rust", "tests", "sqlite", "logs", "files", "claude-setup", "github", "ops", "crash", "sessions", "rota", "semaphore", "mike", "fleet"]) assert.ok(by[k], `${k} was named`);
 for (const k of ["postgres", "docker", "systemd", "writing"]) assert.ok(!by[k], `${k} was never named`);
 const { formatReport } = await import("../src/gaps.mjs");
 const base = { since: "2026-11-01T00:00:00Z", scanned: { sessions: 0, bySource: {}, fromCache: 0, seconds: 0 }, cost: { basis: "x" }, coverage: { asks: 0, byHand: 0, share: null, tokenShare: null, handSessions: 0, handTokens: 0, handUsd: 0 }, excluded: { mailOrFleet: 0, other: 0 }, skipped: [], noKit: [] };

@@ -91,18 +91,28 @@ whole report as JSON.
 
 ### Nudges from the Claude Code plugin
 
-The plugin has a PostToolUse hook (`ask-kit plugin tool`) that counts an agent's lookups in a row,
-using the same classification as the chains above. Each lookup inside a Bash call counts, and a
-pipeline counts once. At the third that `ask` could have answered it adds one line to the agent's
-context and does not repeat it within that chain:
+The plugin has a PostToolBatch hook (`ask-kit plugin tool`) that counts an agent's lookups in a row,
+using the same classification as the chains above. It runs once per batch of tool calls, before
+the next model call, and takes the batch's calls in order. Each lookup inside a Bash call counts,
+and a pipeline counts once. At the third that `ask` could have answered it adds one line to the
+agent's context and does not repeat it within that chain:
 
 ```
-ask-kit: that is 3 lookups in a row (rg x2, git log). One call answers the question behind them outside your context, with its evidence: ask({ about: "code", question: "<the whole question these lookups were for>" }). Add continue: true to follow up.
+ask-kit: that is 3 lookups in a row (rg x2, Read). One call answers the question behind them outside your context, with its evidence: ask({ about: "code", question: "Where are `nudgeLine` and `onToolUse` defined and used in src/ and src/nudge.mjs, and how do they work?" }). That question is a guess from your calls: send the whole question you have. Add continue: true to follow up.
 ```
+
+The question is put together from what the chain's lookups were about: the terms searched for
+(`rg`, `grep`, `Grep`, `git log -S`), the files read (relative to the agent's folder), and the
+commands that are not file reads (`gh pr view 4`, `mike fleet status watch`). Its form follows the
+kit: where something is defined and used for `code`, when it changed for `git`, what a file says
+about a term for the others. When the calls give nothing to go on (three `git status`), the line
+has `"<the whole question these lookups were for>"` in its place.
 
 The `about` is the enabled domain or kit that fits most of the chain (a tie goes to the latest
 lookup). A lookup goes by, in order:
 
+- a command an enabled kit declares in its manifest's `reads` (`mike fleet status` to the kit that
+  lists it), which counts as a lookup even though the host has no rule for its program;
 - the program it runs (`git log` to `git`, `cargo tree` to `rust`, `sqlite3` to `sqlite`, and a
   program only one enabled kit lists in `requires` to that kit) or its MCP server;
 - the kit whose folder source holds the file;
@@ -114,7 +124,8 @@ A kit that is off, not in the config or unable to run here is never named. Looku
 answers neither count nor reset the chain, and before setup there is no nudge. A call to `ask`, an
 edit or write, or a command that changes something resets it.
 The hook never blocks a call, runs no model and makes no network call, and prints nothing when its
-input or state file is broken. A subagent's tool calls fire the same hook with their own counter.
+input or state file is broken. A subagent's tool calls fire the same hook with their own counter. An edit or an `ask` in the same
+batch after the third lookup ends the chain, and then there is no line.
 
 Each nudge is one line in `<state>/nudges/nudges.jsonl`, which the `Nudges:` line of `ask-kit gaps`
 counts. To see whether nudging raised coverage, compare `ask-kit gaps --since <the day of the

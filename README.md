@@ -78,9 +78,9 @@ it needs Node.js 26:
 ```
 
 The plugin brings the `ask` tool, the skills, the tuner agent and two hooks. After the third
-lookup in a row that `ask` could have answered, a PostToolUse hook adds one line to Claude's
-context naming the investigator that fits, and a SubagentStart hook gives each subagent the short
-rule. Then ask Claude to set up
+lookup in a row that `ask` could have answered, a PostToolBatch hook adds one line to Claude's
+context naming the investigator that fits and the question the lookups seem to be for, and a
+SubagentStart hook gives each subagent the short rule. Then ask Claude to set up
 ask-kit, and the ask-kit-setup skill asks you the same questions. The plugin covers Claude Code
 only; `ask-kit init` and `ask-kit setup` leave Claude Code alone while it is installed.
 
@@ -142,7 +142,9 @@ router's model (the investigator's unless you chose another). Keys, tokens and p
 in transcript excerpts are masked before the model sees them. There's no telemetry. Everything it keeps is under `~/.config/ask-kit/` and `~/.local/state/ask-kit/`,
 including each ask's conversation with its investigator, the model's reasoning included, and the rows it kept to quote in its answer (kept for follow-ups; one per ask for a day when the agent takes tasks), the clipped prompts `ask-kit gaps` caches from your transcripts, a digest of each
 session `find-sessions` matched (title, first prompt, top words), a lookup counter per
-Claude Code session (with the kinds of lookup, such as `git log`, and the kits that would answer them) and a log of the nudges the plugin's hook gave (time, session id, kind of
+Claude Code session (with the kinds of lookup, such as `git log`, the kits that would answer them,
+and, until the hook names the question they seem to be for, the search terms, files and commands of
+the last few lookups) and a log of the nudges the plugin's hook gave (time, session id, kind of
 lookup; no commands or prompts) and, for the one in 20
 action answers that a model checks in the background, both answers. Each ask's journal row
 holds how many of the answer's citations resolved, and the ones that did not (a path and line,

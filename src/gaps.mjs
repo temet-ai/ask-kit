@@ -16,10 +16,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { ADAPTERS, listSessions } from "./transcripts/index.mjs";
 import { HOME, STATE_ROOT, expand, loadConfig } from "./config.mjs";
-import { findKit, listKits, readManifest } from "./kits.mjs";
+import { COMMAND_PHRASE, findKit, listKits, readManifest } from "./kits.mjs";
 
 // Part of the cache key: raise it when a rule changes what a cached session would hold.
-const VERSION = 8;
+const VERSION = 9;
 
 // $ per million tokens: input, cache write, cache read, output. Claude list prices as mike-ask's
 // corpus.mjs has them; other models get no price.
@@ -417,13 +417,39 @@ const isAsk = (tool, arg = "") =>
 const CODE_WRITES = /\b(write|append|copy|cp|rename|unlink|rm|mkdir|rmdir|chmod|symlink|truncate)(File)?(Sync)\b|\b(writeFile|appendFile|unlink|rename|copyFile|createWriteStream|execSync|execFileSync|spawnSync)\s*\(|\bfs\.(promises\.)?(rm|mkdir|cp)\s*\(|\.(write_text|write_bytes|writelines|save|savefig|unlink|mkdir|touch|rename|rmdir)\s*\(|\bopen\([^)\n]*,\s*(mode\s*=\s*)?['"][rb+]*[wax]|\bos\.(remove|rename|replace|makedirs|unlink|system|kill)\b|\bshutil\.|\bsubprocess\.|\brequests\.(post|put|patch|delete)\b|\bmethod['"]?\s*[:=]\s*['"](POST|PUT|PATCH|DELETE)|\.commit\(\)/;
 const SQL_WRITES = /\b(insert\s+(or\s+\w+\s+)?into|update\s+[\w."]+\s+(as\s+\w+\s+)?set|delete\s+from|(drop|alter|create)\s+(or\s+replace\s+|unique\s+|temp(orary)?\s+|materialized\s+)*(table|index|view|database|schema|role|user|function|extension|trigger|type|sequence)|truncate\s|replace\s+into|vacuum|reindex)/i;
 
-/** One command: {look, fam, plain}. `plain` is one that looks nothing up (cd, echo, a loop keyword). */
-function kindOf(cmd) {
+/**
+ * The read a kit declares that one command is ({kit, words, phrase}), or null. The program is the
+ * phrase's first word and the rest come in a row after it, options allowed before them
+ * ("kubectl get" is `kubectl -n watch get pods`). The same command in a kit's `acts` is no read.
+ */
+export function declaredRead(words, declared) {
+  if (!declared?.reads?.length || !words.length) return null;
+  const h = baseOf(words[0]);
+  const rest = words.slice(1);
+  const fits = (p) => p.words[0] === h && (p.words.length === 1 || rest.some((_, i) => p.words.slice(1).every((w, j) => rest[i + j] === w)));
+  if (declared.acts?.some(fits)) return null;
+  return declared.reads.find(fits) ?? null;
+}
+
+/**
+ * One command: {look, fam, plain}, and {kit, read} for a read a kit declares. `plain` is one that
+ * looks nothing up (cd, echo, a loop keyword). `declared` is kitRules' reads and acts: a command
+ * the rules here do not count as a lookup is one when a kit declares it.
+ */
+function kindOf(cmd, declared = null) {
+  const k = builtInKind(cmd, declared);
+  if (k.look || !declared || cmd.out.length) return k;
+  const d = declaredRead(bodyOf(cmd).map((x) => x.text), declared);
+  if (!d || !nestedOf(cmd).every((n) => kindOf(n, declared).look)) return k;
+  return { look: true, fam: "kit", plain: false, kit: d.kit, read: d.phrase };
+}
+
+function builtInKind(cmd, declared) {
   const ws = bodyOf(cmd), h = baseOf(ws[0]?.text);
   const bare = ws.slice(1).filter((x) => !x.q).map((x) => x.text);
   const all = ws.map((x) => x.text);
   const has = (re) => bare.some((x) => re.test(x));
-  const nested = nestedOf(cmd).map(kindOf);
+  const nested = nestedOf(cmd).map((n) => kindOf(n, declared));
   const inner = nested.filter((n) => !n.plain);
   if (cmd.out.length || nested.some((n) => !n.look)) return { look: false, fam: "other", plain: false };
   const plain = !h || (PLUMBING.has(h) && !ws[0].q);
@@ -469,7 +495,7 @@ function kindOf(cmd) {
 }
 
 /** A Bash call as its pipelines: [{cmds, kinds, arg, dir}]. A loop fed by a pipe is part of that pipeline. */
-function pipelinesOf(cmd) {
+function pipelinesOf(cmd, declared = null) {
   const out = [];
   let dir = null, depth = 0, piped = -1;
   for (const c of shellOf(cmd)) {
@@ -493,7 +519,7 @@ function pipelinesOf(cmd) {
     const first = p.cmds[0];
     const at = first.words.find((x) => x.q || !(OPENERS.has(x.text) || CLOSERS.has(x.text)))?.at ?? first.start;
     p.arg = [cmd.slice(at, p.cmds.at(-1).end).trim(), ...p.cmds.map((c) => c.here).filter((h) => h.includes("\n") && !cmd.slice(at, p.cmds.at(-1).end).includes(h.trim())).map((h) => h.trimEnd())].join("\n");
-    p.kinds = p.cmds.map(kindOf);
+    p.kinds = p.cmds.map((c) => kindOf(c, declared));
     p.real = p.cmds.map((c, k) => ({ c, ...p.kinds[k] })).filter((x) => !x.plain);
     // `echo text | jq .` reads nothing the caller did not already have.
     const says = /^(echo|printf)$/.test(headOf(first)) && p.kinds[0].plain;
@@ -502,26 +528,30 @@ function pipelinesOf(cmd) {
   return out;
 }
 
-function bashKind(cmd) {
-  const ps = pipelinesOf(cmd);
+function bashKind(cmd, declared = null) {
+  const ps = pipelinesOf(cmd, declared);
   const look = ps.every((p) => p.kinds.every((k) => k.look));
   return { look, fam: (ps.find((p) => p.counts) ?? ps.find((p) => p.real.length))?.real[0].fam ?? "file", ps };
 }
 
 /**
- * The separate lookups one call makes: [{arg, fam}], and `dir` when a `cd` before it moved. Commands
- * joined by &&, ||, ; or a newline are separate, a pipeline is one, and cd, export, echo and the
- * like are none. A call that changes anything, or is not a lookup, has none.
+ * The separate lookups one call makes: [{arg, fam}], `dir` when a `cd` before it moved, and `kit`
+ * and `read` (the phrase) for a read a kit declares. Commands joined by &&, ||, ; or a newline are
+ * separate, a pipeline is one, and cd, export, echo and the like are none. A call that changes
+ * anything, or is not a lookup, has none. `declared` is kitRules' `declared`.
  */
-export function lookupsOf(tool, arg = "") {
-  const c = classify(tool, arg);
+export function lookupsOf(tool, arg = "", declared = null) {
+  const c = classify(tool, arg, declared);
   if (c.k !== "look") return [];
   if (tool !== "Bash") return [{ arg, fam: c.fam }];
-  return pipelinesOf(arg).filter((p) => p.counts).map((p) => ({ arg: p.arg, fam: p.real[0].fam, ...(p.dir ? { dir: p.dir } : {}) }));
+  return pipelinesOf(arg, declared).filter((p) => p.counts).map((p) => {
+    const d = p.real.find((x) => x.kit);
+    return { arg: p.arg, fam: p.real[0].fam, ...(d ? { kit: d.kit, read: d.read } : {}), ...(p.dir ? { dir: p.dir } : {}) };
+  });
 }
 
-/** {k: look|write|act|ask|agent|neutral|other, fam?} for one tool use. */
-export function classify(tool, arg = "") {
+/** {k: look|write|act|ask|agent|neutral|other, fam?} for one tool use. `declared`: the reads kits declare (kitRules). */
+export function classify(tool, arg = "", declared = null) {
   if (isAsk(tool, arg)) return { k: "ask" };
   if (WRITE_TOOLS.has(tool)) return { k: "write" };
   if (NEUTRAL.has(tool)) return { k: "neutral" };
@@ -535,10 +565,17 @@ export function classify(tool, arg = "") {
   }
   if (tool.startsWith("mcp__")) return /(get|list|read|search|find|query|fetch|view|context|status|screenshot)/i.test(tool.split("__")[2] || "") ? { k: "look", fam: "mcp" } : { k: "act" };
   if (tool === "Bash") {
-    const { look, fam } = bashKind(arg);
+    const { look, fam } = bashKind(arg, declared);
     return look ? { k: "look", fam } : { k: "act" };
   }
   return { k: "other" };
+}
+
+/** The words of the command one lookup ({arg} of lookupsOf) runs, keywords and wrappers off: [{text, q}]. */
+export function wordsOf(arg = "") {
+  const ps = pipelinesOf(arg);
+  const cmd = ((ps.find((p) => p.counts) ?? ps.find((p) => p.real.length))?.real[0] ?? {}).c;
+  return cmd ? bodyOf(cmd).map((x) => ({ text: x.text, q: x.q })) : [];
 }
 
 /** A normalised form of one lookup, so the same kind of command counts once. */
@@ -639,13 +676,18 @@ export const FITS = {
 export const GENERIC = new Set("node npm npx python python3 bash sh zsh rg grep fd find cat jq git curl codex claude".split(" "));
 const BUILT_IN = ["sessions", "code"];
 
-/** What attribution needs: installed kits, their programs, folders and MCP servers. */
+/**
+ * What attribution needs: installed kits, their programs, folders and MCP servers, and `declared`:
+ * the commands kits declare in `reads` ({kit, words, phrase}) and the command phrases in their
+ * `acts`, which stay actions.
+ */
 export function kitRules(config = loadConfig({ required: false }) ?? {}) {
   const installed = new Set(BUILT_IN.filter((d) => config.domains?.[d]?.enabled !== false));
   const programs = { ...PROGRAMS };
   const owners = {};
   const folders = [];
   const servers = {};
+  const declared = { reads: [], acts: [] };
   for (const name of listKits()) {
     if (config.domains?.[name]?.enabled === false || (config.domains && !config.domains[name])) continue;
     let m;
@@ -658,6 +700,8 @@ export function kitRules(config = loadConfig({ required: false }) ?? {}) {
     const settings = { ...Object.fromEntries((m.settings ?? []).filter((s) => s.default != null).map((s) => [s.key, s.default])), ...(config.domains?.[name]?.settings ?? {}) };
     const fill = (s) => String(s).replace(/\$\{([A-Z0-9_]+)\}/g, (_, k) => settings[k] ?? process.env[k] ?? "");
     for (const p of [].concat(m.requires ?? [])) if (!/^mike/.test(p)) (owners[p] ??= []).push(name);
+    for (const r of [].concat(m.reads ?? [])) declared.reads.push({ kit: name, words: String(r).trim().split(/\s+/), phrase: String(r).trim() });
+    for (const a of [].concat(m.acts ?? [])) if (COMMAND_PHRASE.test(String(a).trim()) && /\s/.test(String(a).trim())) declared.acts.push({ kit: name, words: String(a).trim().split(/\s+/) });
     for (const s of m.sources ?? []) {
       if (s.kind === "folder" && s.path) {
         const dir = expand(fill(s.path));
@@ -681,8 +725,8 @@ export function kitRules(config = loadConfig({ required: false }) ?? {}) {
   // Transcript stores are what the sessions domain reads.
   for (const a of Object.values(ADAPTERS)) if (installed.has("sessions")) folders.push([a.where(), "sessions"]);
   folders.sort((a, b) => b[0].length - a[0].length);
-  const key = crypto.createHash("sha1").update(JSON.stringify([VERSION, [...installed].sort(), programs, folders, servers])).digest("hex").slice(0, 12);
-  return { installed, programs, folders, servers, key };
+  const key = crypto.createHash("sha1").update(JSON.stringify([VERSION, [...installed].sort(), programs, folders, servers, declared])).digest("hex").slice(0, 12);
+  return { installed, programs, folders, servers, declared, key };
 }
 
 const gitRoots = new Map();
@@ -715,6 +759,7 @@ function pathTarget(p, rules, repo) {
 
 /** The kit (or source with no kit) one lookup belongs to. */
 export function targetOf(u, rules, repo) {
+  if (u.kit) return u.kit; // a read the kit declares
   if (u.tool.startsWith("mcp__")) {
     const server = u.tool.split("__")[1];
     if (server === "mike" || server === "tether") return rules.installed.has("fleet") && FLEET.test(u.tool) ? "fleet" : "mike";
@@ -805,7 +850,7 @@ export function usesOf(events) {
  * prompt, req, after} where `after` is how many lookups came just before it. A chain also has
  * `says`, what its calls said they were for, and `afterAsk`, the ask made earlier in its turn.
  */
-export function buildChains(uses, { min = 3, cwd = null } = {}) {
+export function buildChains(uses, { min = 3, cwd = null, declared = null } = {}) {
   const chains = [], asks = [], writes = new Map();
   let cur = null, run = 0, prev = null, lastAsk = null;
   const close = (end) => {
@@ -819,16 +864,16 @@ export function buildChains(uses, { min = 3, cwd = null } = {}) {
       lastAsk = null;
     }
     prev = u;
-    const c = classify(u.tool, u.arg);
+    const c = classify(u.tool, u.arg, declared);
     if (c.k === "neutral") continue;
     if (c.k === "look") {
-      const looks = lookupsOf(u.tool, u.arg);
+      const looks = lookupsOf(u.tool, u.arg, declared);
       if (!looks.length) continue; // only cd or echo
       cur ??= { id: u.id, turn: u.turn, ts: u.ts, prompt: u.prompt, cwd, afterAsk: lastAsk?.id ?? null, askAt: lastAsk?.ts, askQuestion: lastAsk?.arg, says: [], uses: [] };
       if (u.says && !cur.says.includes(u.says)) cur.says.push(u.says);
       for (const l of looks) {
         const dir = !l.dir ? cwd : /^[/~]/.test(l.dir) ? l.dir : cwd ? path.join(cwd, l.dir) : null;
-        cur.uses.push({ id: u.id, tool: u.tool, fam: l.fam, shape: shapeOf(u.tool, l.arg), arg: l.arg, paths: pathsOf(u.tool, l.arg, dir), req: u.req, chars: Math.round(u.chars / looks.length) });
+        cur.uses.push({ id: u.id, tool: u.tool, fam: l.fam, shape: l.read ?? shapeOf(u.tool, l.arg), ...(l.kit ? { kit: l.kit } : {}), arg: l.arg, paths: pathsOf(u.tool, l.arg, dir), req: u.req, chars: Math.round(u.chars / looks.length) });
       }
       cur.lastTs = u.ts;
       run += looks.length;
@@ -875,7 +920,7 @@ export async function analyseSession(s, rules) {
   const { uses, reqs } = usesOf(await ADAPTERS[s.source].events(s, { usage: true }));
   const cwd = s.cwd ? s.cwd.replace(/\/\.claude\/worktrees\/[^/]+.*$/, "") : null;
   const repo = gitRoot(s.cwd) ?? cwd;
-  const { chains, asks } = buildChains(uses, { cwd: s.cwd });
+  const { chains, asks } = buildChains(uses, { cwd: s.cwd, declared: rules?.declared });
   return {
     chains: chains.map((ch) => {
       const targets = ch.uses.map((u) => targetOf(u, rules, repo)).filter(Boolean);
